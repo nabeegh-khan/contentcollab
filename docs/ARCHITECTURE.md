@@ -84,7 +84,7 @@ New comments, replies, annotation pins and mentions appear for everyone viewing 
 
 The proposal commits to two features that are deterministic to build and to demo:
 
-1. **Security**: email and password sign-in with bcrypt-hashed passwords, JWT sessions, role checks per route, share links with a token and an expiry, HTTPS from cert-manager and Let's Encrypt at the Ingress, credentials in Kubernetes Secrets (the Docker secrets pattern from lecture 5), never in the image or the repo.
+1. **Security**: email and password sign-in with bcrypt-hashed passwords, JWT sessions, role checks per route, share links with a token and an expiry, HTTPS from cert-manager and Let's Encrypt at the Ingress on `contentcollab.app` (registered 17 October through the GitHub Student Developer Pack, name.com, first year free), credentials in Kubernetes Secrets (the Docker secrets pattern from lecture 5), never in the image or the repo.
 2. **CI/CD**: GitHub Actions. On every pull request: lint, typecheck, Jest and Supertest against a PostgreSQL service container. On merge to `main`: build the image, push to the GitHub Container Registry, `kubectl set image` and wait for the rollout. The pipeline is what makes the deployment reproducible for the grader.
 
 Planned beyond that, in order, and presented as completed only if they are:
