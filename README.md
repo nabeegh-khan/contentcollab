@@ -29,6 +29,8 @@ This is a review tool, not an editor. Live text editing and track changes are ou
 | Data | PostgreSQL on a DigitalOcean Volume (persistent storage); Redis for Socket.IO across replicas |
 | Files | DigitalOcean Spaces (S3-compatible object storage) |
 | Orchestration | DigitalOcean Kubernetes: Deployments, Services, PersistentVolumeClaims, HorizontalPodAutoscaler; minikube locally |
+| Frontend | small React app served as static files by its own container |
+| Background jobs | worker container on a Redis queue (BullMQ): bulk imports, thumbnails |
 | Local development | Docker Compose |
 | Monitoring | DigitalOcean metrics and alerts; `/metrics` endpoint for Prometheus and Grafana |
 | CI/CD | GitHub Actions: lint and test on every pull request, build and deploy on merge to `main` |
@@ -53,14 +55,23 @@ Course deadlines are 11:59pm Toronto with no late submissions. The windows are w
 ## Repository layout
 
 ```
+api/                 the JSON API (Express, Socket.IO); routes, middleware, services, db, tests
+web/                 the small React frontend, served as static files by its own container
+worker/              background jobs on a Redis queue: imports, thumbnails, backup trigger
+k8s/                 Kubernetes manifests, with minikube and DigitalOcean overlays
+scripts/             cluster, volume, migration, backup and smoke-test scripts
+tests/               cross-service checks: restart, scale, end-to-end smoke
+.github/workflows/   CI on pull requests, deploy on merge to main
 docs/
-  ARCHITECTURE.md   decisions with the options weighed; the source for proposal section 2
-  PLAN.md           stages, owners, integration, risks; the source for proposal section 3
-  meetings/         one file per team meeting, YYYY-MM-DD.md
-.env.example        environment variable template; copy to .env, which is never committed
+  ARCHITECTURE.md    decisions with the options weighed; the source for proposal section 2
+  PLAN.md            stages, owners, integration, risks; the source for proposal section 3
+  PRACTICES.md       the engineering practices we hold to, with their course sources
+  API.md             the endpoint contract (written before feature work starts)
+  meetings/          one file per team meeting, YYYY-MM-DD.md
+.env.example         environment variable template; copy to .env, which is never committed
 ```
 
-Application code, `compose.yaml`, `k8s/` and `.github/workflows/` arrive with the skeleton.
+Each folder has a README saying what goes in it and who owns it. `compose.yaml` lands with the skeleton.
 
 ## How we work
 

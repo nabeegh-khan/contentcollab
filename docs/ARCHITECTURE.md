@@ -21,13 +21,15 @@ A stateful, cloud-native content review platform. A user uploads a document, PDF
   |                                                              |
   |   ingress-nginx + cert-manager (TLS)                         |
   |        |                                                     |
-  |   api Deployment, 2 to 5 replicas (HPA on CPU)               |
-  |   Node.js + Express + Socket.IO                              |
-  |        |                        |                            |
-  |   postgres StatefulSet x1       redis Deployment x1          |
-  |   PVC on a DO Volume            (Socket.IO adapter,          |
-  |   (block storage)                pub/sub across replicas)    |
-  |                                                              |
+  |   web Deployment x2          api Deployment, 2 to 5 replicas |
+  |   (static React build)       (Node.js, Express, Socket.IO,  |
+  |                               HPA on CPU)                    |
+  |                                   |              |           |
+  |   worker Deployment x1        postgres        redis          |
+  |   (imports, thumbnails,       StatefulSet x1  Deployment x1  |
+  |    BullMQ on Redis)           PVC on a DO     (Socket.IO     |
+  |                               Volume           adapter, job  |
+  |                                                queue)        |
   |   backup CronJob: pg_dump -> Spaces, nightly                 |
   +--------------------------------------------------------------+
             |                              |
@@ -39,6 +41,10 @@ A stateful, cloud-native content review platform. A user uploads a document, PDF
 ```
 
 ## Decisions
+
+### D0. Service model
+
+Lecture 1 splits cloud services into IaaS (you manage the OS), PaaS (the provider manages the hosts, you ship containers or code) and FaaS (functions run on events). Assignment 1 was IaaS: a droplet, Nginx, PostgreSQL installed by hand. The project is not that. We use managed Kubernetes, where DigitalOcean runs the control plane and the worker nodes' OS and we run containers (PaaS-style on top of the provider's IaaS), object storage as a service for files, and the provider's metrics and alerts. A DigitalOcean Function is an option for one small event-driven job (a thumbnail when a file lands in Spaces) if we want the serverless advanced feature; it is not in the core path. The point for the proposal: we manage containers and data, not machines.
 
 ### D1. Orchestration: DigitalOcean Kubernetes (proposed)
 
@@ -62,7 +68,7 @@ Schema, first cut: `users`, `documents`, `document_versions` (one row per upload
 
 ### D3. What "collaboration" means here
 
-Content is the uploaded file. PDFs and images render in the browser; other types (docx, spreadsheets) are stored, versioned and downloadable but not rendered. Collaboration is review: threaded comments, annotation pins anchored to a page and position, @-mentions, and a new version uploaded when the content changes, with the version history and revert.
+Content is the uploaded file (manual upload, or a bulk import from a bucket the team already has: D9). PDFs and images render in the browser; other types (docx, spreadsheets) are stored, versioned and downloadable but not rendered. Collaboration is review: threaded comments, annotation pins anchored to a page and position, @-mentions, and a new version uploaded when the content changes, with the version history and revert.
 
 Live co-editing of document text, or a track-changes mode, is a different product. It needs a CRDT or operational-transform engine (Yjs is the usual library) and an editor, and track changes is harder still because every change becomes a reviewable object. A collaborator in another time zone is served by versions, comment threads and notifications, not by simultaneous typing. If the team wants live text editing later, it is one more feature on top of this architecture, not a change to it; it is not promised.
 
@@ -90,7 +96,33 @@ DigitalOcean droplet and cluster metrics with alert policies (CPU, memory, disk 
 
 ### D7. Local development
 
-One `compose.yaml` runs api, postgres and redis locally with healthchecks and `depends_on`, as in Assignment 2. Kubernetes manifests live in `k8s/` and are tested on minikube before DOKS. `.env.example` lists every variable; `.env` is ignored.
+One `compose.yaml` runs api, web, worker, postgres and redis locally with healthchecks and `depends_on`, as in Assignment 2. Kubernetes manifests live in `k8s/` and are tested on minikube before DOKS. `.env.example` lists every variable; `.env` is ignored.
+
+### D8. Frontend (proposed: yes, small)
+
+The course does not require a frontend and grades the cloud work, not the interface. We build one anyway because the demo is a user opening a document, leaving a comment and a second browser seeing it appear, and that is hard to show with curl. It stays small: sign-in, document list, upload, document view with comments and pins, share dialog. A React build served as static files by its own `web` container behind the same Ingress, so it scales and deploys like everything else and the API stays a pure JSON service. No server-side rendering, no design system work.
+
+### D9. How content gets in
+
+Two paths, one pipeline.
+
+**Manual upload** is the core: the browser sends the file to the API, the API streams it straight to Spaces (never buffering the whole file in memory), then writes the version row. Size and type limits are enforced before a byte is stored.
+
+**Bulk import** is the answer to "a team already has its documents somewhere": an Owner points ContentCollab at an existing S3-compatible bucket, or at a folder the API can reach, and a `worker` service copies the files in as versions under a chosen collection. The import runs as a background job on a Redis-backed queue (BullMQ), in its own container, so a thousand files cannot stall the API. Each file is identified by a checksum, so running the same import twice adds nothing. Connectors to Google Drive or SharePoint follow the same job shape and are not promised.
+
+This split is what keeps the system standing: the request path does small, bounded work; everything slow or unbounded goes to the worker. The worker has the same database and Spaces access as the API and nothing else.
+
+### D10. What keeps it from falling over
+
+Collected in `docs/PRACTICES.md` with their sources; the ones that shape the design:
+
+- Every list endpoint paginates with a maximum page size; every input is validated in middleware before a handler sees it; errors have one shape.
+- Request bodies and uploads are capped; uploads stream; a rate limit per user applies to writes.
+- The API handles `SIGTERM`: it stops accepting connections, finishes in-flight requests and closes the pool, so rolling updates and autoscaling drop nothing.
+- Readiness is separate from liveness: a pod gets traffic only once Postgres and Redis answer.
+- Every container has CPU and memory requests and limits, so a runaway process cannot starve the node.
+- Secrets are mounted, never baked into images; the `web` container holds none.
+- The load-bearing pieces are the schema, the API contract in `docs/API.md` and the role middleware. They change only with tests in place and the team told.
 
 ## Scope and feasibility
 
