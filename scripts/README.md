@@ -1,6 +1,6 @@
 # scripts
 
-Repeatable operations as scripts, so nothing important lives in dashboard clicks: create the cluster, create the volume, run migrations, take a backup, restore a backup, `smoke.sh` (the curl checks run before every demo), and `sync-practices.py` (copies the applicable rows of `docs/PRACTICES.md` into each folder README). Every script exits early if a required environment variable is missing.
+Repeatable operations as scripts, so nothing important lives in dashboard clicks: create the cluster, create the volume, run migrations, take a backup, restore a backup, `smoke.sh` (the curl checks run before every demo), `sync-practices.py` (copies the applicable rows of `docs/PRACTICES.md` into each folder README), and `meeting-actions.py` (turns a meeting's Actions table into GitHub Issues through the GitHub CLI). Every script exits early if a required environment variable is missing.
 
 <!-- PRACTICES:start -->
 
