@@ -71,7 +71,7 @@ docs/
 .env.example         environment variable template; copy to .env, which is never committed
 ```
 
-Each folder has a README saying what goes in it and who owns it. `compose.yaml` lands with the skeleton.
+Each folder has a README saying what goes in it, its planned layout, and the practices that apply there. `compose.yaml` lands with the skeleton.
 
 ## How we work
 

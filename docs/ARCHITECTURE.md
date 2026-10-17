@@ -1,6 +1,6 @@
 # Architecture
 
-Working draft for the 7 November proposal (section 2, "Objectives, architecture and key features", 50% of the proposal grade). Each decision records the options weighed and the reason for the choice, because the rubric scores reasoning, not the stack list. Items marked **proposed** are confirmed or changed at the team meeting.
+Working draft for the 7 November proposal, section 2 (objectives, architecture and key features). Each decision records the options weighed and the reason for the choice. Items marked **proposed** are confirmed or changed at the team meeting.
 
 ## Objective
 
@@ -48,17 +48,21 @@ Lecture 1 splits cloud services into IaaS (you manage the OS), PaaS (the provide
 
 ### D1. Orchestration: DigitalOcean Kubernetes (proposed)
 
+The course accepts Docker Swarm (service replication and routing-mesh load balancing, lecture 6) or Kubernetes (Deployments, Services, PersistentVolumeClaims, minikube locally then a managed cluster).
+
 | | Kubernetes (DOKS) | Docker Swarm |
 |---|---|---|
-| Course requirement | Deployments, Services, PersistentVolumeClaims; minikube locally first | service replication and routing-mesh load balancing (lecture 6) |
-| Fit with the features we want | auto-scaling (HPA), readiness probes, rolling updates and secrets are built in | replication and secrets built in; no autoscaler |
-| Learning cost | manifests and kubectl are new to the team; minikube on each laptop first | same Compose file with a `deploy:` section |
+| Replication and load balancing | Deployment replicas behind a Service; an Ingress controller terminates TLS and routes by path | service replicas behind the routing mesh; TLS needs a separate proxy service |
+| Scaling | HorizontalPodAutoscaler scales replicas on CPU or memory; two worker nodes give node-level redundancy | manual `docker service scale`; no autoscaler |
+| Rolling updates and recovery | rolling update with readiness probes, `rollout undo`, failed pods replaced by the controller | rolling update per service, `--rollback`, failed tasks replaced by the manager |
+| Persistent storage | PersistentVolumeClaim bound to a DigitalOcean block-storage volume; the volume follows the pod if it is rescheduled within the zone | a named volume lives on one node; the service must be pinned to that node |
+| Secrets and config | Secret and ConfigMap objects mounted as files or env | Docker secrets mounted as files (lecture 5) |
+| Operations cost | manifests for every object, kubectl, a managed control plane; more to learn and more to misconfigure (a wrong storage class loses data) | one Compose file with a `deploy:` section; fewer concepts |
 | Cost (third-party pricing pages, confirm on digitalocean.com) | about $12 per worker node per month, $12 load balancer, control plane free | two $6 droplets |
-| Value beyond the course | Kubernetes is named in job postings; Swarm is not | low |
 
-Proposed: **DOKS**. The build window runs from now to 24 November, not from the proposal date, so there is time to learn it, and the auto-scaling and high-availability advanced feature falls out of the same choice. Local development stays on Docker Compose; minikube is used only to test the manifests before the cloud cluster exists.
+Proposed: **DOKS**. The deciding points are the autoscaler and the volume handling: auto-scaling and high availability is one of our planned advanced features, and on Swarm the database volume ties the service to one node by hand. The cost is the learning curve and more objects to get right, which is why the manifests are tested on minikube first and Swarm remains the fallback: the same Compose file with a `deploy:` section would carry the stack if the cluster is not stable by 15 November.
 
-**Why not Fly.io as well.** The course allows DigitalOcean or Fly.io. Fly.io gives edge regions and machines without managing hosts (lecture 6, Assignment 3), but its Kubernetes service is a paid beta the course does not recommend, and splitting one system across two providers doubles the operations work for no extra mark. We take Fly.io experience from Assignment 3 and keep the project on one provider.
+**Why not Fly.io.** The course allows DigitalOcean or Fly.io. Fly.io gives edge regions and machines without managing hosts (lecture 6, Assignment 3), but its Kubernetes service is a paid beta the course does not recommend, and one system across two providers is two sets of operations for no gain. Assignment 3 covers Fly.io; the project stays on one provider.
 
 ### D2. Persistence: PostgreSQL on a DigitalOcean Volume, files in Spaces
 
@@ -70,7 +74,7 @@ Schema, first cut: `users`, `documents`, `document_versions` (one row per upload
 
 Content is the uploaded file (manual upload, or a bulk import from a bucket the team already has: D9). PDFs and images render in the browser; other types (docx, spreadsheets) are stored, versioned and downloadable but not rendered. Collaboration is review: threaded comments, annotation pins anchored to a page and position, @-mentions, and a new version uploaded when the content changes, with the version history and revert.
 
-Live co-editing of document text, or a track-changes mode, is a different product. It needs a CRDT or operational-transform engine (Yjs is the usual library) and an editor, and track changes is harder still because every change becomes a reviewable object. A collaborator in another time zone is served by versions, comment threads and notifications, not by simultaneous typing. If the team wants live text editing later, it is one more feature on top of this architecture, not a change to it; it is not promised.
+Live co-editing of document text, or a track-changes mode, is a different product. It needs a CRDT or operational-transform engine (Yjs is the usual library) and an editor, and track changes is harder still because every change becomes a reviewable object. A collaborator in another time zone is served by versions, comment threads and notifications. If the team wants live text editing later, it is one more feature on top of this architecture, not a change to it; it is not promised.
 
 ### D4. Real-time: Socket.IO with a Redis adapter
 
@@ -92,7 +96,7 @@ Planned beyond that, in order, and presented as completed only if they are:
 
 ### D6. Monitoring
 
-DigitalOcean droplet and cluster metrics with alert policies (CPU, memory, disk at 80%) are mandatory and free. The API exposes `/metrics` with `prom-client` (request count, latency histogram, error rate, upload bytes, connected sockets); Prometheus and Grafana run in the cluster from the community Helm chart if time allows. The presentation needs one alert firing and one dashboard; that is the evidence the rubric asks for.
+DigitalOcean droplet and cluster metrics with alert policies (CPU, memory, disk at 80%) are mandatory and free. The API exposes `/metrics` with `prom-client` (request count, latency histogram, error rate, upload bytes, connected sockets); Prometheus and Grafana run in the cluster from the community Helm chart if time allows. The presentation shows one alert firing and one dashboard.
 
 ### D7. Local development
 
@@ -114,7 +118,7 @@ This split is what keeps the system standing: the request path does small, bound
 
 ### D10. What keeps it from falling over
 
-Collected in `docs/PRACTICES.md` with their sources; the ones that shape the design:
+The practices in `docs/PRACTICES.md` that shape the design:
 
 - Every list endpoint paginates with a maximum page size; every input is validated in middleware before a handler sees it; errors have one shape.
 - Request bodies and uploads are capped; uploads stream; a rate limit per user applies to writes.
@@ -126,7 +130,7 @@ Collected in `docs/PRACTICES.md` with their sources; the ones that shape the des
 
 ## Scope and feasibility
 
-In: upload, versions, revert, share by user or link, roles, comments, annotations, tags, search by tag or title, JSON or CSV export of metadata, live updates. Out: rich-text editing, track changes, formatting, mobile. The out list is the answer to "how the final proposal differs from initial thinking" in section 4 of the proposal, where the 10 October notes listed a Google Docs style editor.
+In: upload, versions, revert, share by user or link, roles, comments, annotations, tags, search by tag or title, JSON or CSV export of metadata, live updates. Out: rich-text editing, track changes, formatting, mobile. The 10 October notes listed a Google Docs style editor; this is where the thinking changed, and proposal section 4 says so.
 
 ## Open questions for the team
 

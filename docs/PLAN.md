@@ -1,14 +1,12 @@
 # Project plan and responsibilities
 
-Draft for proposal section 3 ("Project plan and team responsibilities", 15%). Individual Contribution is 15% of the final grade and is read from Git history, so every member owns a slice that shows up as their own commits, Issues and pull requests. Owners are **proposed** until the team meeting confirms them.
+Draft for proposal section 3 (project plan and team responsibilities). Individual contribution is read from the Git history, so every member owns a slice that shows up as their own commits, Issues and pull requests. Slices are listed below; owners are agreed at the team meeting, not assigned in advance.
 
 ## Principle
 
-The demo path (sign in, upload, share, comment, live update, restart test, scale-out, monitoring) depends on two people's slices only. Every other slice is additive: if it is late, the demo still runs and the feature is shown as planned work. No slice waits on another slice once the skeleton exists.
+The demo path (sign in, upload, share, comment, live update, restart test, scale-out, monitoring) is kept to two slices. Every other slice is additive: if it is late, the demo still runs and the feature is shown as planned work. No slice waits on another slice once the skeleton exists.
 
 ## Stages
-
-Building starts now; the proposal is written from the architecture, not the other way round.
 
 | Stage | Dates | Done when |
 |---|---|---|
@@ -22,16 +20,19 @@ Building starts now; the proposal is written from the architecture, not the othe
 
 Assignment 3 (31 Oct) and Assignment 4 (21 Nov) land inside stages 1 and 4; the plan leaves those weeks lighter.
 
-## Division of work (proposed)
+## Slices (owners agreed at the meeting)
 
-| Slice | Owner | What lands in Git under their name |
+| Slice | What lands in Git under the owner's name | On the demo path |
 |---|---|---|
-| Architecture, plan, Kubernetes, CI/CD, monitoring, auto-scaling, real-time | Nabeegh | `docs/`, `k8s/` manifests, cluster setup scripts, GitHub Actions workflows, `/metrics`, alert policies, Socket.IO server and Redis adapter, deployment and monitoring sections of the README |
-| API and data: schema, migrations, auth and roles, documents, versions, upload to Spaces, comments | Milton | schema and migrations, auth routes and role middleware, document and comment routes with tests, the minimal browser client for the demo path |
-| Tags, search and metadata export; email notifications on share and mention | member 3 | tag and search routes, CSV and JSON export, email integration, their tests |
-| Backup and recovery; API documentation; user guide | member 4 | `pg_dump` CronJob and restore runbook, `docs/API.md` kept current, screenshots and user guide section of the README |
+| Architecture, plan and proposal | `docs/`, the proposal document | |
+| Cloud: Kubernetes manifests, cluster, CI/CD, monitoring, autoscaling | `k8s/`, `scripts/`, `.github/workflows/`, `/metrics`, alert policies, deployment section of the README | yes |
+| API and data: schema, migrations, auth and roles, documents, versions, upload to Spaces, comments | `api/src/db`, auth routes and role middleware, document and comment routes, their tests | yes |
+| Real-time: Socket.IO server, Redis adapter, live comment and pin events | `api/src/services/realtime`, the client hook | planned feature |
+| Frontend: sign-in, document list, upload, document view, share dialog | `web/` | yes, if the demo uses it |
+| Tags, search, metadata export; email notifications | tag and search routes, CSV and JSON export, email integration, their tests | no |
+| Backup and recovery; API documentation; user guide | `pg_dump` CronJob and restore runbook, `docs/API.md`, screenshots and user guide section of the README | no |
 
-Slices 3 and 4 are bounded, start after the skeleton, and touch no file on the demo path. Reviews cross slices so every piece is read by someone who did not write it.
+Seven slices for four people: the architecture slice is small once the proposal is in, and the two additive slices start after the skeleton. Reviews cross slices so every piece is read by someone who did not write it.
 
 ## Integration strategy
 
@@ -42,17 +43,25 @@ Slices 3 and 4 are bounded, start after the skeleton, and touch no file on the d
 ## Dependencies and coordination
 
 - Stage 1 blocks everything and is the first two weeks' only goal.
-- Spaces credentials and the DigitalOcean project are needed by stage 2 (uploads) and stage 3; set up in stage 1 by the cluster owner and shared as Kubernetes Secrets, never in chat.
-- Weekly meeting Saturday; notes in `docs/meetings/`. Short written updates in WhatsApp: what landed, what is blocked.
-- Code goes through a branch per Issue and a pull request with one review. Documentation is committed to `main` directly by the repository owner.
+- Spaces credentials and the DigitalOcean project are needed by stage 2 (uploads) and stage 3; set up in stage 1 by the cloud slice and shared as Kubernetes Secrets, never in chat.
+- Weekly meeting Saturday; notes in `docs/meetings/` the same day.
+
+## How we work
+
+- **Issues.** Every task is an Issue, assigned to the person doing it. Questions about a task go in its Issue, with the person tagged, so the discussion stays next to the work.
+- **Branches and pull requests.** Code: one branch per Issue (`feature/`, `fix/`, `ci/`), one pull request with `Closes #<n>`, one review from a teammate, squash and merge. Keep a pull request to one change so the review takes minutes. Documentation goes straight to `main`.
+- **Commits.** `<type>(<scope>): <summary>`, imperative, under 50 characters. Types: `feat`, `fix`, `docs`, `refactor`, `chore`, `ci`. Examples: `feat(api): add share link expiry`, `ci: run tests on pull requests`.
+- **Reviews.** Comments are about the code. Run the branch locally before approving.
+- **WhatsApp** is for coordination and high-level updates: meeting times, "the skeleton is merged", "I am blocked on X". The detail lives on GitHub; when something lands, the Issue is closed by the pull request and a line goes to WhatsApp so everyone sees it.
+- **AI use** is logged in `ai-session.md` as the course requires, and each folder's README carries the practices that apply there so they can be given to any tool up front.
 
 ## Risks
 
 | Risk | Effect | Mitigation |
 |---|---|---|
-| Kubernetes takes longer to learn than planned | stage 3 slips | minikube from week one; Swarm manifests are the fallback and reuse the Compose file |
 | Real-time across replicas is harder than expected | feature 3 slips | it is not one of the two promised features; the demo runs without it |
-| A member goes quiet | their slice stalls | slices 3 and 4 are off the demo path; open Issues are picked up by whoever is ahead |
+| A slice stalls | its feature is late | additive slices are off the demo path; open Issues are picked up by whoever is ahead |
+| Cluster not stable in time | stage 3 slips | manifests proven on minikube first; Swarm fallback from the same Compose file |
 | DigitalOcean cost | deployment goes down during grading | smallest nodes, one volume, budget stated in the proposal; cost split four ways; cluster deleted after grades |
-| Database on a single PVC | pod loss is fine, volume loss is not | nightly `pg_dump` to Spaces (slice 4) |
+| Database on a single volume | pod loss is fine, volume loss is not | nightly `pg_dump` to Spaces |
 | Scope creep toward document editing | nothing finishes | the out-of-scope list in ARCHITECTURE.md is final after the proposal |
