@@ -1,113 +1,77 @@
 # ContentCollab
 
-**Upload a document, share it with the right people, and work on it together in real time.**
+Upload a document, share it with the right people, and review it together: comments, annotations and mentions that show up live for everyone looking at the same version.
 
-ContentCollab is a content sharing and collaboration platform: users upload documents and PDFs, share them with named collaborators or by link, and annotate and comment on them live. It is the team project for ECE1779 Introduction to Cloud Computing, University of Toronto, Fall 2026.
+Team project for ECE1779 Introduction to Cloud Computing, University of Toronto, Fall 2026.
 
-**Status:** proposal stage. Scope and architecture are being settled for the 7 November proposal; no application code yet.
-
-## Contents
-
-- [Team](#team)
-- [What we are building](#what-we-are-building)
-- [Architecture](#architecture)
-- [Milestones](#milestones)
-- [How we work](#how-we-work)
-- [Repository layout](#repository-layout)
-- [Local setup](#local-setup)
+**Status:** architecture settled, proposal in progress, no application code yet. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/PLAN.md](docs/PLAN.md).
 
 ## Team
 
 | Name | GitHub |
 |------|--------|
 | Nabeegh Khan | [@nabeegh-khan](https://github.com/nabeegh-khan) |
-| Jyotiraditya Kale | [@Jyotiraditya7](https://github.com/Jyotiraditya7) |
 | Milton Wang | [@MWang-max](https://github.com/MWang-max) |
+| Jyotiraditya Kale | [@Jyotiraditya7](https://github.com/Jyotiraditya7) |
 | Eyrika Liu | [@Oct31yrika](https://github.com/Oct31yrika) |
 
-## What we are building
+## What it does
 
-The problem: teams review each other's work constantly (code, reports, designs), and the review usually happens somewhere other than the document itself, in email threads, chat messages or a second copy of the file. ContentCollab keeps the review on the document: one copy, one version history, comments and annotations anchored to the content, and sharing that is scoped to the people who should see it.
+A user uploads a PDF, image or document. They share it with named people, or by a link that only works for the people it was shared with. Collaborators leave threaded comments and annotation pins on the content and @-mention each other; a new upload becomes a new version, and any version can be restored. PDFs and images render in the browser. Other file types are stored, versioned and downloadable.
 
-Features planned for the proposal, grouped the way the course grades them.
+This is a review tool, not an editor. Live text editing and track changes are out of scope; the reasons are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), decision D3.
 
-**Core (required)**
+## Stack
 
-| Feature | Notes |
-|---------|-------|
-| Node.js REST API in Docker, run locally with Docker Compose | |
-| PostgreSQL for users, files, versions, comments, on a persistent DigitalOcean Volume | state survives restarts and redeploys |
-| Docker Swarm on DigitalOcean with service replication and load balancing | orchestration option A |
-| Monitoring: storage usage and API performance, with alerts | DigitalOcean metrics |
+| Layer | Choice |
+|-------|--------|
+| API | Node.js, Express, Socket.IO, in Docker |
+| Data | PostgreSQL on a DigitalOcean Volume (persistent storage); Redis for Socket.IO across replicas |
+| Files | DigitalOcean Spaces (S3-compatible object storage) |
+| Orchestration | DigitalOcean Kubernetes: Deployments, Services, PersistentVolumeClaims, HorizontalPodAutoscaler; minikube locally |
+| Local development | Docker Compose |
+| Monitoring | DigitalOcean metrics and alerts; `/metrics` endpoint for Prometheus and Grafana |
+| CI/CD | GitHub Actions: lint and test on every pull request, build and deploy on merge to `main` |
 
-**Advanced (at least two required; candidates)**
+Advanced features promised in the proposal: security (sign-in, roles, HTTPS, secrets) and CI/CD. Planned after those: real-time updates, auto-scaling and high availability, backups, email notifications.
 
-| Feature | Notes |
-|---------|-------|
-| Real-time collaboration over WebSockets: live comments, annotations, @-mentions | the hardest piece; concurrent edits must not corrupt document state |
-| Security: authentication, Owner / Collaborator / Viewer roles, HTTPS, secrets management, scoped share links | |
-| CI/CD with GitHub Actions: build, test, deploy | |
+## Timeline
 
-**Product features**
+Course deadlines are 11:59pm Toronto with no late submissions. The windows are what we work in.
 
-- Upload and manage documents and PDFs, with version history and revert.
-- Share directly with a user or by link; link access limited to the people it was shared with.
-- Comment, tag and annotate content; @-mention collaborators.
-- Search by tags or metadata.
-- Export content metadata as JSON or CSV.
-
-## Architecture
-
-Working sketch; the proposal will refine it.
-
-```
-            browser
-               |
-         HTTPS / WebSocket
-               |
-     +---------------------+
-     |  Docker Swarm       |
-     |  node.js api  x N   |   <- replicated, load balanced
-     +---------------------+
-          |            |
-     PostgreSQL     file storage
-     (DO Volume)    (DO Volume or Spaces)
-
-  GitHub Actions: build image -> test -> deploy to Swarm
-  DigitalOcean metrics: storage, API latency, error rate -> alerts
-```
-
-## Milestones
-
-| Deliverable | Due |
-|-------------|-----|
-| Proposal: one Markdown file, max 2,000 words, each member submits on Quercus | Sat 7 Nov 2026, 11:59pm |
-| Team Health Check | Mon 16 Nov 2026 |
-| In-person presentations | Wed 25 Nov and Wed 2 Dec 2026 |
-| Final deliverable: repo URL with README report, source, `ai-session.md`, video demo | Sat 5 Dec 2026, 11:59pm |
-
-Weekly team meeting: Saturdays. Notes for every meeting go in [`docs/meetings/`](docs/meetings/).
-
-## How we work
-
-Taken from the course GitHub usage guide.
-
-- **Issues.** One Issue per task; break large tasks into several. Assign it to whoever takes it.
-- **Branches.** One branch per task: `feature/<name>`, `fix/<name>`, `docs/<name>`. `main` is protected; nothing is pushed to it directly.
-- **Commits.** `<type>(<scope>): <imperative summary>`, under 50 characters. Types: `feat`, `fix`, `docs`, `refactor`, `chore`, `ci`.
-- **Pull requests.** One PR per Issue, `Closes #<n>` in the description, one teammate's approval required. Address feedback with further commits. Squash and merge; the branch is deleted automatically.
-- **Reviews.** Keep PRs small. Comments are about the code, not the person.
-- **Discussions.** Longer design questions go in Discussions; task tracking stays in Issues.
-- **AI use.** Logged in `ai-session.md` as the course requires.
+| Window | What happens | Course deadline |
+|--------|--------------|-----------------|
+| 17 Oct to 24 Oct | architecture and plan agreed; API contract; team formation on Quercus | team formation, Sat 24 Oct |
+| 19 Oct to 1 Nov | skeleton: Compose stack, schema and first migration, health endpoint, CI on pull requests, manifests on minikube | Assignment 3, Sat 31 Oct |
+| 26 Oct to 7 Nov | proposal written from the architecture docs; core features under way | **proposal, Sat 7 Nov (15%)** |
+| 2 Nov to 15 Nov | cloud: DOKS cluster, TLS, PostgreSQL on a volume with the restart test, autoscaling, alerts, deploy on merge | |
+| 9 Nov to 22 Nov | real-time, additive features, integration checkpoints 15 and 22 Nov | health check, Mon 16 Nov; Assignment 4, Sat 21 Nov |
+| 23 Nov to 24 Nov | project introduction, slides, two demo rehearsals | introduction Mon 23 Nov; slides Tue 24 Nov |
+| 25 Nov and 2 Dec | presentations, 6 minutes plus Q&A, live demo required | **presentation (10%)** |
+| 25 Nov to 5 Dec | README report, `ai-session.md`, video, deployment left running | **final deliverable, Sat 5 Dec (35%)** |
 
 ## Repository layout
 
 ```
 docs/
-  meetings/        one file per team meeting, YYYY-MM-DD.md
-.env.example       environment variable template; copy to .env (never committed)
+  ARCHITECTURE.md   decisions with the options weighed; the source for proposal section 2
+  PLAN.md           stages, owners, integration, risks; the source for proposal section 3
+  meetings/         one file per team meeting, YYYY-MM-DD.md
+.env.example        environment variable template; copy to .env, which is never committed
 ```
+
+Application code, `compose.yaml`, `k8s/` and `.github/workflows/` arrive with the skeleton.
+
+## How we work
+
+- One Issue per task, assigned to whoever takes it.
+- Code: one branch per Issue (`feature/`, `fix/`, `ci/`), one pull request per branch with `Closes #<n>`, one review from a teammate, squash and merge. Keep them small.
+- Documentation goes straight to `main`; it does not need a pull request.
+- Commits: `<type>(<scope>): <summary>` in the imperative, under 50 characters. Types: `feat`, `fix`, `docs`, `refactor`, `chore`, `ci`.
+- Every member commits their own work. Individual contribution is 15% of the grade and is read from the Git history.
+- Meeting notes go in `docs/meetings/` the same day.
+- AI use is logged in `ai-session.md`, as the course requires.
 
 ## Local setup
 
-Written once the first service exists. Until then: clone, copy `.env.example` to `.env`, and watch this section.
+Written when the skeleton lands. Until then: clone, copy `.env.example` to `.env`.
