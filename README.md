@@ -76,7 +76,7 @@ Each folder has a README saying what goes in it, its planned layout, and the pra
 
 ## How we work
 
-- One Issue per task, assigned to whoever takes it.
+- One Issue per task, assigned to whoever takes it. Issues live on the [project board](https://github.com/users/nabeegh-khan/projects/2) (Backlog, Ready, In progress, In review, Done); new issues land in Backlog on their own and closed ones move to Done.
 - Code: one branch per Issue (`feature/`, `fix/`, `ci/`), one pull request per branch with `Closes #<n>`, one review from a teammate, squash and merge. Keep them small.
 - Documentation goes straight to `main`; it does not need a pull request.
 - Commits: `<type>(<scope>): <summary>` in the imperative, under 50 characters. Types: `feat`, `fix`, `docs`, `refactor`, `chore`, `ci`.
