@@ -4,7 +4,7 @@ Upload a document, share it with the right people, and review it together: comme
 
 Team project for ECE1779 Introduction to Cloud Computing, University of Toronto, Fall 2026.
 
-**Status:** architecture drafted for the 17 October meeting, proposal in progress, no application code yet. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/PLAN.md](docs/PLAN.md).
+**Status:** architecture and scope agreed 17 October (Kubernetes, review tool, small frontend); proposal in progress; skeleton on `feature/skeleton`. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/PLAN.md](docs/PLAN.md).
 
 ## Team
 
@@ -66,6 +66,7 @@ docs/
   ARCHITECTURE.md    decisions with the options weighed; the source for proposal section 2
   PLAN.md            stages, owners, integration, risks; the source for proposal section 3
   PRACTICES.md       the engineering practices we hold to, with their course sources
+  PROPOSAL.md        the proposal, one section per owner, due 7 Nov
   API.md             the endpoint contract (written before feature work starts)
   meetings/          one file per team meeting, YYYY-MM-DD.md
 .env.example         environment variable template; copy to .env, which is never committed

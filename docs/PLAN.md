@@ -1,6 +1,6 @@
 # Project plan and responsibilities
 
-Draft for proposal section 3 (project plan and team responsibilities). Individual contribution is read from the Git history, so every member owns a slice that shows up as their own commits, Issues and pull requests. Slices are listed below; owners are agreed at the team meeting, not assigned in advance.
+Draft for proposal section 3 (project plan and team responsibilities). Individual contribution is read from the Git history, so every member owns a slice that shows up as their own commits, Issues and pull requests. Owners are added as people take slices (17 October meeting: two taken, five open).
 
 ## Principle
 
@@ -20,17 +20,17 @@ The demo path (sign in, upload, share, comment, live update, restart test, scale
 
 Assignment 3 (31 Oct) and Assignment 4 (21 Nov) land inside stages 1 and 4; the plan leaves those weeks lighter.
 
-## Slices (owners agreed at the meeting)
+## Slices
 
-| Slice | What lands in Git under the owner's name | On the demo path |
-|---|---|---|
-| Architecture, plan and proposal | `docs/`, the proposal document | |
-| Cloud: Kubernetes manifests, cluster, CI/CD, monitoring, autoscaling | `k8s/`, `scripts/`, `.github/workflows/`, `/metrics`, alert policies, deployment section of the README | yes |
-| API and data: schema, migrations, auth and roles, documents, versions, upload to Spaces, comments | `api/src/db`, auth routes and role middleware, document and comment routes, their tests | yes |
-| Real-time: Socket.IO server, Redis adapter, live comment and pin events | `api/src/services/realtime`, the client hook | planned feature |
-| Frontend: sign-in, document list, upload, document view, share dialog | `web/` | yes, if the demo uses it |
-| Tags, search, metadata export; email notifications | tag and search routes, CSV and JSON export, email integration, their tests | no |
-| Backup and recovery; API documentation; user guide | `pg_dump` CronJob and restore runbook, `docs/API.md`, screenshots and user guide section of the README | no |
+| Slice | Owner | What lands in Git under the owner's name | On the demo path |
+|---|---|---|---|
+| Architecture, plan and proposal | Nabeegh | `docs/`, the proposal document | |
+| Cloud: Kubernetes manifests, cluster, CI/CD, monitoring, autoscaling | Nabeegh | `k8s/`, `scripts/`, `.github/workflows/`, `/metrics`, alert policies, deployment section of the README | yes |
+| API and data: schema, migrations, auth and roles, documents, versions, upload to Spaces, comments | open | `api/src/db`, auth routes and role middleware, document and comment routes, their tests | yes |
+| Real-time: Socket.IO server, Redis adapter, live comment and pin events | open | `api/src/services/realtime`, the client hook | planned feature |
+| Frontend: sign-in, document list, upload, document view, share dialog | open | `web/` | yes, if the demo uses it |
+| Tags, search, metadata export; email notifications | open | tag and search routes, CSV and JSON export, email integration, their tests | no |
+| Backup and recovery; API documentation; user guide | open | `pg_dump` CronJob and restore runbook, `docs/API.md`, screenshots and user guide section of the README | no |
 
 Seven slices for four people: the architecture slice is small once the proposal is in, and the two additive slices start after the skeleton. Reviews cross slices so every piece is read by someone who did not write it.
 
