@@ -6,7 +6,7 @@ Team: Nabeegh Khan (1001388152), Milton Wang (1009114192), Jyotiraditya Kale (10
 
 ## 1. Motivation
 
-Owner: open. Problem, intended users, why it is worth addressing, limitations of existing approaches.
+Owner: Eyrika. Problem, intended users, why it is worth addressing, limitations of existing approaches.
 
 ## 2. Objectives, architecture and key features
 
