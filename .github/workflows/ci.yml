@@ -1,0 +1,24 @@
+# Runs on every pull request to main, so broken code is caught before review
+name: ci
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  api:
+    runs-on: ubuntu-latest # fresh Linux machine from GitHub for each run
+    defaults:
+      run:
+        working-directory: api # every command below runs inside api/
+    steps:
+      - uses: actions/checkout@v5 # pulls the branch's code onto the machine
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24 # same Node as the Dockerfile, so CI matches the container
+          cache: npm # reuses downloaded packages between runs, faster installs
+          cache-dependency-path: api/package-lock.json # cache key changes when the lockfile does
+      - run: npm ci # exact versions from the lockfile, fails if it is out of step
+      - run: npm run lint # ESLint: catches bugs and unsafe patterns
+      - run: npm run format:check # Prettier: fails if any file is not formatted
+      - run: npm run typecheck # tsc: fails on type errors without building
