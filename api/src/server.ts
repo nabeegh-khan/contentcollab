@@ -6,6 +6,7 @@ import { connectRedis } from "./lib/redis.js";
 import { pool } from "./lib/db.js";
 import healthRoutes from "./routes/health.js";
 
+const unused = 1; // deliberate lint error to prove CI fails, removed in the next commit
 const app = express();
 
 app.use(express.json({ limit: "1mb" }));
