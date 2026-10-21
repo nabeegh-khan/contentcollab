@@ -1,6 +1,6 @@
 # Project plan and responsibilities
 
-Draft for proposal section 3 (project plan and team responsibilities). Individual contribution is read from the Git history, so every member owns a slice that shows up as their own commits, Issues and pull requests. Owners are added as people take slices (17 October: Nabeegh two, Eyrika two, three open).
+Draft for proposal section 3 (project plan and team responsibilities). Individual contribution is read from the Git history, so every member owns a slice that shows up as their own commits, Issues and pull requests. Owners are added as people take slices (Nabeegh two, Eyrika two, Milton two; real-time and the second API name open).
 
 ## Principle
 
@@ -28,9 +28,9 @@ Assignment 3 (31 Oct) and Assignment 4 (21 Nov) land inside stages 1 and 4; the 
 | Cloud: Kubernetes manifests, cluster, CI/CD, monitoring, autoscaling | Nabeegh | `k8s/`, `scripts/`, `.github/workflows/`, `/metrics`, alert policies, deployment section of the README | yes |
 | API and data: schema, migrations, auth and roles, documents, versions, upload to Spaces, comments | Eyrika, with a second person to be named | `api/src/db`, auth routes and role middleware, document and comment routes, their tests | yes |
 | Real-time: Socket.IO server, Redis adapter, live comment and pin events | open | `api/src/services/realtime`, the client hook | planned feature |
-| Frontend: sign-in, document list, upload, document view, share dialog | open | `web/` | yes, if the demo uses it |
+| Frontend: sign-in, document list, upload, document view, share dialog | Milton | `web/` | yes, if the demo uses it |
 | Tags, search, metadata export; email notifications | Eyrika | tag and search routes, CSV and JSON export, email integration, their tests | no |
-| Backup and recovery; API documentation; user guide | open | `pg_dump` CronJob and restore runbook, `docs/API.md`, screenshots and user guide section of the README | no |
+| Backup and recovery; API documentation; user guide | Milton | `pg_dump` CronJob and restore runbook, `docs/API.md`, screenshots and user guide section of the README | no |
 
 Seven slices for four people: the architecture slice is small once the proposal is in, and the two additive slices start after the skeleton. Reviews cross slices so every piece is read by someone who did not write it.
 
