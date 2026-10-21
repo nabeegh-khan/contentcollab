@@ -6,6 +6,36 @@ Team project for ECE1779 Introduction to Cloud Computing, University of Toronto,
 
 **Status:** architecture and scope agreed 17 October (Kubernetes, review tool, small frontend); proposal in progress; skeleton on `feature/skeleton`. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/PLAN.md](docs/PLAN.md).
 
+## Architecture
+
+```mermaid
+flowchart TB
+  U[Browser] -->|HTTPS and WebSocket| LB[DigitalOcean Load Balancer]
+  subgraph DOKS[DigitalOcean Kubernetes, 2 worker nodes]
+    I[ingress-nginx and cert-manager TLS]
+    W[web: static React build, 2 pods]
+    A[api: Express and Socket.IO, 2 to 5 pods, autoscaled on CPU]
+    K[worker: imports and thumbnails, BullMQ]
+    P[(postgres StatefulSet on a DO Volume)]
+    R[(redis: Socket.IO adapter and job queue)]
+    B[backup CronJob: nightly pg_dump]
+  end
+  LB --> I
+  I --> W
+  I --> A
+  A --> P
+  A --> R
+  K --> R
+  K --> P
+  A --> S[(DigitalOcean Spaces: uploaded files)]
+  K --> S
+  B --> S
+  DOKS -.-> M[DigitalOcean metrics and alerts, Prometheus and Grafana]
+  G[GitHub Actions] -->|tests on every PR; on merge build image, push to GHCR, roll out| A
+```
+
+Decisions and trade-offs: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
 ## Team
 
 | Name | GitHub |

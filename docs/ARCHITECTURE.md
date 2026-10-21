@@ -8,36 +8,30 @@ A stateful, cloud-native content review platform. A user uploads a document, PDF
 
 ## System diagram
 
-```
-                           users (browser)
-                                 |
-                        HTTPS + WebSocket
-                                 |
-                    DigitalOcean Load Balancer
-                   (created by the Ingress controller)
-                                 |
-  +--------------------------------------------------------------+
-  |  DigitalOcean Kubernetes (DOKS), 2 worker nodes               |
-  |                                                              |
-  |   ingress-nginx + cert-manager (TLS)                         |
-  |        |                                                     |
-  |   web Deployment x2          api Deployment, 2 to 5 replicas |
-  |   (static React build)       (Node.js, Express, Socket.IO,  |
-  |                               HPA on CPU)                    |
-  |                                   |              |           |
-  |   worker Deployment x1        postgres        redis          |
-  |   (imports, thumbnails,       StatefulSet x1  Deployment x1  |
-  |    BullMQ on Redis)           PVC on a DO     (Socket.IO     |
-  |                               Volume           adapter, job  |
-  |                                                queue)        |
-  |   backup CronJob: pg_dump -> Spaces, nightly                 |
-  +--------------------------------------------------------------+
-            |                              |
-   DigitalOcean Spaces              DigitalOcean metrics + alerts
-   (uploaded files, S3 API)         Prometheus + Grafana (optional)
-
-  GitHub Actions: lint, typecheck, tests on every PR;
-  on merge to main: build image -> GHCR -> kubectl rollout
+```mermaid
+flowchart TB
+  U[Browser] -->|HTTPS and WebSocket| LB[DigitalOcean Load Balancer]
+  subgraph DOKS[DigitalOcean Kubernetes, 2 worker nodes]
+    I[ingress-nginx and cert-manager TLS]
+    W[web: static React build, 2 pods]
+    A[api: Express and Socket.IO, 2 to 5 pods, autoscaled on CPU]
+    K[worker: imports and thumbnails, BullMQ]
+    P[(postgres StatefulSet on a DO Volume)]
+    R[(redis: Socket.IO adapter and job queue)]
+    B[backup CronJob: nightly pg_dump]
+  end
+  LB --> I
+  I --> W
+  I --> A
+  A --> P
+  A --> R
+  K --> R
+  K --> P
+  A --> S[(DigitalOcean Spaces: uploaded files)]
+  K --> S
+  B --> S
+  DOKS -.-> M[DigitalOcean metrics and alerts, Prometheus and Grafana]
+  G[GitHub Actions] -->|tests on every PR; on merge build image, push to GHCR, roll out| A
 ```
 
 ## Decisions
