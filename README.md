@@ -12,7 +12,7 @@ Team project for ECE1779 Introduction to Cloud Computing, University of Toronto,
 flowchart TB
   U[Browser] -->|HTTPS and WebSocket| LB[DigitalOcean Load Balancer]
   subgraph DOKS[DigitalOcean Kubernetes, 2 worker nodes]
-    I[ingress-nginx and cert-manager TLS]
+    I[Gateway API controller and cert-manager TLS]
     W[web: static React build, 2 pods]
     A[api: Express and Socket.IO, 2 to 5 pods, autoscaled on CPU]
     K[worker: imports and thumbnails, BullMQ]

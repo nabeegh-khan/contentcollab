@@ -13,7 +13,7 @@ The demo path (sign in, upload, share, comment, live update, restart test, scale
 | 0. Architecture and proposal | 17 Oct to 7 Nov | ARCHITECTURE.md agreed; API contract in `docs/API.md`; proposal submitted 7 Nov; team formation on Quercus by 24 Oct |
 | 1. Skeleton | 19 Oct to 1 Nov | `compose.yaml` with api, postgres, redis runs locally; schema and first migration; health endpoint; CI runs lint and tests on a PR; manifests run on minikube |
 | 2. Core features | 26 Oct to 15 Nov | auth and roles; upload to Spaces with versions; share by user and link; comments; the minimal browser client |
-| 3. Cloud | 2 to 15 Nov | DOKS cluster with Ingress and TLS; PostgreSQL on a PVC with the restart test passed; HPA and probes; DO alerts; CI deploys on merge |
+| 3. Cloud | 2 to 15 Nov | DOKS cluster with a Gateway and TLS; PostgreSQL on a PVC with the restart test passed; HPA and probes; DO alerts; CI deploys on merge |
 | 4. Real-time and additive features | 9 to 22 Nov | Socket.IO with Redis adapter; tags, search, export; backups; notifications; health check quiz submitted 16 Nov |
 | 5. Presentation | 23 to 24 Nov | project introduction 23 Nov; slides 24 Nov; live demo rehearsed twice on the presenting laptop |
 | 6. Final | 25 Nov to 5 Dec | second presentation slot if assigned 2 Dec; README report, `ai-session.md`, video; deployment left running through grading |

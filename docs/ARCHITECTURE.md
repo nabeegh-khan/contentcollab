@@ -12,7 +12,7 @@ A stateful, cloud-native content review platform. A user uploads a document, PDF
 flowchart TB
   U[Browser] -->|HTTPS and WebSocket| LB[DigitalOcean Load Balancer]
   subgraph DOKS[DigitalOcean Kubernetes, 2 worker nodes]
-    I[ingress-nginx and cert-manager TLS]
+    I[Gateway API controller and cert-manager TLS]
     W[web: static React build, 2 pods]
     A[api: Express and Socket.IO, 2 to 5 pods, autoscaled on CPU]
     K[worker: imports and thumbnails, BullMQ]
@@ -36,7 +36,13 @@ flowchart TB
 
 ## Decisions
 
-Open items found since 17 October (ingress-nginx retired, Socket.IO across replicas, cost) are in [RESEARCH.md](RESEARCH.md).
+### D11. Traffic entry: Gateway API, not ingress-nginx (proposed)
+
+ingress-nginx was retired in March 2026 and gets no security fixes, so we do not use it. The Gateway API is its supported replacement: a Gateway terminates TLS (cert-manager, Let's Encrypt) and HTTPRoutes send `/api` and `/socket.io` to the API and everything else to `web`. Cost: new objects to learn. Fallback: a DigitalOcean load balancer with its own certificate, which is simpler but needs a second load balancer or a proxy for path routing. Details in [RESEARCH.md](RESEARCH.md).
+
+### D12. Socket.IO across replicas (proposed)
+
+Clients connect with WebSocket only, so any API pod can serve any client and the Redis adapter carries broadcasts between pods. Sticky sessions are the fallback if a network blocks WebSockets. The Gateway's idle timeout is set above Socket.IO's 45 seconds.
 
 ### D0. Service model
 
@@ -48,13 +54,13 @@ The course accepts Docker Swarm (service replication and routing-mesh load balan
 
 | | Kubernetes (DOKS) | Docker Swarm |
 |---|---|---|
-| Replication and load balancing | Deployment replicas behind a Service; an Ingress controller terminates TLS and routes by path | service replicas behind the routing mesh; TLS needs a separate proxy service |
+| Replication and load balancing | Deployment replicas behind a Service; a Gateway terminates TLS and routes by path | service replicas behind the routing mesh; TLS needs a separate proxy service |
 | Scaling | HorizontalPodAutoscaler scales replicas on CPU or memory; two worker nodes give node-level redundancy | manual `docker service scale`; no autoscaler |
 | Rolling updates and recovery | rolling update with readiness probes, `rollout undo`, failed pods replaced by the controller | rolling update per service, `--rollback`, failed tasks replaced by the manager |
 | Persistent storage | PersistentVolumeClaim bound to a DigitalOcean block-storage volume; the volume follows the pod if it is rescheduled within the zone | a named volume lives on one node; the service must be pinned to that node |
 | Secrets and config | Secret and ConfigMap objects mounted as files or env | Docker secrets mounted as files (lecture 5) |
 | Operations cost | manifests for every object, kubectl, a managed control plane; more to learn and more to misconfigure (a wrong storage class loses data) | one Compose file with a `deploy:` section; fewer concepts |
-| Cost (third-party pricing pages, confirm on digitalocean.com) | about $12 per worker node per month, $12 load balancer, control plane free | two $6 droplets |
+| Cost (third-party pricing pages, confirm on digitalocean.com) | about $46 to $60 a month: $12 per node, $12 load balancer, $10 volume, control plane free | two $6 droplets |
 
 Proposed: **DOKS**. The deciding points are the autoscaler and the volume handling: auto-scaling and high availability is one of our planned advanced features, and on Swarm the database volume ties the service to one node by hand. The cost is the learning curve and more objects to get right, which is why the manifests are tested on minikube first and Swarm remains the fallback: the same Compose file with a `deploy:` section would carry the stack if the cluster is not stable by 15 November.
 
@@ -74,13 +80,13 @@ Live co-editing of document text, or a track-changes mode, is a different produc
 
 ### D4. Real-time: Socket.IO with a Redis adapter
 
-New comments, replies, annotation pins and mentions appear for everyone viewing the same document version without a refresh. With replicated API pods, an event received by pod A must reach a user connected to pod B; the Socket.IO Redis adapter does that through Redis pub/sub, which is why Redis is in the stack. The Ingress is configured for WebSocket upgrades.
+New comments, replies, annotation pins and mentions appear for everyone viewing the same document version without a refresh. With replicated API pods, an event received by pod A must reach a user connected to pod B; the Socket.IO Redis adapter does that through Redis pub/sub, which is why Redis is in the stack. See D12 for routing across replicas.
 
 ### D5. Advanced features: two promised, four planned
 
 The proposal commits to two features that are deterministic to build and to demo:
 
-1. **Security**: email and password sign-in with bcrypt-hashed passwords, JWT sessions, role checks per route, share links with a token and an expiry, HTTPS from cert-manager and Let's Encrypt at the Ingress on `contentcollab.app` (registered 17 October through the GitHub Student Developer Pack, name.com, first year free), credentials in Kubernetes Secrets (the Docker secrets pattern from lecture 5), never in the image or the repo.
+1. **Security**: email and password sign-in with bcrypt-hashed passwords, JWT sessions, role checks per route, share links with a token and an expiry, HTTPS from cert-manager and Let's Encrypt at the Gateway on `contentcollab.app` (registered 17 October through the GitHub Student Developer Pack, name.com, first year free), credentials in Kubernetes Secrets (the Docker secrets pattern from lecture 5), never in the image or the repo.
 2. **CI/CD**: GitHub Actions. On every pull request: lint, typecheck, Jest and Supertest against a PostgreSQL service container. On merge to `main`: build the image, push to the GitHub Container Registry, `kubectl set image` and wait for the rollout. The pipeline is what makes the deployment reproducible for the grader.
 
 Planned beyond that, in order, and presented as completed only if they are:
@@ -100,7 +106,7 @@ One `compose.yaml` runs api, web, worker, postgres and redis locally with health
 
 ### D8. Frontend (proposed: yes, small)
 
-The course does not require a frontend and grades the cloud work, not the interface. We build one anyway because the demo is a user opening a document, leaving a comment and a second browser seeing it appear, and that is hard to show with curl. It stays small: sign-in, document list, upload, document view with comments and pins, share dialog. A React build served as static files by its own `web` container behind the same Ingress, so it scales and deploys like everything else and the API stays a pure JSON service. No server-side rendering, no design system work.
+The course does not require a frontend and grades the cloud work, not the interface. We build one anyway because the demo is a user opening a document, leaving a comment and a second browser seeing it appear, and that is hard to show with curl. It stays small: sign-in, document list, upload, document view with comments and pins, share dialog. A React build served as static files by its own `web` container behind the same Gateway, so it scales and deploys like everything else and the API stays a pure JSON service. No server-side rendering, no design system work.
 
 ### D9. How content gets in
 

@@ -10,7 +10,6 @@ The architecture puts ingress-nginx in front of the cluster. Kubernetes retired 
 |---|---|---|
 | Gateway API with a maintained controller | The supported path; TLS from cert-manager still works | New objects to learn (Gateway, HTTPRoute) |
 | DigitalOcean Load Balancer Service with its own Let's Encrypt certificate | Fewest moving parts; TLS ends at the load balancer | Path routing to `web` and `api` needs two load balancers or an app-level proxy |
-| Keep ingress-nginx | Most tutorials still use it | Unpatched software, hard to defend in Q&A |
 
 ## Real-time across replicas
 
@@ -21,7 +20,7 @@ With more than one API pod, Socket.IO needs every request of one session to reac
 
 ## Cost on DigitalOcean
 
-Control plane free; Basic nodes from $12/month each; load balancer from $12/month; volumes from $10/month ([DigitalOcean](https://www.digitalocean.com/pricing/kubernetes)). Two nodes, one load balancer and one volume is about $46/month, about $12 each for four people. The high-availability control plane ($40/month) is not needed.
+Control plane free; Basic nodes from $12/month each; load balancer from $12/month; volumes from $10/month ([DigitalOcean](https://www.digitalocean.com/pricing/kubernetes)). Two nodes, one load balancer and one volume is about $46/month, rising to about $60 with snapshots, extra volume space or a third node during the autoscaling demo: $12 to $15 each for four people. The high-availability control plane ($40/month) is not needed.
 
 ## Persistence
 
@@ -29,7 +28,7 @@ A DigitalOcean volume attaches to one node at a time, so PostgreSQL runs as a si
 
 ## For Saturday
 
-- Gateway API, a DigitalOcean load balancer, or ingress-nginx?
-- WebSocket-only Socket.IO, or sticky sessions?
+- Gateway API (proposed) or a DigitalOcean load balancer?
+- WebSocket-only Socket.IO (proposed), or sticky sessions?
 - Who hosts the cluster, and do we split the cost?
 - Who takes real-time, and who joins Eyrika on the API?
