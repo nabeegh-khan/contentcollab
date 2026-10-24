@@ -1,0 +1,46 @@
+services:
+  # The JSON API, built from api/Dockerfile
+  api:
+    build: ./api
+    # Reads PORT, DB_* and REDIS_* from the root .env file
+    env_file: .env
+    # The only port published to the host (NET-2)
+    ports:
+      - "3000:3000"
+    # Starts only after Postgres and Redis report healthy (CON-7)
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # PostgreSQL, pinned version, data on a named volume (CON-5, CON-8)
+  db:
+    image: postgres:18
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    volumes:
+      - db-data:/var/lib/postgresql
+    # Healthy once Postgres accepts connections
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # Redis for the Socket.IO adapter and the job queue, no published port
+  redis:
+    image: redis:8
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+# Named volume so database data survives container restarts (STO-2)
+volumes:
+  db-data:
