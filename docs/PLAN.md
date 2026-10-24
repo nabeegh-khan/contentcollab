@@ -1,6 +1,6 @@
 # Project plan and responsibilities
 
-Draft for proposal section 3 (project plan and team responsibilities). Individual contribution is read from the Git history, so every member owns a slice that shows up as their own commits, Issues and pull requests. Owners as of 24 October: Nabeegh two, Eyrika two, Milton two, Jyotiraditya real-time; the second name on the API (Milton or Jyotiraditya) is settled at the 24 October meeting.
+Draft for proposal section 3 (project plan and team responsibilities). Individual contribution is read from the Git history, so every member owns a slice that shows up as their own commits, Issues and pull requests. Owners as of 24 October: Nabeegh two, Eyrika two, Milton two, Jyotiraditya real-time; Jyotiraditya also joins Eyrika on the API (24 October meeting).
 
 ## Principle
 
@@ -26,7 +26,7 @@ Assignment 3 (31 Oct) and Assignment 4 (21 Nov) land inside stages 1 and 4; the 
 |---|---|---|---|
 | Architecture, plan and proposal | Nabeegh | `docs/`, the proposal document | |
 | Cloud: Kubernetes manifests, cluster, CI/CD, monitoring, autoscaling | Nabeegh | `k8s/`, `scripts/`, `.github/workflows/`, `/metrics`, alert policies, deployment section of the README | yes |
-| API and data: schema, migrations, auth and roles, documents, versions, upload to Spaces, comments | Eyrika, with a second person to be named | `api/src/db`, auth routes and role middleware, document and comment routes, their tests | yes |
+| API and data: schema, migrations, auth and roles, documents, versions, upload to Spaces, comments | Eyrika and Jyotiraditya | `api/src/db`, auth routes and role middleware, document and comment routes, their tests | yes |
 | Real-time: Socket.IO server, Redis adapter, live comment and pin events | Jyotiraditya | `api/src/services/realtime`, the client hook | planned feature |
 | Frontend: sign-in, document list, upload, document view, share dialog | Milton | `web/` | yes, if the demo uses it |
 | Tags, search, metadata export; email notifications | Eyrika | tag and search routes, CSV and JSON export, email integration, their tests | no |
