@@ -38,12 +38,12 @@ Decisions and trade-offs: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Team
 
-| Name | GitHub |
-|------|--------|
-| Nabeegh Khan | [@nabeegh-khan](https://github.com/nabeegh-khan) |
-| Milton Wang | [@MWang-max](https://github.com/MWang-max) |
-| Jyotiraditya Kale | [@Jyotiraditya7](https://github.com/Jyotiraditya7) |
-| Yiqing Liu | [@Oct31yrika](https://github.com/Oct31yrika) |
+| Name | Student number | GitHub |
+|------|----------------|--------|
+| Nabeegh Khan | 1001388152 | [@nabeegh-khan](https://github.com/nabeegh-khan) |
+| Milton Wang | 1009114192 | [@MWang-max](https://github.com/MWang-max) |
+| Jyotiraditya Kale | 1013397370 | [@Jyotiraditya7](https://github.com/Jyotiraditya7) |
+| Yiqing Liu | 1008052580 | [@Oct31yrika](https://github.com/Oct31yrika) |
 
 ## What it does
 
