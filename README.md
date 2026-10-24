@@ -4,7 +4,7 @@ Upload a document, share it with the right people, and review it together: comme
 
 Team project for ECE1779 Introduction to Cloud Computing, University of Toronto, Fall 2026.
 
-**Status, 24 October:** architecture and scope agreed 17 October (Kubernetes, review tool, small frontend); every slice has an owner ([docs/PLAN.md](docs/PLAN.md)); skeleton in [#18](https://github.com/nabeegh-khan/contentcollab/pull/18) and CI in [#20](https://github.com/nabeegh-khan/contentcollab/pull/20), in review; open decisions: traffic entry ([#16](https://github.com/nabeegh-khan/contentcollab/issues/16)) and Socket.IO across replicas ([#17](https://github.com/nabeegh-khan/contentcollab/issues/17)); proposal due 7 November. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+**Status, 24 October:** architecture and scope agreed 17 October (Kubernetes, review tool, small frontend); every slice has an owner, with Jyotiraditya joining Eyrika on the API ([docs/PLAN.md](docs/PLAN.md)); decided 24 October: Gateway API for traffic entry ([#16](https://github.com/nabeegh-khan/contentcollab/issues/16)) and sticky sessions with the Redis adapter for real-time ([#17](https://github.com/nabeegh-khan/contentcollab/issues/17)); skeleton ([#18](https://github.com/nabeegh-khan/contentcollab/pull/18)), CI ([#20](https://github.com/nabeegh-khan/contentcollab/pull/20)) and board automation ([#15](https://github.com/nabeegh-khan/contentcollab/pull/15)) in review; proposal due 7 November. Minutes in [docs/meetings/](docs/meetings/).
 
 ## Architecture
 
