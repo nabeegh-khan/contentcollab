@@ -4,7 +4,7 @@ Upload a document, share it with the right people, and review it together: comme
 
 Team project for ECE1779 Introduction to Cloud Computing, University of Toronto, Fall 2026.
 
-**Status:** architecture and scope agreed 17 October (Kubernetes, review tool, small frontend); proposal in progress; skeleton on `feature/skeleton`. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/PLAN.md](docs/PLAN.md).
+**Status, 24 October:** architecture and scope agreed 17 October (Kubernetes, review tool, small frontend); every slice has an owner ([docs/PLAN.md](docs/PLAN.md)); skeleton in [#18](https://github.com/nabeegh-khan/contentcollab/pull/18) and CI in [#20](https://github.com/nabeegh-khan/contentcollab/pull/20), in review; open decisions: traffic entry ([#16](https://github.com/nabeegh-khan/contentcollab/issues/16)) and Socket.IO across replicas ([#17](https://github.com/nabeegh-khan/contentcollab/issues/17)); proposal due 7 November. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Architecture
 
