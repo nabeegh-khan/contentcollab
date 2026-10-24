@@ -38,7 +38,7 @@ Seven slices for four people: the architecture slice is small once the proposal 
 
 - One `compose.yaml` from week one; every slice adds to it, and `docker compose up --build` plus the test suite must pass on every PR (checked in CI).
 - API contract first: the endpoint table (path, method, request, responses, status codes) is agreed before stage 2 and lives in `docs/API.md`, so the client, the real-time layer and the additive features can be written against it.
-- Integration checkpoints: Saturday 14 Nov (cloud plus core features) and Friday 20 Nov (everything; new features stop here, restart and scale test, demo dry run).
+- Integration checkpoints: Saturday 14 Nov (cloud plus core features) and Friday 20 Nov (everything; new features stop Saturday 21 Nov, restart and scale test, demo dry run).
 
 ## Dependencies and coordination
 
