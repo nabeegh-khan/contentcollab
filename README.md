@@ -76,8 +76,8 @@ Course deadlines are 11:59pm Toronto with no late submissions. The windows are w
 | 17 Oct to 24 Oct | architecture and plan agreed; API contract; team formation on Quercus | team formation, Sat 24 Oct |
 | 19 Oct to 1 Nov | skeleton: Compose stack, schema and first migration, health endpoint, CI on pull requests, manifests on minikube | Assignment 3, Sat 31 Oct |
 | 26 Oct to 7 Nov | proposal written from the architecture docs; core features under way | **proposal, Sat 7 Nov (15%)** |
-| 2 Nov to 15 Nov | cloud: DOKS cluster, TLS, PostgreSQL on a volume with the restart test, autoscaling, alerts, deploy on merge | |
-| 9 Nov to 22 Nov | real-time, additive features, integration checkpoints 15 and 22 Nov | health check, Mon 16 Nov; Assignment 4, Sat 21 Nov |
+| 2 Nov to 14 Nov | cloud: DOKS cluster, TLS, PostgreSQL on a volume with the restart test, autoscaling, alerts, deploy on merge | |
+| 9 Nov to 20 Nov | real-time, additive features, integration checkpoints Sat 14 and Fri 20 Nov; new features stop 20 Nov | health check, Mon 16 Nov; Assignment 4, Sat 21 Nov |
 | 23 Nov to 24 Nov | project introduction, slides, two demo rehearsals | introduction Mon 23 Nov; slides Tue 24 Nov |
 | 25 Nov and 2 Dec | presentations, 6 minutes plus Q&A, live demo required | **presentation (10%)** |
 | 25 Nov to 5 Dec | README report, `ai-session.md`, video, deployment left running | **final deliverable, Sat 5 Dec (35%)** |
