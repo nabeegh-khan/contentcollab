@@ -43,7 +43,7 @@ Decisions and trade-offs: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 | Nabeegh Khan | [@nabeegh-khan](https://github.com/nabeegh-khan) |
 | Milton Wang | [@MWang-max](https://github.com/MWang-max) |
 | Jyotiraditya Kale | [@Jyotiraditya7](https://github.com/Jyotiraditya7) |
-| Eyrika Liu | [@Oct31yrika](https://github.com/Oct31yrika) |
+| Yiqing Liu | [@Oct31yrika](https://github.com/Oct31yrika) |
 
 ## What it does
 
