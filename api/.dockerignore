@@ -1,0 +1,15 @@
+# Installed inside the image by npm ci; never copy the laptop's copy
+node_modules
+
+# Secrets stay out of every image (SEC-1)
+.env
+.env.*
+
+# Build output and logs are made fresh, not copied in
+dist
+npm-debug.log*
+
+# Tool and editor files the container does not need
+.prettierrc
+eslint.config.js
+.vscode
