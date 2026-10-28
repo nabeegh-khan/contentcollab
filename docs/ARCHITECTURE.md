@@ -137,5 +137,5 @@ In: upload, versions, revert, share by user or link, roles, comments, annotation
 ## Open questions for the team
 
 - Confirm D1 (Kubernetes) and D3 (review, not editing).
-- DigitalOcean billing: nobody has credit left from Assignment 1; one account hosts the cluster and the cost is split. GitHub Student Developer Pack credit is worth checking for each member.
+- DigitalOcean billing: nobody has credit left from Assignment 1; one account hosts the cluster and the cost is split. The GitHub Student Developer Pack no longer includes DigitalOcean credit: the offer ended 31 July 2026 and redeemed credit expired 1 August 2026 ([Capital & Compute, checked 16 September 2026](https://capitalandcompute.net/blog/github-student-developer-pack-2026/)), so the budget in [RESEARCH.md](RESEARCH.md) assumes paid usage from the start.
 - PDF annotation in the browser: pdf.js with our own overlay, or pins anchored to page number and coordinates only.
