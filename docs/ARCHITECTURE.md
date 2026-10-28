@@ -10,28 +10,38 @@ A stateful, cloud-native content review platform. A user uploads a document, PDF
 
 ```mermaid
 flowchart TB
-  U[Browser] -->|HTTPS and WebSocket| LB[DigitalOcean Load Balancer]
-  subgraph DOKS[DigitalOcean Kubernetes, 2 worker nodes]
-    I[Gateway API controller and cert-manager TLS]
-    W[web: static React build, 2 pods]
-    A[api: Express and Socket.IO, 2 to 5 pods, autoscaled on CPU]
-    K[worker: imports and thumbnails, BullMQ]
-    P[(postgres StatefulSet on a DO Volume)]
-    R[(redis: Socket.IO adapter and job queue)]
-    B[backup CronJob: nightly pg_dump]
+  U["Browser · React web app"]
+  subgraph DOKS["DigitalOcean Kubernetes · 2 nodes · Toronto"]
+    GW["Gateway API · HTTPS · sticky sessions"]
+    W["web · static build"]
+    A["api ×2–5 · stateless · autoscaled (HPA)<br/>readiness and liveness probes"]
+    K["worker · imports, conversion, diffs, AI jobs<br/>idempotent, retried"]
+    R[("Redis · Socket.IO adapter, job queue")]
+    P[("PostgreSQL StatefulSet · volume<br/>transactions, row versions")]
+    J["Jobs · migrations before rollout,<br/>nightly pg_dump backup"]
+    SEC["Secrets · JWT key, database, API keys"]
   end
-  LB --> I
-  I --> W
-  I --> A
-  A --> P
+  S[("Spaces · files, backups")]
+  LLM["Language-model API"]
+  MAIL["Email service"]
+  CI["GitHub Actions · tests, image build · GHCR"]
+  M["DO alerts, Datadog · /metrics, logs"]
+  U -- "HTTPS, WebSocket" --> GW
+  GW --> W
+  GW --> A
   A --> R
-  K --> R
+  R --> K
+  A --> P
   K --> P
-  A --> S[(DigitalOcean Spaces: uploaded files)]
+  A --> S
   K --> S
-  B --> S
-  DOKS -.-> M[DigitalOcean metrics and alerts, Prometheus and Grafana]
-  G[GitHub Actions] -->|tests on every PR; on merge build image, push to GHCR, roll out| A
+  J --> P
+  J --> S
+  K --> LLM
+  K --> MAIL
+  SEC -.-> A
+  CI -. "rolling update" .-> A
+  M -. watch .-> A
 ```
 
 ## Decisions
@@ -40,9 +50,9 @@ flowchart TB
 
 ingress-nginx was retired in March 2026 and gets no security fixes, so we do not use it. The Gateway API is its supported replacement: a Gateway terminates TLS (cert-manager, Let's Encrypt) and HTTPRoutes send `/api` and `/socket.io` to the API and everything else to `web`. Cost: new objects to learn. Fallback: a DigitalOcean load balancer with its own certificate, which is simpler but needs a second load balancer or a proxy for path routing. Details in [RESEARCH.md](RESEARCH.md).
 
-### D12. Socket.IO across replicas (proposed)
+### D12. Socket.IO across replicas (decided 24 October, #17)
 
-Clients connect with WebSocket only, so any API pod can serve any client and the Redis adapter carries broadcasts between pods. Sticky sessions are the fallback if a network blocks WebSockets. The Gateway's idle timeout is set above Socket.IO's 45 seconds.
+Sticky sessions at the Gateway keep each client on one API pod, so Socket.IO keeps its HTTP long-polling fallback when a WebSocket connection fails; the Redis adapter carries broadcasts between pods. WebSocket-only transport is the fallback if the Gateway controller cannot provide session affinity. The Gateway's idle timeout is set above Socket.IO's 45 seconds.
 
 ### D0. Service model
 
@@ -70,7 +80,7 @@ Proposed: **DOKS**. The deciding points are the autoscaler and the volume handli
 
 A managed database alone does not count as persistent storage in this course, so PostgreSQL runs in the cluster as a StatefulSet with a PersistentVolumeClaim backed by DigitalOcean block storage. Uploaded files do not go on that volume: with several API replicas, a file written to one pod's disk is invisible to the others. Spaces is S3-compatible object storage reachable from every replica; the API streams the upload to Spaces and keeps the metadata row (owner, version, size, checksum, object key) in PostgreSQL. The restart test for the presentation: delete the postgres pod, the PVC re-attaches, the data is still there.
 
-Schema, first cut: `users`, `documents`, `document_versions` (one row per upload, object key in Spaces), `shares` (document, user or link token, role, expiry), `comments` (document version, anchor, author, body, parent for threads), `tags`, `document_tags`. Roles are Owner, Collaborator and Viewer, enforced by one middleware that loads the share row for the current user and document before any handler runs.
+Schema, first cut: `users`, `documents`, `document_versions` (one row per upload, object key in Spaces), `shares` (document, user or link token, role, expiry), `comments` (document version, anchor, author, body, parent for threads), `tags`, `document_tags`. Roles are Owner, Editor, Commenter and Viewer (28 October, proposal section 2), enforced by one middleware that loads the share row for the current user and document before any handler runs.
 
 ### D3. What "collaboration" means here
 
@@ -129,6 +139,20 @@ The practices in `docs/PRACTICES.md` that shape the design:
 - Every container has CPU and memory requests and limits, so a runaway process cannot starve the node.
 - Secrets are mounted, never baked into images; the `web` container holds none.
 - The load-bearing pieces are the schema, the API contract in `docs/API.md` and the role middleware. They change only with tests in place and the team told.
+
+## Failure handling and reproducibility (28 October)
+
+The API pods hold no state: every request is answered from PostgreSQL, Redis or Spaces, so any pod can be killed or added without losing data.
+
+| Risk | How we handle it |
+|---|---|
+| Race conditions (two users save, resolve or restore at once) | Each document row carries a version number; a write that read an older number is rejected with 409 and the client reloads. Unique constraints and transactions keep partial writes out of the database. |
+| Duplicate work after a retry | Uploads and worker jobs carry an idempotency key, so a retried request or a job run twice changes nothing. |
+| Network partition or a dependency down | Every call has a timeout and retries with backoff. If Redis is unreachable, the API keeps serving and live updates fall back to polling; if PostgreSQL is unreachable, the readiness probe fails and the Gateway stops routing to that pod. On reconnect, clients fetch events newer than the last sequence number they saw. |
+| Memory exhaustion | Uploads stream to Spaces and are never held in memory; every container has CPU and memory requests and limits, with Node's heap capped below its container limit. |
+| Errors reaching users | One error middleware returns a single JSON shape with a request ID; logs are structured and carry the same ID into Socket.IO events and worker jobs. On shutdown the API finishes in-flight requests before exiting. |
+| Silent failure | Alerts by email when the 5xx rate exceeds 2% for five minutes, p95 latency exceeds one second, a pod restarts three times in ten minutes, the job queue keeps growing, disk passes 80%, or the nightly backup fails. |
+| A build that runs differently in the cluster | Base images pinned by digest, `npm ci` from the lockfile, multi-stage builds running as a non-root user, and the image tested in CI is the one deployed. Database migrations run as a Kubernetes Job before each rollout. |
 
 ## Scope and feasibility
 
