@@ -4,7 +4,7 @@ Upload a document, share it with the right people, and review it together: comme
 
 Team project for ECE1779 Introduction to Cloud Computing, University of Toronto, Fall 2026.
 
-**Status:** architecture and scope agreed 17 October (Kubernetes, review tool, small frontend); proposal in progress; skeleton on `feature/skeleton`. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/PLAN.md](docs/PLAN.md).
+**Status, 24 October:** architecture and scope agreed 17 October (Kubernetes, review tool, small frontend); every slice has an owner, with Jyotiraditya joining Eyrika on the API ([docs/PLAN.md](docs/PLAN.md)); decided 24 October: Gateway API for traffic entry ([#16](https://github.com/nabeegh-khan/contentcollab/issues/16)) and sticky sessions with the Redis adapter for real-time ([#17](https://github.com/nabeegh-khan/contentcollab/issues/17)); skeleton ([#18](https://github.com/nabeegh-khan/contentcollab/pull/18)), CI ([#20](https://github.com/nabeegh-khan/contentcollab/pull/20)) and board automation ([#15](https://github.com/nabeegh-khan/contentcollab/pull/15)) in review; proposal due 7 November. Minutes in [docs/meetings/](docs/meetings/).
 
 ## Architecture
 
@@ -38,12 +38,12 @@ Decisions and trade-offs: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Team
 
-| Name | GitHub |
-|------|--------|
-| Nabeegh Khan | [@nabeegh-khan](https://github.com/nabeegh-khan) |
-| Milton Wang | [@MWang-max](https://github.com/MWang-max) |
-| Jyotiraditya Kale | [@Jyotiraditya7](https://github.com/Jyotiraditya7) |
-| Eyrika Liu | [@Oct31yrika](https://github.com/Oct31yrika) |
+| Name | Student number | Email | GitHub |
+|------|----------------|-------|--------|
+| Milton Wang | 1009114192 | milt.wang@mail.utoronto.ca | [@MWang-max](https://github.com/MWang-max) |
+| Jyotiraditya Kale | 1013397370 | jyotiraditya.kale@mail.utoronto.ca | [@Jyotiraditya7](https://github.com/Jyotiraditya7) |
+| Yiqing Liu | 1008052580 | eyrika.liu@mail.utoronto.ca | [@Oct31yrika](https://github.com/Oct31yrika) |
+| Nabeegh Khan | 1001388152 | nabeegh.khan@mail.utoronto.ca | [@nabeegh-khan](https://github.com/nabeegh-khan) |
 
 ## What it does
 
@@ -76,8 +76,8 @@ Course deadlines are 11:59pm Toronto with no late submissions. The windows are w
 | 17 Oct to 24 Oct | architecture and plan agreed; API contract; team formation on Quercus | team formation, Sat 24 Oct |
 | 19 Oct to 1 Nov | skeleton: Compose stack, schema and first migration, health endpoint, CI on pull requests, manifests on minikube | Assignment 3, Sat 31 Oct |
 | 26 Oct to 7 Nov | proposal written from the architecture docs; core features under way | **proposal, Sat 7 Nov (15%)** |
-| 2 Nov to 15 Nov | cloud: DOKS cluster, TLS, PostgreSQL on a volume with the restart test, autoscaling, alerts, deploy on merge | |
-| 9 Nov to 22 Nov | real-time, additive features, integration checkpoints 15 and 22 Nov | health check, Mon 16 Nov; Assignment 4, Sat 21 Nov |
+| 2 Nov to 14 Nov | cloud: DOKS cluster, TLS, PostgreSQL on a volume with the restart test, autoscaling, alerts, deploy on merge | |
+| 9 Nov to 20 Nov | real-time, additive features, integration checkpoints Sat 14 and Fri 20 Nov; new features stop Sat 21 Nov | health check, Mon 16 Nov; Assignment 4, Sat 21 Nov |
 | 23 Nov to 24 Nov | project introduction, slides, two demo rehearsals | introduction Mon 23 Nov; slides Tue 24 Nov |
 | 25 Nov and 2 Dec | presentations, 6 minutes plus Q&A, live demo required | **presentation (10%)** |
 | 25 Nov to 5 Dec | README report, `ai-session.md`, video, deployment left running | **final deliverable, Sat 5 Dec (35%)** |
