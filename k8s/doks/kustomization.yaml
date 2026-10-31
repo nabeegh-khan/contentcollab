@@ -1,0 +1,11 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../base
+  - gateway.yaml
+
+# Block storage for the database volume; the pod can move between the two
+# nodes and the volume follows it (DB-2)
+patches:
+  - path: postgres-storage-patch.yaml

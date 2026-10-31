@@ -4,13 +4,35 @@ Kubernetes manifests, applied with `kubectl apply -k` (Kustomize) in two overlay
 
 ```
 k8s/
-  base/        Deployments (api, web, worker), StatefulSet (postgres), Deployment (redis), Services,
-               Ingress, HorizontalPodAutoscaler, PersistentVolumeClaim, CronJob (backup), ConfigMap
-  minikube/    overlay: NodePort or minikube tunnel, local image tags, smaller resources
-  doks/        overlay: DigitalOcean block-storage class, Ingress with cert-manager, LoadBalancer
-  secrets.example.yaml   the shape of the Secret objects; real values are never committed
+  base/        Namespace, ConfigMap, StatefulSet (postgres) with its volume claim, Deployment (redis),
+               Deployment + Service + HorizontalPodAutoscaler + PodDisruptionBudget (api),
+               secrets.example.yaml (the shape of the one Secret; real values are never committed)
+  minikube/    overlay: one api replica, image built inside minikube, NodePort
+  doks/        overlay: DigitalOcean block-storage class for the database, Gateway and HTTPRoute for traffic
 ```
 
+`web` and `worker` get their Deployments when those containers exist; the backup CronJob lands with the backup slice.
+
+## Run on minikube
+
+```
+minikube start --cpus 2 --memory 4096
+minikube image build -t contentcollab-api:dev api
+cp k8s/base/secrets.example.yaml k8s/base/secrets.yaml      # edit the values; the file is git-ignored
+kubectl apply -f k8s/base/namespace.yaml
+kubectl apply -f k8s/base/secrets.yaml
+kubectl apply -k k8s/minikube
+kubectl -n contentcollab get pods -w                         # wait for postgres, redis and api to be Running and 1/1
+minikube service api -n contentcollab --url                  # then open <url>/health
+```
+
+The restart test from the proposal: `kubectl -n contentcollab delete pod postgres-0`, wait for it to come back, and the data is still there because the claim `data-postgres-0` outlived the pod.
+
+Validate without a cluster: `kubectl kustomize k8s/minikube` renders the objects; CI runs kubeconform on them (`ci.yml`, job `k8s`).
+
+## Images
+
+CI (`.github/workflows/deploy.yml`) pushes `ghcr.io/nabeegh-khan/contentcollab-api:<sha>` and `:latest` on every merge to `main`. The base manifest points at `:latest`; the cluster is moved to a SHA by the same workflow, so the manifest's tag is never edited by hand.
 <!-- PRACTICES:start -->
 
 ## Practices that apply here

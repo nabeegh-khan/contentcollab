@@ -1,0 +1,72 @@
+# Runs on every merge to main. Builds the API image, tags it with the commit
+# SHA and pushes it to the GitHub Container Registry; then, once the cluster
+# exists and KUBECONFIG is set as a repository secret, rolls the api
+# Deployment to that tag and waits for it to finish (proposal section 2.7).
+name: deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "api/**"
+      - "k8s/**"
+      - ".github/workflows/deploy.yml"
+
+# Package names on ghcr.io must be lowercase; the repository name is not
+env:
+  IMAGE: ghcr.io/nabeegh-khan/contentcollab-api
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write # lets GITHUB_TOKEN push to ghcr.io, no extra secret
+    steps:
+      - uses: actions/checkout@v5
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: api
+          push: true
+          # Two tags: the SHA for rollouts and rollbacks, latest for laptops
+          tags: |
+            ${{ env.IMAGE }}:${{ github.sha }}
+            ${{ env.IMAGE }}:latest
+          # Reuses layers from the last build so the npm ci layer is cached
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  rollout:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      # Until stage 3 the secret is empty and the job stops here, green
+      - name: Check for a cluster
+        id: cluster
+        env:
+          KUBECONFIG_B64: ${{ secrets.KUBECONFIG }}
+        run: |
+          if [ -z "$KUBECONFIG_B64" ]; then
+            echo "No KUBECONFIG secret: image pushed, no rollout"
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "$KUBECONFIG_B64" | base64 -d > "$RUNNER_TEMP/kubeconfig"
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: azure/setup-kubectl@v4
+        if: steps.cluster.outputs.present == 'true'
+      - name: Roll the api Deployment to this commit
+        if: steps.cluster.outputs.present == 'true'
+        env:
+          KUBECONFIG: ${{ runner.temp }}/kubeconfig
+        run: |
+          kubectl apply -k k8s/doks
+          kubectl -n contentcollab set image deployment/api api=$IMAGE:${{ github.sha }}
+          # Fails the job, and so the run, if the new pods never become ready
+          kubectl -n contentcollab rollout status deployment/api --timeout=180s
