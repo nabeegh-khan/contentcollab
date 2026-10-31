@@ -47,7 +47,7 @@ Decisions and trade-offs: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## What it does
 
-A user uploads a PDF, image or document. They share it with named people, or by a link that only works for the people it was shared with. Collaborators leave threaded comments and annotation pins on the content and @-mention each other; a new upload becomes a new version, and any version can be restored. PDFs and images render in the browser. Other file types are stored, versioned and downloadable.
+A user creates a workspace, invites people by email as Owner, Editor, Commenter or Viewer, and uploads the files the team works on. Members leave threaded comments and pins and @-mention each other; outside reviewers get a link that expires. Each upload becomes a new version, a comparison view highlights what changed, and any version can be restored. PDFs and images render in the browser; Word, Excel and PowerPoint files are converted to PDF for read-only review; text and code render with line numbers. Full scope: proposal section 2 in [docs/PROPOSAL.md](docs/PROPOSAL.md).
 
 This is a review tool, not an editor. Live text editing and track changes are out of scope; the reasons are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), decision D3.
 
