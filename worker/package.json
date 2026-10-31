@@ -1,0 +1,27 @@
+{
+  "name": "worker",
+  "version": "1.0.0",
+  "description": "ContentCollab background jobs on a Redis queue",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/worker.ts",
+    "start": "tsx src/worker.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src",
+    "format": "prettier --write src",
+    "format:check": "prettier --check src"
+  },
+  "license": "ISC",
+  "dependencies": {
+    "bullmq": "^5.81.5",
+    "ioredis": "^5.11.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2",
+    "eslint": "^10.14.0",
+    "prettier": "^3.9.10",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.72.1"
+  }
+}
