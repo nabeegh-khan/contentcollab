@@ -22,3 +22,33 @@ jobs:
       - run: npm run lint # ESLint: catches bugs and unsafe patterns
       - run: npm run format:check # Prettier: fails if any file is not formatted
       - run: npm run typecheck # tsc: fails on type errors without building
+
+  # Builds the API image exactly as the deploy workflow will, without pushing it,
+  # so a Dockerfile that no longer builds fails the pull request rather than
+  # the first deploy. The image is built in a container (same base image as
+  # the Dockerfile pins), and layers are cached between runs through GitHub's
+  # cache so a source-only change rebuilds in seconds (L4 p47-48).
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: docker/setup-buildx-action@v3 # BuildKit builder, needed for the cache options below
+      - uses: docker/build-push-action@v6
+        with:
+          context: api # the Dockerfile and its files live in api/
+          push: false # build only; deploy.yml pushes on merge to main
+          tags: contentcollab-api:pr # local tag, never published
+          cache-from: type=gha # reuse layers from earlier runs
+          cache-to: type=gha,mode=max # save every layer for the next run
+      - name: Smoke the image
+        # Start the container with no database and confirm the process comes up
+        # and answers. Without Postgres and Redis /health reports 503 degraded,
+        # which is the correct answer here; any HTTP reply proves the image runs.
+        run: |
+          docker run -d --name api -p 3000:3000 -e PORT=3000 contentcollab-api:pr
+          for i in $(seq 1 20); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:3000/health || true)
+            if [ "$code" = "200" ] || [ "$code" = "503" ]; then echo "answered $code"; exit 0; fi
+            sleep 1
+          done
+          echo "api did not answer on 3000"; docker logs api; exit 1
