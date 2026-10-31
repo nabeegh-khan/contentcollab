@@ -1,73 +1,73 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" font-family="Helvetica, Arial, sans-serif" font-size="18" xmlns:c2pa="http://c2pa.org/manifest"><metadata><c2pa:manifest>AAAWgmp1bWIAAAAeanVtZGMycGEAEQAQgAAAqgA4m3EDYzJwYQAAABZcanVtYgAAAEdqdW1kYzJtYQARABCAAACqADibcQN1cm46YzJwYTo2ZDQyMGNhZS1jNzE3LTQ1MDktOTQ3MC0zMTY5YmVhOWQzODcAAAADl2p1bWIAAAApanVtZGMyYXMAEQAQgAAAqgA4m3EDYzJwYS5hc3NlcnRpb25zAAAAALxqdW1iAAAARGp1bWRjYm9yABEAEIAAAKoAOJtxE2MycGEuaW5ncmVkaWVudC52MwAAAAAYYzJzaJ+c1CTvJzaemjzfrLxzakAAAABwY2JvcqNpZGM6Zm9ybWF0bWltYWdlL3N2Zyt4bWxqaW5zdGFuY2VJRHgseG1wOmlpZDo4MTE2Y2MwNi02ZWFjLTRhNDQtOTNhMi00OGRiMTY5NDA0NThscmVsYXRpb25zaGlwaHBhcmVudE9mAAAB4mp1bWIAAABBanVtZGNib3IAEQAQgAAAqgA4m3ETYzJwYS5hY3Rpb25zLnYyAAAAABhjMnNoMqjnsLnJbX9+BYu8DYiu1wAAAZljYm9yomdhY3Rpb25zgqJmYWN0aW9ua2MycGEub3BlbmVkanBhcmFtZXRlcnOha2luZ3JlZGllbnRzgaJjdXJseC1zZWxmI2p1bWJmPWMycGEuYXNzZXJ0aW9ucy9jMnBhLmluZ3JlZGllbnQudjNkaGFzaFgg6ahxedm5OGifrpOF4mkHBOmotNdFddnqwSrKUwPQPf2kZmFjdGlvbngdY29tLmFudGhyb3BpYy5jbGF1ZGUucHJvdmlkZWRqcGFyYW1ldGVyc6F4H2NvbS5hbnRocm9waWMub3JpZ2luLWNvbmZpZGVuY2VndW5rbm93bmtkZXNjcmlwdGlvbnhmQ2xhdWRlIHByb3ZpZGVkIHRoaXMgZmlsZSBhdCB0aGUgcmVxdWVzdCBvZiBhIHVzZXIgYW5kIG1heSBoYXZlIGNyZWF0ZWQgb3IgbW9kaWZpZWQgdGhlIGZpbGUgY29udGVudHMubXNvZnR3YXJlQWdlbnShZG5hbWVmQ2xhdWRlcmFsbEFjdGlvbnNJbmNsdWRlZPUAAADIanVtYgAAAEBqdW1kY2JvcgARABCAAACqADibcRNjMnBhLmhhc2guZGF0YQAAAAAYYzJzaKFdzkcUPzm121zjd/ZgPnYAAACAY2JvcqVjYWxnZnNoYTI1NmNwYWRNAAAAAAAAAAAAAAAAAGRoYXNoWCBAspmKEdWJ+I/siH00/+fhQzs3b2UQMG+kfts/X7HDBWRuYW1lbmp1bWJmIG1hbmlmZXN0amV4Y2x1c2lvbnOBomVzdGFydBjSZmxlbmd0aBkeBAAAAj5qdW1iAAAAJ2p1bWRjMmNsABEAEIAAAKoAOJtxA2MycGEuY2xhaW0udjIAAAACD2Nib3KlY2FsZ2ZzaGEyNTZpc2lnbmF0dXJleE1zZWxmI2p1bWJmPS9jMnBhL3VybjpjMnBhOjZkNDIwY2FlLWM3MTctNDUwOS05NDcwLTMxNjliZWE5ZDM4Ny9jMnBhLnNpZ25hdHVyZWppbnN0YW5jZUlEeCx4bXA6aWlkOjQ1YTIxMDZlLWU0YjQtNGM1Mi04ZGY0LTA1NDA5YTJjZjRkNHJjcmVhdGVkX2Fzc2VydGlvbnODomN1cmx4LXNlbGYjanVtYmY9YzJwYS5hc3NlcnRpb25zL2MycGEuaW5ncmVkaWVudC52M2RoYXNoWCDpqHF52bk4aJ+uk4XiaQcE6ai010V12erBKspTA9A9/aJjdXJseCpzZWxmI2p1bWJmPWMycGEuYXNzZXJ0aW9ucy9jMnBhLmFjdGlvbnMudjJkaGFzaFggdS9zzJP9vnvPqDVvRQV/2uRyLB17HBT9hEg0neCoXz+iY3VybHgpc2VsZiNqdW1iZj1jMnBhLmFzc2VydGlvbnMvYzJwYS5oYXNoLmRhdGFkaGFzaFggHWlG1bVevWNPhR76R6Iizbh4+nQlQ6A04AEql1Xe8FJ0Y2xhaW1fZ2VuZXJhdG9yX2luZm+jZG5hbWVvQW50aHJvcGljIEZpbGVzZ3ZlcnNpb25lMS4wLjBrc3BlY1ZlcnNpb25lMi40LjAAABA4anVtYgAAAChqdW1kYzJjcwARABCAAACqADibcQNjMnBhLnNpZ25hdHVyZQAAABAIY2JvctKEWQISogEmGCFZAgowggIGMIIBjaADAgECAhRA5aAK7sI50L64g/oGQgU9Z1UTADAKBggqhkjOPQQDAzBJMRcwFQYDVQQKEw5BbnRocm9waWMsIFBCQzEuMCwGA1UEAxMlQW50aHJvcGljIENvbnRlbnQgQ3JlZGVudGlhbHMgUm9vdCBDQTAeFw0yNjA4MDcxODQzNTZaFw0yODA4MDYxOTQzNTZaMEQxFzAVBgNVBAoTDkFudGhyb3BpYywgUEJDMSkwJwYDVQQDEyBBbnRocm9waWMgQ2xhdWRlIENvbnRlbnQgU2lnbmluZzBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IABJh6CmvLUBgFFNU0vUKlOVtE6djd17L5SuwX0LemFisBM3dkd/3cyjxFA3Qo5S46fX0/ihY0VZ7mfb9KF703t5OjWDBWMA4GA1UdDwEB/wQEAwIHgDAVBgNVHSUEDjAMBgorBgEEAYPoXgIBMAwGA1UdEwEB/wQCMAAwHwYDVR0jBBgwFoAUzlHiBIFOZFsj+OPEz5o+nMHXXMIwCgYIKoZIzj0EAwMDZwAwZAIwMXMdFJ4BetLLVY7ORuE9noqbbAZOZn/aArXyTwFAZfKrPzxF2vPoJNf1+UCdg1XGAjBwX1zd9WGqYkqmL5SFqw1QySjr1zJfpJM9+1rdDwSPLMOPOjKuiXjoU/pUUeG9RwmhY3BhZFkNngAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAPZYQN5YEzarJI6+/0PsyHVJeMupPqoAPLeHFLFxf/FvY/sscjdwm7omsQO02zdKmUZgyEPkeZSC1tVgog0D4v6DnZE=</c2pa:manifest></metadata>
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" font-family="Helvetica, Arial, sans-serif" font-size="20">
 <rect width="1600" height="900" fill="white"/>
 <defs><marker id="arr" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#444"/></marker></defs>
 <rect x="330" y="50" width="920" height="800" rx="12" fill="#fcfcfc" stroke="#6b6b6b" stroke-width="1.8" stroke-dasharray="8 5"/>
 <text x="346" y="78" font-size="17" font-weight="600" fill="#6b6b6b">DigitalOcean Kubernetes · two nodes · Toronto</text>
 <rect x="60" y="420" width="200" height="90" rx="8" fill="#eef2f7" stroke="#5b6b80" stroke-width="2"/>
-<text x="160.0" y="455.0" text-anchor="middle" font-weight="600">Browser</text>
-<text x="160.0" y="479.0" text-anchor="middle" fill="#444" font-size="16">React web app</text>
+<text x="160.0" y="454.0" text-anchor="middle" font-weight="600" font-size="21">Browser</text>
+<text x="160.0" y="480.0" text-anchor="middle" fill="#333" font-size="18">React web app</text>
 <rect x="560" y="95" width="420" height="140" rx="12" fill="none" stroke="#b7791f" stroke-width="1.8" stroke-dasharray="8 5"/>
 <text x="576" y="123" font-size="17" font-weight="600" fill="#b7791f">Traffic entry</text>
-<rect x="620" y="140" width="300" height="70" rx="8" fill="#fff4e0" stroke="#b7791f" stroke-width="2"/>
-<text x="770.0" y="165.0" text-anchor="middle" font-weight="600">Gateway API</text>
-<text x="770.0" y="189.0" text-anchor="middle" fill="#444" font-size="16">HTTPS, Let's Encrypt certificate</text>
-<rect x="1020" y="140" width="200" height="70" rx="8" fill="#fbe9e9" stroke="#b0413e" stroke-width="2"/>
-<text x="1120.0" y="165.0" text-anchor="middle" font-weight="600">Kubernetes Secrets</text>
-<text x="1120.0" y="189.0" text-anchor="middle" fill="#444" font-size="16">keys and passwords</text>
+<rect x="610" y="140" width="320" height="70" rx="8" fill="#fff4e0" stroke="#b7791f" stroke-width="2"/>
+<text x="770.0" y="164.0" text-anchor="middle" font-weight="600" font-size="21">Gateway API</text>
+<text x="770.0" y="190.0" text-anchor="middle" fill="#333" font-size="18">HTTPS, Let's Encrypt certificate</text>
+<rect x="1010" y="140" width="220" height="70" rx="8" fill="#fbe9e9" stroke="#b0413e" stroke-width="2"/>
+<text x="1120.0" y="164.0" text-anchor="middle" font-weight="600" font-size="21">Kubernetes Secrets</text>
+<text x="1120.0" y="190.0" text-anchor="middle" fill="#333" font-size="18">keys and passwords</text>
 <rect x="360" y="300" width="860" height="220" rx="12" fill="none" stroke="#3f7d4e" stroke-width="1.8" stroke-dasharray="8 5"/>
 <text x="376" y="328" font-size="17" font-weight="600" fill="#3f7d4e">Application</text>
 <rect x="390" y="380" width="210" height="90" rx="8" fill="#e8f3ea" stroke="#3f7d4e" stroke-width="2"/>
-<text x="495.0" y="415.0" text-anchor="middle" font-weight="600">web</text>
-<text x="495.0" y="439.0" text-anchor="middle" fill="#444" font-size="16">static React build</text>
+<text x="495.0" y="414.0" text-anchor="middle" font-weight="600" font-size="21">web</text>
+<text x="495.0" y="440.0" text-anchor="middle" fill="#333" font-size="18">static React build</text>
 <rect x="660" y="380" width="250" height="90" rx="8" fill="#e8f3ea" stroke="#3f7d4e" stroke-width="2"/>
-<text x="785.0" y="415.0" text-anchor="middle" font-weight="600">api · 2 replicas</text>
-<text x="785.0" y="439.0" text-anchor="middle" fill="#444" font-size="16">JSON API, JWT auth, roles</text>
+<text x="785.0" y="414.0" text-anchor="middle" font-weight="600" font-size="21">api · 2 replicas</text>
+<text x="785.0" y="440.0" text-anchor="middle" fill="#333" font-size="18">JSON API, JWT auth, roles</text>
 <rect x="970" y="380" width="220" height="90" rx="8" fill="#e8f3ea" stroke="#3f7d4e" stroke-width="2"/>
-<text x="1080.0" y="415.0" text-anchor="middle" font-weight="600">worker</text>
-<text x="1080.0" y="439.0" text-anchor="middle" fill="#444" font-size="16">background jobs</text>
+<text x="1080.0" y="414.0" text-anchor="middle" font-weight="600" font-size="21">worker</text>
+<text x="1080.0" y="440.0" text-anchor="middle" fill="#333" font-size="18">background jobs</text>
 <rect x="360" y="590" width="860" height="240" rx="12" fill="none" stroke="#3d5bb8" stroke-width="1.8" stroke-dasharray="8 5"/>
 <text x="376" y="618" font-size="17" font-weight="600" fill="#3d5bb8">State · survives pod restarts</text>
-<path d="M430,664 a160.0,14 0 0 1 320,0 v122 a160.0,14 0 0 1 -320,0 z" fill="#e9eefb" stroke="#3d5bb8" stroke-width="2"/>
-<ellipse cx="590.0" cy="664" rx="160.0" ry="14" fill="#e9eefb" stroke="#3d5bb8" stroke-width="2"/>
-<text x="590.0" y="723.0" text-anchor="middle" font-weight="600">PostgreSQL</text>
-<text x="590.0" y="747.0" text-anchor="middle" fill="#444" font-size="16">StatefulSet on a persistent volume</text>
+<path d="M420,664 a170.0,14 0 0 1 340,0 v122 a170.0,14 0 0 1 -340,0 z" fill="#e9eefb" stroke="#3d5bb8" stroke-width="2"/>
+<ellipse cx="590.0" cy="664" rx="170.0" ry="14" fill="#e9eefb" stroke="#3d5bb8" stroke-width="2"/>
+<text x="590.0" y="722.0" text-anchor="middle" font-weight="600" font-size="21">PostgreSQL</text>
+<text x="590.0" y="748.0" text-anchor="middle" fill="#333" font-size="18">StatefulSet, persistent volume</text>
 <path d="M850,664 a140.0,14 0 0 1 280,0 v122 a140.0,14 0 0 1 -280,0 z" fill="#e9eefb" stroke="#3d5bb8" stroke-width="2"/>
 <ellipse cx="990.0" cy="664" rx="140.0" ry="14" fill="#e9eefb" stroke="#3d5bb8" stroke-width="2"/>
-<text x="990.0" y="723.0" text-anchor="middle" font-weight="600">Redis</text>
-<text x="990.0" y="747.0" text-anchor="middle" fill="#444" font-size="16">live events, job queue</text>
+<text x="990.0" y="722.0" text-anchor="middle" font-weight="600" font-size="21">Redis</text>
+<text x="990.0" y="748.0" text-anchor="middle" fill="#333" font-size="18">live events, job queue</text>
 <rect x="1290" y="50" width="290" height="800" rx="12" fill="none" stroke="#777" stroke-width="1.8" stroke-dasharray="8 5"/>
 <text x="1306" y="78" font-size="17" font-weight="600" fill="#777">Outside the cluster</text>
 <path d="M1320,154 a115.0,14 0 0 1 230,0 v62 a115.0,14 0 0 1 -230,0 z" fill="#f3f3f3" stroke="#777" stroke-width="2"/>
 <ellipse cx="1435.0" cy="154" rx="115.0" ry="14" fill="#f3f3f3" stroke="#777" stroke-width="2"/>
-<text x="1435.0" y="183.0" text-anchor="middle" font-weight="600">DigitalOcean Spaces</text>
-<text x="1435.0" y="207.0" text-anchor="middle" fill="#444" font-size="16">uploaded files</text>
+<text x="1435.0" y="182.0" text-anchor="middle" font-weight="600" font-size="21">DigitalOcean Spaces</text>
+<text x="1435.0" y="208.0" text-anchor="middle" fill="#333" font-size="18">uploaded files</text>
 <rect x="1320" y="420" width="230" height="90" rx="8" fill="#f3f3f3" stroke="#777" stroke-width="2"/>
-<text x="1435.0" y="455.0" text-anchor="middle" font-weight="600">GitHub Actions</text>
-<text x="1435.0" y="479.0" text-anchor="middle" fill="#444" font-size="16">tests, build, roll out</text>
-<rect x="1320" y="680" width="230" height="90" rx="8" fill="#f3f3f3" stroke="#777" stroke-width="2"/>
-<text x="1435.0" y="715.0" text-anchor="middle" font-weight="600">DigitalOcean alerts, Datadog</text>
-<text x="1435.0" y="739.0" text-anchor="middle" fill="#444" font-size="16">metrics, logs</text>
+<text x="1435.0" y="454.0" text-anchor="middle" font-weight="600" font-size="21">GitHub Actions</text>
+<text x="1435.0" y="480.0" text-anchor="middle" fill="#333" font-size="18">tests, build, roll out</text>
+<rect x="1305" y="680" width="260" height="90" rx="8" fill="#f3f3f3" stroke="#777" stroke-width="2"/>
+<text x="1435.0" y="714.0" text-anchor="middle" font-weight="600" font-size="21">Monitoring</text>
+<text x="1435.0" y="740.0" text-anchor="middle" fill="#333" font-size="18">DigitalOcean alerts, Datadog</text>
 <path d="M260,465 L300,465 L300,175 L620,175" fill="none" stroke="#444" stroke-width="2"  marker-end="url(#arr)"/>
-<rect x="228.4" y="316" width="143.2" height="20" fill="white"/>
-<text x="300" y="330" text-anchor="middle" font-size="15" fill="#333">HTTPS, WebSocket</text>
+<rect x="220.4" y="236" width="159.2" height="20" fill="white"/>
+<text x="300" y="250" text-anchor="middle" font-size="17" fill="#333">HTTPS, WebSocket</text>
 <path d="M720,210 L495,380" fill="none" stroke="#444" stroke-width="2"  marker-end="url(#arr)"/>
 <path d="M800,210 L785,380" fill="none" stroke="#444" stroke-width="2"  marker-end="url(#arr)"/>
 <path d="M760,470 L620,650" fill="none" stroke="#444" stroke-width="2"  marker-end="url(#arr)"/>
 <path d="M830,470 L950,650" fill="none" stroke="#444" stroke-width="2"  marker-end="url(#arr)"/>
 <path d="M1040,650 L1080,470" fill="none" stroke="#444" stroke-width="2"  marker-end="url(#arr)"/>
-<rect x="1092.6" y="598" width="44.8" height="20" fill="white"/>
-<text x="1115" y="612" text-anchor="middle" font-size="15" fill="#333">jobs</text>
+<rect x="1090.6" y="598" width="48.8" height="20" fill="white"/>
+<text x="1115" y="612" text-anchor="middle" font-size="17" fill="#333">jobs</text>
 <path d="M1000,470 L1000,577 L560,577 L560,650" fill="none" stroke="#444" stroke-width="2"  marker-end="url(#arr)"/>
 <path d="M885,380 L885,285 L1260,285 L1260,185 L1320,185" fill="none" stroke="#444" stroke-width="2"  marker-end="url(#arr)"/>
-<rect x="1043.5" y="266" width="53.0" height="20" fill="white"/>
-<text x="1070" y="280" text-anchor="middle" font-size="15" fill="#333">files</text>
+<rect x="1041.0" y="266" width="58.0" height="20" fill="white"/>
+<text x="1070" y="280" text-anchor="middle" font-size="17" fill="#333">files</text>
 <path d="M1100,380 L1100,300 L1245,300 L1245,200 L1320,200" fill="none" stroke="#444" stroke-width="2"  marker-end="url(#arr)"/>
 <path d="M1080,210 L895,380" fill="none" stroke="#444" stroke-width="2" stroke-dasharray="6 5" marker-end="url(#arr)"/>
 <path d="M1130,210 L1110,380" fill="none" stroke="#444" stroke-width="2" stroke-dasharray="6 5" marker-end="url(#arr)"/>
 <path d="M1320,465 L1260,465 L1260,545 L870,545 L870,470" fill="none" stroke="#444" stroke-width="2" stroke-dasharray="6 5" marker-end="url(#arr)"/>
-<rect x="1049.7" y="526" width="200.6" height="20" fill="white"/>
-<text x="1150" y="540" text-anchor="middle" font-size="15" fill="#333">rolling update on merge</text>
-<path d="M1320,725 L1275,725 L1275,560 L840,560 L840,470" fill="none" stroke="#444" stroke-width="2" stroke-dasharray="6 5" marker-end="url(#arr)"/>
-<rect x="1090.7" y="559" width="118.6" height="20" fill="white"/>
-<text x="1150" y="573" text-anchor="middle" font-size="15" fill="#333">metrics, logs</text>
+<rect x="1038.2" y="526" width="223.6" height="20" fill="white"/>
+<text x="1150" y="540" text-anchor="middle" font-size="17" fill="#333">rolling update on merge</text>
+<path d="M1305,725 L1275,725 L1275,560 L840,560 L840,470" fill="none" stroke="#444" stroke-width="2" stroke-dasharray="6 5" marker-end="url(#arr)"/>
+<rect x="1084.2" y="559" width="131.6" height="20" fill="white"/>
+<text x="1150" y="573" text-anchor="middle" font-size="17" fill="#333">metrics, logs</text>
 </svg>
