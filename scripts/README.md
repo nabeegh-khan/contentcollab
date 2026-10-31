@@ -1,6 +1,17 @@
 # scripts
 
-Repeatable operations as scripts, so nothing important lives in dashboard clicks: create the cluster, create the volume, run migrations, take a backup, restore a backup, `smoke.sh` (the curl checks run before every demo), `sync-practices.py` (copies the applicable rows of `docs/PRACTICES.md` into each folder README), and `meeting-actions.py` (turns a meeting's Actions table into GitHub Issues through the GitHub CLI). Every script exits early if a required environment variable is missing.
+Repeatable operations as scripts, so nothing important lives in dashboard clicks. Every script exits early if a required environment variable is missing.
+
+| Script | What it does | Needs |
+|---|---|---|
+| `cluster-up.sh` | Creates the DOKS cluster, installs the Gateway controller, cert-manager and (optionally) the Datadog agent, applies the Secret and the doks overlay | `doctl`, `kubectl`, `helm`, `LETSENCRYPT_EMAIL`; `DATADOG_API_KEY` optional |
+| `cluster-down.sh` | Deletes the cluster, its load balancer and volumes after grading | `doctl` |
+| `alerts.sh` | DigitalOcean alert policies on the nodes: CPU, memory, disk above 80% for five minutes | `doctl`, `ALERT_EMAIL` |
+| `smoke.sh` | The curl checks run before every demo and after every rollout: `/health` with both dependencies ok, `/metrics` present, unknown route is a 404 | `BASE` (default `http://localhost:3000`) |
+| `sync-practices.py` | Copies the applicable rows of `docs/PRACTICES.md` into each folder README | Python |
+| `meeting-actions.py` | Turns a meeting's Actions table into GitHub Issues | GitHub CLI |
+
+Still to write: the migrations Job wrapper (API slice) and backup and restore (backup slice).
 
 <!-- PRACTICES:start -->
 
