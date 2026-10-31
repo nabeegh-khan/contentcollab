@@ -18,4 +18,13 @@ Owner: Milton. From `PLAN.md`: stages, division of work, integration strategy, d
 
 ## 4. Initial team reasoning and AI-assisted exploration
 
-Owner: Jyotiraditya. Initial understanding (10 October notes), technical hypotheses, open questions, how the thinking changed, one AI interaction with its evaluation, how the final proposal differs from the initial thinking.
+### 4.1 Initial Team Reasoning
+
+Initially, our team reviewed the sample project ideas on the course website and chose the Content Sharing and Collaboration Platform. We wanted to build something that highlighted the cloud tools learned in class while providing a clear demo. Going through the suggested features, the project originally resembled a Google Docs clone. However, while outlining requirements, we hit a major design hurdle: live co-editing requires a complex conflict resolution engine to prevent document corruption. Realizing co-editing was a massive standalone product, we pivoted our scope to a document review tool instead. Our finalized scope focused on document uploading, version history, link sharing, live commenting with @-mentions and pins, search, and metadata export, backed by role-based access control (Owner, Collaborator, Viewer).
+
+### 4.2 Exploration and Evaluation
+
+During our second meeting's architectural planning, we decided on a React frontend container and background workers for bulk imports. For orchestration, we debated between Kubernetes and Docker Swarm. Kubernetes provided native autoscaling and volume management over Swarm's simpler setup, so we chose DigitalOcean Kubernetes (DOKS), testing manifests on minikube first with Swarm as a fallback. We also evaluated Fly.io, but since its Kubernetes service is a paid beta and we wanted to avoid managing two different cloud providers, we decided to stay entirely on DigitalOcean hosted on a single team member’s account.
+
+In our third meeting, we audited our choices. We originally planned to use ingress-nginx, but an official Kubernetes blog post revealed it was retired in March 2026 without security fixes. We updated our architecture to the Kubernetes Gateway API to route /api and frontend traffic. To handle real-time commenting across API replicas, AI suggested enforcing WebSocket-only transport to avoid sticky sessions. We critically evaluated and rejected this advice because removing HTTP long-polling breaks connections behind firewalls. Instead, we implemented sticky sessions with a Redis adapter. Finally, we committed to JWT authentication and a GitHub Actions CI/CD pipeline, keeping autoscaling and transactional emails as planned extensions.
+
