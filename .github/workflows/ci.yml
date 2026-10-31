@@ -30,6 +30,10 @@ jobs:
   # cache so a source-only change rebuilds in seconds (L4 p47-48).
   docker:
     runs-on: ubuntu-latest
+    services:
+      redis: # the API connects to Redis before it listens, so the smoke run needs one
+        image: redis:8
+        ports: ["6379:6379"]
     steps:
       - uses: actions/checkout@v5
       - uses: docker/setup-buildx-action@v3 # BuildKit builder, needed for the cache options below
@@ -42,11 +46,12 @@ jobs:
           cache-from: type=gha # reuse layers from earlier runs
           cache-to: type=gha,mode=max # save every layer for the next run
       - name: Smoke the image
-        # Start the container with no database and confirm the process comes up
-        # and answers. Without Postgres and Redis /health reports 503 degraded,
-        # which is the correct answer here; any HTTP reply proves the image runs.
+        # Start the container on the runner's network so it reaches the Redis
+        # service above on localhost, and confirm the process answers. With no
+        # Postgres /health reports 503 degraded, which is the correct answer
+        # here; any HTTP reply proves the image starts and serves.
         run: |
-          docker run -d --name api -p 3000:3000 -e PORT=3000 contentcollab-api:pr
+          docker run -d --name api --network host -e PORT=3000 -e REDIS_HOST=127.0.0.1 contentcollab-api:pr
           for i in $(seq 1 20); do
             code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:3000/health || true)
             if [ "$code" = "200" ] || [ "$code" = "503" ]; then echo "answered $code"; exit 0; fi
