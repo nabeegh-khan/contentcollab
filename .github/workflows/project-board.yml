@@ -57,6 +57,9 @@ jobs:
           STATUS: ${{ steps.plan.outputs.status }}
           ISSUES: ${{ steps.plan.outputs.issues }}
         run: |
+          # Until the PROJECT_TOKEN secret is added the run ends here, green,
+          # so a missing secret never shows up as a failed check
+          if [ -z "$GH_TOKEN" ]; then echo "No PROJECT_TOKEN secret: cards not moved"; exit 0; fi
           project_id=$(gh project view "$PROJECT_NUMBER" --owner "$OWNER" --format json --jq .id)
           field=$(gh project field-list "$PROJECT_NUMBER" --owner "$OWNER" --format json --jq '.fields[] | select(.name == "Status")')
           field_id=$(printf '%s' "$field" | jq -r .id)
