@@ -29,15 +29,13 @@ flowchart TB
     GW["Gateway API · HTTPS · sticky sessions"]
     W["web · static build"]
     A["api ×2–5 · stateless · autoscaled (HPA)<br/>readiness and liveness probes"]
-    K["worker · imports, conversion, diffs, AI jobs<br/>idempotent, retried"]
+    K["worker · background jobs<br/>idempotent, retried"]
     R[("Redis · Socket.IO adapter, job queue")]
     P[("PostgreSQL StatefulSet · volume<br/>transactions, row versions")]
-    J["Jobs · migrations before rollout,<br/>nightly pg_dump backup"]
+    J["Job · migrations before rollout"]
     SEC["Secrets · JWT key, database, API keys"]
   end
-  S[("Spaces · files, backups")]
-  LLM["Language-model API"]
-  MAIL["Email service"]
+  S[("Spaces · files")]
   CI["GitHub Actions · tests, image build · GHCR"]
   M["DO alerts, Datadog · /metrics, logs"]
   U -- "HTTPS, WebSocket" --> GW
@@ -51,14 +49,12 @@ flowchart TB
   K --> S
   J --> P
   J --> S
-  K --> LLM
-  K --> MAIL
   SEC -.-> A
   CI -. "rolling update" .-> A
   M -. watch .-> A
 ```
 
-A React web app calls a JSON API through the same Gateway. We build the web app because live comments across two browsers, version comparison and roles can only be demonstrated through an interface. Its status page also shows API replica count, queue depth and request latency during the autoscaling demonstration.
+A React web app calls a JSON API through the same Gateway. We build the web app because live comments across two browsers and roles can only be demonstrated through an interface. Its status page also shows API replica count, queue depth and request latency during the autoscaling demonstration.
 
 Files are stored in DigitalOcean Spaces, which every API replica can reach; users, workspaces, versions and comments are stored in PostgreSQL. Traffic enters through the Kubernetes Gateway API, which terminates HTTPS for `contentcollab.app`.
 
@@ -66,10 +62,10 @@ Files are stored in DigitalOcean Spaces, which every API replica can reach; user
 
 | Decision | Reason | Trade-off and mitigation |
 |---|---|---|
-| Slow work (imports, conversion, comparison, AI) runs in a worker on a Redis queue | A large file cannot exhaust the API's memory or block other users | One more service; same base image and health checks as the API |
+| Slow work runs in a worker on a Redis queue | A large file cannot exhaust the API's memory or block other users | One more service; same base image and health checks as the API |
 | Socket.IO with sticky sessions and the Redis adapter | Without affinity, the long-polling fallback breaks across replicas; the adapter relays events between pods [3] | Needs affinity at the Gateway; WebSocket-only is the fallback |
 | Gateway API, not ingress-nginx | ingress-nginx was retired in March 2026 [1] | New objects to configure |
-| One PostgreSQL instance on a volume; files in Spaces | A volume attaches to one node; a file on one pod's disk is invisible to the others [4], [5] | No database failover; backups and a rehearsed restore |
+| One PostgreSQL instance on a volume; files in Spaces | A volume attaches to one node; a file on one pod's disk is invisible to the others [4], [5] | No database failover; the volume is the single copy, so the restart test is rehearsed |
 | Two small nodes | About US$46 a month shared by four [2] | Little headroom; load tests run before the demo |
 
 ### 2.4 Failure handling and reproducibility
@@ -83,7 +79,7 @@ API pods hold no state, so any pod can be killed or added without losing data. E
 | Partitions and outages | Timeouts and retries with backoff on every call. Without Redis, live updates fall back to polling; without PostgreSQL, the readiness probe fails and traffic moves away. Reconnecting clients fetch events after their last sequence number. |
 | Memory | Uploads stream to Spaces; every container has requests and limits, with Node's heap capped below its limit. |
 | Errors | One error shape with a request ID, carried through logs, socket events and jobs; in-flight requests finish before a pod stops. |
-| Silent failure | Email alerts on 5xx rate above 2% for five minutes, p95 latency above one second, repeated pod restarts, a growing queue, disk above 80% or a failed backup. |
+| Silent failure | Email alerts on 5xx rate above 2% for five minutes, p95 latency above one second, repeated pod restarts, a growing queue or disk above 80%. |
 | Drift between environments | Pinned base images, `npm ci` from the lockfile, non-root multi-stage builds; the image tested in CI is the one deployed, after a migration Job. |
 
 ### 2.5 How the required technologies are used
@@ -99,12 +95,10 @@ API pods hold no state, so any pod can be killed or added without losing data. E
 
 ### 2.6 Core features
 
-- **Upload and preview.** PDFs and images render in the browser; Office files are converted to PDF by the worker; text and code render with line numbers.
+- **Upload and preview.** PDFs and images render in the browser; other file types are stored, versioned and downloadable.
 - **Workspaces and roles.** Invitations by email; Owner, Editor, Commenter and Viewer permissions are checked by one middleware before every action.
 - **Comments.** Threaded comments, pins on a page position or a line of text, and @-mentions.
-- **Versions.** Restore any version; a comparison view highlights changes page by page for PDFs and line by line for text.
-- **Review decisions.** When a version needs sign-off, each reviewer marks it Approved or Changes requested.
-- **Bulk import.** Background import from an S3-compatible bucket, skipping files already imported.
+- **Versions.** Every upload is a new version; any version can be restored.
 
 ### 2.7 Advanced features
 
@@ -113,7 +107,7 @@ We commit to two advanced features we can build and demonstrate reliably:
 1. **Security and access control.** Passwords stored as bcrypt hashes, JWT sessions, role checks on every route, expiring share links, HTTPS at the Gateway, and credentials in Kubernetes Secrets rather than in images or the repository [6].
 2. **CI/CD.** GitHub Actions has checked linting, formatting and types on every pull request since 28 October. Unit tests and API integration tests against a PostgreSQL service container join the pipeline as each feature is written; a merge to `main` will build the images, push them to the GitHub Container Registry and roll them out.
 
-One planned extension, reported as finished only if it is: **autoscaling and high availability**, more API replicas under load, readiness probes and a rolling update with no dropped requests, shown on the status page. The live updates in 2.3, the nightly backup, email and the worker's AI summaries and suggested tags are product work in the plan (section 3), not advanced-feature claims; whatever of it is complete by 24 November is demonstrated as such.
+One planned extension, reported as finished only if it is: **autoscaling and high availability**, more API replicas under load, readiness probes and a rolling update with no dropped requests, shown on the status page. The live comment updates in 2.3 are part of the product's core functionality, built by the real-time owner (section 3), and demonstrated if complete by 24 November.
 
 ### 2.8 Scope and feasibility
 
