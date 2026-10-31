@@ -14,8 +14,6 @@ Owner: Nabeegh. From `ARCHITECTURE.md`: objectives and core functionality, the a
 
 ## 3. Project plan and team responsibilities
 
-Owner: Milton. From `PLAN.md`: stages, division of work, integration strategy, dependencies and coordination, risks.
-
 For this project, we will divide it into multiple parts, with each person agreeing to different responsibilities and doing a roughly equal amount of work. Eyrika will be working on the API, tags, and email notifications. Jyotiraditya will be working with Eyrika on the API as well as on the live updates. Milton will work on the front end, backups, and API documentation. Nabeegh will work on the cloud orchestration and the CI/CD pipeline. 
 
 We will integrate the components through weekly milestones, where we first work on the schema and API contract before building features against them. 
