@@ -124,7 +124,7 @@ Planned in priority order, and reported as finished only if they are:
 
 Live co-editing of text is out of scope: it needs a conflict-resolution engine (operational transformation or a CRDT) and an editor, a separate product. CAD formats need dedicated viewers, so drawings are reviewed as PDF exports.
 
-We deploy before we build features, so deployment problems surface while there is time to fix them. Each feature ships with unit and integration tests, so a change that breaks another member's part fails in CI before review, and the deployed system is piloted by the team every week from 14 November rather than first exercised at the demo. The cluster runs by 14 November and new features stop on 21 November, which leaves the days before the 25 November presentation for load tests and two rehearsals. Each part has a named owner (section 3).
+We deploy before we build features, so deployment problems surface while there is time to fix them. Each feature ships with unit and integration tests, so a change that breaks another member's part fails in CI before review, and the deployed system is used by the team from the first deployment onward, as each piece lands, rather than first exercised at the demo. The cluster runs by 14 November; features on the demo path freeze on 21 November, which leaves the days before the 25 November presentation for load tests and two rehearsals, while work on the planned features off the demo path continues to the 5 December submission. Each part has a named owner (section 3).
 
 ## 3. Project plan and team responsibilities
 
