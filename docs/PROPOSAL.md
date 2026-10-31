@@ -20,36 +20,9 @@ The cloud objective is resilience: an API pod can crash, the database can move t
 
 ### 2.2 Architecture
 
-```mermaid
-flowchart TB
-  U["Browser · React web app"]
-  subgraph DOKS["DigitalOcean Kubernetes · 2 nodes · Toronto"]
-    GW["Gateway API · HTTPS · sticky sessions"]
-    W["web · static build"]
-    A["api ×2–5 · stateless · autoscaled<br/>readiness and liveness probes"]
-    K["worker · background jobs"]
-    R[("Redis · Socket.IO adapter, job queue")]
-    P[("PostgreSQL StatefulSet · volume")]
-    J["Job · migrations before rollout"]
-    SEC["Secrets · JWT key, database, API keys"]
-  end
-  S[("Spaces · files")]
-  CI["GitHub Actions · tests, image build · GHCR"]
-  M["DO alerts, Datadog · /metrics, logs"]
-  U -- "HTTPS, WebSocket" --> GW
-  GW --> W
-  GW --> A
-  A --> R
-  R --> K
-  A --> P
-  K --> P
-  A --> S
-  K --> S
-  J --> P
-  SEC -.-> A
-  CI -. "rolling update" .-> A
-  M -. watch .-> A
-```
+![System architecture: browser to Gateway, api and web pods, worker, Redis, PostgreSQL on a volume, Spaces, CI and monitoring](https://raw.githubusercontent.com/nabeegh-khan/contentcollab/main/docs/img/architecture.png)
+
+*Figure 1. System architecture. Source: `docs/ARCHITECTURE.md` (Mermaid), rendered to `docs/img/architecture.png`.*
 
 A small React web app calls a JSON API through one Gateway, which terminates HTTPS for `contentcollab.app`; it exists because live comments in two browsers cannot be shown with curl. Files live in DigitalOcean Spaces, reachable from every replica; users, workspaces, versions and comments live in PostgreSQL.
 
