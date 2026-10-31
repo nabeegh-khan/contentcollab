@@ -1,6 +1,6 @@
 # workflows
 
-GitHub Actions. `ci.yml` runs on every pull request: lint, typecheck, api tests against a PostgreSQL service container. `deploy.yml` runs on merge to `main`: build the images, push to the GitHub Container Registry tagged by commit SHA, `kubectl set image` on the cluster and wait for the rollout. Cluster credentials are repository secrets.
+GitHub Actions. `project-board.yml` moves cards on the project board when an issue is assigned or a pull request is opened or sent for review (needs the `PROJECT_TOKEN` secret). `ci.yml` runs on every pull request: lint, typecheck, api tests against a PostgreSQL service container. `deploy.yml` runs on merge to `main`: build the images, push to the GitHub Container Registry tagged by commit SHA, `kubectl set image` on the cluster and wait for the rollout. Cluster credentials are repository secrets.
 
 <!-- PRACTICES:start -->
 
