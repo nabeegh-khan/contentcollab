@@ -32,3 +32,17 @@ A DigitalOcean volume attaches to one node at a time, so PostgreSQL runs as a si
 - WebSocket-only Socket.IO (proposed), or sticky sessions?
 - Who hosts the cluster, and do we split the cost?
 - Who takes real-time, and who joins Eyrika on the API?
+
+## Job queue for the worker (31 October)
+
+The worker takes everything slow out of the request path (ARCHITECTURE.md D9). The queue was chosen on 17 October without a written comparison; this is it.
+
+| Option | What it is | Why or why not |
+|---|---|---|
+| BullMQ on Redis ([docs](https://docs.bullmq.io/)) | Job queue library for Node; jobs, retries with backoff, concurrency and delayed jobs stored in Redis | Chosen. Redis is already in the stack for the Socket.IO adapter, so the queue adds no service; jobs survive a worker restart; the API and the worker share one small library |
+| pg-boss ([docs](https://github.com/timgit/pg-boss)) | The same idea on PostgreSQL, using `SKIP LOCKED` | Would remove the Redis dependency for jobs, but Redis stays for Socket.IO anyway, and polling a table is slower to pick up work |
+| RabbitMQ | A message broker with its own protocol (AMQP) and container | Proper routing and acknowledgements, but one more service to run, monitor and explain for a queue with a handful of job types |
+| Kafka | A distributed log for event streams | Built for volumes and retention this project never reaches |
+| Bull | BullMQ's predecessor | Maintenance mode; BullMQ is the maintained successor by the same authors |
+
+Consequence for failure handling: a job that throws is retried with backoff, and a worker killed mid-job leaves the job in Redis for the next worker (proposal 2.4). The first job type, `ping`, exists to prove that path before the summary and email jobs are written.
