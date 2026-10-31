@@ -47,7 +47,9 @@ spec:
                 name: app-config
             - secretRef:
                 name: app-secrets
-          # Readiness gates traffic; liveness restarts a pod that stops answering
+          # Readiness gates traffic and asks about Postgres and Redis through
+          # /health. Liveness only asks whether the process still accepts
+          # connections: a dependency being down must not get the API killed
           readinessProbe:
             httpGet:
               path: /health
@@ -55,8 +57,7 @@ spec:
             periodSeconds: 5
             failureThreshold: 3
           livenessProbe:
-            httpGet:
-              path: /health
+            tcpSocket:
               port: 3000
             initialDelaySeconds: 20
             periodSeconds: 15
