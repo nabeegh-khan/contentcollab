@@ -4,35 +4,13 @@ Upload a document, share it with the right people, and review it together: comme
 
 Team project for ECE1779 Introduction to Cloud Computing, University of Toronto, Fall 2026.
 
-**Status, 24 October:** architecture and scope agreed 17 October (Kubernetes, review tool, small frontend); every slice has an owner, with Jyotiraditya joining Eyrika on the API ([docs/PLAN.md](docs/PLAN.md)); decided 24 October: Gateway API for traffic entry ([#16](https://github.com/nabeegh-khan/contentcollab/issues/16)) and sticky sessions with the Redis adapter for real-time ([#17](https://github.com/nabeegh-khan/contentcollab/issues/17)); skeleton ([#18](https://github.com/nabeegh-khan/contentcollab/pull/18)), CI ([#20](https://github.com/nabeegh-khan/contentcollab/pull/20)) and board automation ([#15](https://github.com/nabeegh-khan/contentcollab/pull/15)) in review; proposal due 7 November. Minutes in [docs/meetings/](docs/meetings/).
+**Status, 31 October:** proposal sections 2, 3 and 4 open as pull requests ([#31](https://github.com/nabeegh-khan/contentcollab/pull/31), [#34](https://github.com/nabeegh-khan/contentcollab/pull/34), [#33](https://github.com/nabeegh-khan/contentcollab/pull/33)), due 7 November; API contract on main ([docs/API.md](docs/API.md)); Kubernetes manifests with minikube and DigitalOcean overlays run on minikube with the restart test passed ([#35](https://github.com/nabeegh-khan/contentcollab/pull/35), [#52](https://github.com/nabeegh-khan/contentcollab/issues/52)); `/metrics` ([#57](https://github.com/nabeegh-khan/contentcollab/pull/57)) and the worker skeleton ([#58](https://github.com/nabeegh-khan/contentcollab/pull/58)) in review; one Issue per piece of work in every slice (#37 to #55). Minutes in [docs/meetings/](docs/meetings/).
 
 ## Architecture
 
-```mermaid
-flowchart TB
-  U[Browser] -->|HTTPS and WebSocket| LB[DigitalOcean Load Balancer]
-  subgraph DOKS[DigitalOcean Kubernetes, 2 worker nodes]
-    I[Gateway API controller and cert-manager TLS]
-    W[web: static React build, 2 pods]
-    A[api: Express and Socket.IO, 2 to 5 pods, autoscaled on CPU]
-    K[worker: imports and thumbnails, BullMQ]
-    P[(postgres StatefulSet on a DO Volume)]
-    R[(redis: Socket.IO adapter and job queue)]
-    B[backup CronJob: nightly pg_dump]
-  end
-  LB --> I
-  I --> W
-  I --> A
-  A --> P
-  A --> R
-  K --> R
-  K --> P
-  A --> S[(DigitalOcean Spaces: uploaded files)]
-  K --> S
-  B --> S
-  DOKS -.-> M[DigitalOcean metrics and alerts, Prometheus and Grafana]
-  G[GitHub Actions] -->|tests on every PR; on merge build image, push to GHCR, roll out| A
-```
+![Components and their connections](docs/img/architecture.png)
+
+Solid lines carry application traffic; dashed lines are configuration, deployment and monitoring. Source: [docs/img/architecture.svg](docs/img/architecture.svg).
 
 Decisions and trade-offs: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
@@ -47,7 +25,7 @@ Decisions and trade-offs: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## What it does
 
-A user uploads a PDF, image or document. They share it with named people, or by a link that only works for the people it was shared with. Collaborators leave threaded comments and annotation pins on the content and @-mention each other; a new upload becomes a new version, and any version can be restored. PDFs and images render in the browser. Other file types are stored, versioned and downloadable.
+A review workspace for any file a team has to sign off on. Members are invited by email as Owner, Reviewer or Viewer, and outside reviewers get an expiring link. PDFs and images render in the browser; Word, Excel and PowerPoint files are converted to PDF by the worker for read-only review, with the original kept for download; text, Markdown and code render with line numbers. Collaborators leave threaded comments and pins on a page position or a line, @-mention each other, and mark a version Approved or Changes requested. Each upload becomes a new version, the changes from the previous one are highlighted, and any version can be restored. Everyone viewing the same version sees new comments without refreshing.
 
 This is a review tool, not an editor. Live text editing and track changes are out of scope; the reasons are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), decision D3.
 
@@ -58,14 +36,14 @@ This is a review tool, not an editor. Live text editing and track changes are ou
 | API | Node.js, Express, Socket.IO, in Docker |
 | Data | PostgreSQL on a DigitalOcean Volume (persistent storage); Redis for Socket.IO across replicas |
 | Files | DigitalOcean Spaces (S3-compatible object storage) |
-| Orchestration | DigitalOcean Kubernetes: Deployments, Services, PersistentVolumeClaims, HorizontalPodAutoscaler; minikube locally |
+| Orchestration | DigitalOcean Kubernetes: Deployments, Services, a StatefulSet for PostgreSQL, HorizontalPodAutoscaler; one Kustomize base with minikube and DigitalOcean overlays ([k8s/](k8s/)) |
 | Frontend | small React app served as static files by its own container |
-| Background jobs | worker container on a Redis queue (BullMQ): bulk imports, thumbnails |
+| Background jobs | worker container on a Redis queue (BullMQ): Office-to-PDF conversion, bulk imports, thumbnails, version comparison |
 | Local development | Docker Compose |
-| Monitoring | DigitalOcean metrics and alerts; `/metrics` endpoint for Prometheus and Grafana |
+| Monitoring | DigitalOcean metrics and alerts; `/metrics` on the API (Prometheus format), collected with container logs by Datadog |
 | CI/CD | GitHub Actions: lint and test on every pull request, build and deploy on merge to `main` |
 
-Advanced features promised in the proposal: security (sign-in, roles, HTTPS, secrets) and CI/CD. Planned after those: real-time updates, auto-scaling and high availability, backups, email notifications.
+Advanced features promised in the proposal: security (sign-in, roles, HTTPS, secrets) and CI/CD. Planned extension: auto-scaling and high availability. Everything else on the board is for the final report, not the proposal.
 
 ## Timeline
 
@@ -111,10 +89,10 @@ Each folder has a README saying what goes in it, its planned layout, and the pra
 - Code: one branch per Issue (`feature/`, `fix/`, `ci/`), one pull request per branch with `Closes #<n>`, one review from a teammate, squash and merge. Keep them small.
 - Documentation goes straight to `main`; it does not need a pull request.
 - Commits: `<type>(<scope>): <summary>` in the imperative, under 50 characters. Types: `feat`, `fix`, `docs`, `refactor`, `chore`, `ci`.
-- Every member commits their own work. Individual contribution is 15% of the grade and is read from the Git history.
+- Every member commits their own work. Individual contribution is 15% of the grade, read from the Git history, pull requests, Issues and reviews, so each of us writes, reviews and discusses on GitHub under our own account.
 - Meeting notes go in `docs/meetings/` the same day.
 - AI use is logged in `ai-session.md`, as the course requires.
 
 ## Local setup
 
-Written when the skeleton lands. Until then: clone, copy `.env.example` to `.env`.
+Clone, copy `.env.example` to `.env`, then `docker compose up --build`; the API answers at `http://localhost:3000/health`. The Kubernetes manifests run on minikube with `kubectl apply -k k8s/minikube` ([k8s/README.md](k8s/README.md), on #35 until it merges).
