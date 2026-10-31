@@ -22,9 +22,9 @@ The cloud objective is resilience: an API pod can crash, the database can move t
 
 ![Component diagram: browser, Gateway, web, api and worker, PostgreSQL and Redis, Spaces, GitHub Actions and monitoring](https://raw.githubusercontent.com/nabeegh-khan/contentcollab/main/docs/img/architecture.png)
 
-*Figure 1. Components and their connections. Solid lines carry application traffic; dashed lines are configuration, deployment and monitoring. Source: `docs/img/architecture.svg`.*
+*Figure 1. Components and their connections. Solid lines carry application traffic; dashed lines are configuration, deployment and monitoring.*
 
-A small React web app calls a JSON API through one Gateway, which terminates HTTPS for `contentcollab.app`; it exists because live comments in two browsers cannot be shown with curl. Files live in DigitalOcean Spaces, reachable from every replica; users, workspaces, versions and comments live in PostgreSQL.
+A small React web app calls a JSON API through one Gateway, which terminates HTTPS for `contentcollab.app`; it exists because live comments in two browsers cannot be shown with curl. Files live in DigitalOcean Spaces, object storage reachable from every replica over HTTP; users, workspaces, versions and comments live in PostgreSQL on block storage [7].
 
 ### 2.3 Key design decisions
 
@@ -33,12 +33,12 @@ A small React web app calls a JSON API through one Gateway, which terminates HTT
 | Slow work runs in a worker on a Redis queue | A large file cannot exhaust the API's memory or block other users | One more service, same health checks as the API |
 | Socket.IO with sticky sessions and the Redis adapter | Without affinity the long-polling fallback breaks across replicas; the adapter relays events between pods [3] | Needs affinity at the Gateway; WebSocket-only is the fallback |
 | Gateway API, not ingress-nginx | ingress-nginx was retired in March 2026 [1] | New objects to configure |
-| One PostgreSQL instance on a volume; files in Spaces | A volume attaches to one node; a file on one pod's disk is invisible to the others [4], [5] | No database failover; the restart test is rehearsed |
+| One PostgreSQL instance on a volume; files in Spaces | A volume attaches to one node; a file on one pod's disk is invisible to the others [4], [5], [7] | No database failover; the restart test is rehearsed |
 | Two small nodes | About US$46 a month shared by four [2] | Little headroom; load tests run before the demo |
 
 ### 2.4 Failure handling
 
-API pods hold no state, so any pod can be killed or added without losing data. Each service is its own container with its own health check and is deployed on its own, so a failure degrades one capability rather than the system: without Redis, comments still save and live updates fall back to polling; without the worker, uploads still succeed; without PostgreSQL, the readiness probe fails and traffic moves away. New capabilities are added behind the existing API contract, not as changes to it.
+API pods hold no state, so any pod can be killed or added without losing data. Each service is its own container with its own health check and is deployed on its own, so a failure degrades one capability rather than the system: without Redis, comments still save and live updates fall back to polling; without the worker, uploads still succeed; without PostgreSQL, the readiness probe fails and the Service stops routing to that pod [8]. New capabilities are added behind the existing API contract, not as changes to it.
 
 | Risk | How we handle it |
 |---|---|
@@ -50,18 +50,18 @@ API pods hold no state, so any pod can be killed or added without losing data. E
 
 ### 2.5 How the required technologies are used
 
-| Requirement | Our use |
+| Requirement [10] | Our use |
 |---|---|
 | Docker and Docker Compose | One container per service; one Compose file runs the stack locally with health checks (API, PostgreSQL and Redis run since 25 October) [6] |
 | PostgreSQL | Users, workspaces, roles, versions and comments, linked by foreign keys and changed inside transactions |
 | Persistent storage | A persistent volume backed by a DigitalOcean Volume; the demonstration deletes the database pod and shows the data survives |
-| Orchestration | DigitalOcean Kubernetes: Deployments, Services, a StatefulSet for PostgreSQL, a HorizontalPodAutoscaler for the API; manifests tested on minikube first, Swarm as the fallback if the cluster is unstable on 14 November |
-| Deployment provider | DigitalOcean; Fly.io offers Kubernetes only as a paid beta |
+| Orchestration | DigitalOcean Kubernetes: Deployments, Services, a StatefulSet for PostgreSQL, a HorizontalPodAutoscaler for the API, each a manifest the cluster keeps converged to its desired state [8]; manifests tested on minikube first, Swarm as the fallback if the cluster is unstable on 14 November [9] |
+| Deployment provider | DigitalOcean, the course's IaaS provider [7]; Fly.io offers Kubernetes only as a paid beta |
 | Monitoring | DigitalOcean alerts on CPU, memory and disk; request counts, errors and latency at `/metrics`; Datadog for dashboards and container logs |
 
 ### 2.6 Core features
 
-- **Upload and preview.** PDFs and images render in the browser; other types are stored, versioned and downloadable.
+- **Upload and preview.** PDFs and images render in the browser; Office files are converted to PDF by the worker, with the original kept for download; other types are stored, versioned and downloadable.
 - **Workspaces and roles.** Invitations by email; Owner, Editor, Commenter and Viewer checked by one middleware before every action.
 - **Comments.** Threads, pins on a page position, @-mentions, live for everyone viewing the version.
 - **Versions.** Every upload is a version; any version can be restored.
@@ -71,7 +71,7 @@ API pods hold no state, so any pod can be killed or added without losing data. E
 We commit to two:
 
 1. **Security.** bcrypt password hashes, JWT sessions, role checks on every route, expiring share links, HTTPS at the Gateway, credentials in Kubernetes Secrets rather than images or the repository [6].
-2. **CI/CD.** GitHub Actions has checked lint, formatting and types on every pull request since 28 October; tests against a PostgreSQL service container join as features land; a merge to `main` builds the images, pushes them to the GitHub Container Registry and rolls them out.
+2. **CI/CD.** GitHub Actions has checked lint, formatting and types on every pull request since 28 October; tests against a PostgreSQL service container join as features land; a merge to `main` builds the images, pushes them to the GitHub Container Registry and rolls them out one pod at a time [8].
 
 One planned extension, reported as finished only if it is: **autoscaling and high availability**, more API replicas under load, readiness probes, and a rolling update with no dropped requests.
 
@@ -100,3 +100,11 @@ Owner: Jyotiraditya Kale. Initial understanding (10 October notes), technical hy
 [5] ECE1779 lecture slides, Lecture 4: Docker Volumes, slides 90–94, Fall 2026.
 
 [6] ECE1779 lecture slides, Lecture 5: Docker Secrets and Healthchecks, slides 28–51, Fall 2026.
+
+[7] ECE1779 lecture slides, Lecture 2: IaaS Resources, block and object storage, slides 23–27; Why DigitalOcean and the DigitalOcean ecosystem, slides 42–45, Fall 2026.
+
+[8] ECE1779 lecture slides, Lecture 7: Deployment Strategies, slide 16; Kubernetes core concepts, desired versus observed state and Services routing to ready Pods, slides 29–31, 59, 79 and 105, Fall 2026.
+
+[9] ECE1779 lecture slides, Lecture 6: From VMs to managed deployment and Swarm rolling updates, slides 38 and 44–45, Fall 2026.
+
+[10] ECE1779 lecture slides, Lecture 1: Project requirements, slide 14, Fall 2026.
