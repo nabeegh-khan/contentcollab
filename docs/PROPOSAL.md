@@ -48,7 +48,6 @@ flowchart TB
   A --> S
   K --> S
   J --> P
-  J --> S
   SEC -.-> A
   CI -. "rolling update" .-> A
   M -. watch .-> A
