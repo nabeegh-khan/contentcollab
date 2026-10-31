@@ -1,0 +1,35 @@
+# Datadog agent on the cluster (#27): container logs, Kubernetes metrics and
+# the API's /metrics, into the dashboards used in the presentation.
+# Installed by scripts/cluster-up.sh with the Helm chart:
+#   helm upgrade --install datadog-agent datadog/datadog -n datadog -f k8s/doks/datadog-values.yaml
+# The API key never enters the repo: scripts/cluster-up.sh creates the
+# `datadog-secret` Secret from DATADOG_API_KEY in the environment (SEC-1).
+datadog:
+  apiKeyExistingSecret: datadog-secret
+  clusterName: contentcollab
+  site: datadoghq.com
+  # Container logs from every pod (OBS-1, OBS-2)
+  logs:
+    enabled: true
+    containerCollectAll: true
+  # Kubernetes state metrics: pod restarts, pending pods, HPA replica counts
+  kubeStateMetricsCore:
+    enabled: true
+  # Scrape the API's Prometheus endpoint (#55) through autodiscovery
+  prometheusScrape:
+    enabled: true
+    serviceEndpoints: true
+  # DOKS kubelets use a self-signed certificate
+  kubelet:
+    tlsVerify: false
+# One agent per node; the small nodes need the agent kept light
+agents:
+  containers:
+    agent:
+      resources:
+        requests:
+          cpu: 100m
+          memory: 256Mi
+        limits:
+          cpu: 300m
+          memory: 512Mi
