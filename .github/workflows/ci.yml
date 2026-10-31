@@ -37,6 +37,7 @@ jobs:
         with:
           context: api # the Dockerfile and its files live in api/
           push: false # build only; deploy.yml pushes on merge to main
+          load: true # copy the result into the runner's Docker daemon so `docker run` below can find it
           tags: contentcollab-api:pr # local tag, never published
           cache-from: type=gha # reuse layers from earlier runs
           cache-to: type=gha,mode=max # save every layer for the next run
