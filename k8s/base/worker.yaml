@@ -1,0 +1,50 @@
+# The worker: no Service, no traffic, one replica to start. It takes jobs
+# from the Redis queue the API writes to (D9) and holds the same Secret.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: worker
+  template:
+    metadata:
+      labels:
+        app: worker
+    spec:
+      # Long enough to finish the job in hand on SIGTERM (API-7)
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+      containers:
+        - name: worker
+          # Tag replaced by the overlay or by CI, never edited here (INF-5)
+          image: ghcr.io/nabeegh-khan/contentcollab-worker:latest
+          ports:
+            - containerPort: 3001
+          envFrom:
+            - configMapRef:
+                name: app-config
+            - secretRef:
+                name: app-secrets
+          # /health answers 200 while the worker runs and Redis responds
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 3001
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: 3001
+            initialDelaySeconds: 20
+            periodSeconds: 15
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
