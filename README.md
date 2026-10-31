@@ -89,7 +89,7 @@ Each folder has a README saying what goes in it, its planned layout, and the pra
 - Code: one branch per Issue (`feature/`, `fix/`, `ci/`), one pull request per branch with `Closes #<n>`, one review from a teammate, squash and merge. Keep them small.
 - Documentation goes straight to `main`; it does not need a pull request.
 - Commits: `<type>(<scope>): <summary>` in the imperative, under 50 characters. Types: `feat`, `fix`, `docs`, `refactor`, `chore`, `ci`.
-- Every member commits their own work. Individual contribution is 15% of the grade, read from the Git history, pull requests, Issues and reviews, so each of us writes, reviews and discusses on GitHub under our own account.
+- Every member commits their own work. Individual contribution is 15% of the grade, assessed from the Git history, the proposal responsibilities, the final report, the project artifacts and confidential peer feedback, on the work performed rather than the number of commits (course handout).
 - Meeting notes go in `docs/meetings/` the same day.
 - AI use is logged in `ai-session.md`, as the course requires.
 
