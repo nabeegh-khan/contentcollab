@@ -15,6 +15,7 @@ set -euo pipefail
 : "${NODE_COUNT:=2}"
 : "${LETSENCRYPT_EMAIL:?set LETSENCRYPT_EMAIL to the address Lets Encrypt notifies about expiry}"
 : "${SECRETS_FILE:=k8s/base/secrets.yaml}"   # git-ignored copy of secrets.example.yaml with real values
+: "${DATADOG_API_KEY:=}"                      # optional: empty skips the Datadog agent
 
 NGF_VERSION="v2.8.0"            # https://docs.nginx.com/nginx-gateway-fabric/install/helm/
 CERT_MANAGER_VERSION="v1.19.2"  # https://cert-manager.io/docs/installation/helm/
@@ -57,6 +58,17 @@ kubectl apply -f k8s/base/namespace.yaml
 kubectl apply -f "$SECRETS_FILE"
 sed "s/LETSENCRYPT_EMAIL/$LETSENCRYPT_EMAIL/" k8s/doks/cluster-issuer.yaml | kubectl apply -f -
 kubectl apply -k k8s/doks
+
+# 4b. Datadog agent (#27), only when an API key is in the environment. The key
+#     goes into a Secret; the chart reads it from there (SEC-1).
+if [ -n "$DATADOG_API_KEY" ]; then
+  helm repo add datadog https://helm.datadoghq.com >/dev/null 2>&1 || true
+  helm repo update >/dev/null
+  kubectl create namespace datadog --dry-run=client -o yaml | kubectl apply -f -
+  kubectl -n datadog create secret generic datadog-secret --from-literal api-key="$DATADOG_API_KEY" \
+    --dry-run=client -o yaml | kubectl apply -f -
+  helm upgrade --install datadog-agent datadog/datadog -n datadog -f k8s/doks/datadog-values.yaml
+fi
 
 # 5. Where the world reaches it. The Gateway's address is the load balancer;
 #    an A record for contentcollab.app at the registrar points there.
