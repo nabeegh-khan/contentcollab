@@ -10,6 +10,7 @@ resources:
   - postgres.yaml
   - redis.yaml
   - api.yaml
+  - worker.yaml
 
 # The Secret is not in this list on purpose: it is created from
 # secrets.example.yaml with real values, once, by hand (SEC-1).
