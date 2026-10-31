@@ -74,7 +74,7 @@ Files are stored in DigitalOcean Spaces, which every API replica can reach; user
 
 ### 2.4 Failure handling and reproducibility
 
-API pods hold no state, so any pod can be killed or added without losing data.
+API pods hold no state, so any pod can be killed or added without losing data. Each service is its own container with its own health check and is deployed on its own, so a failure degrades one capability instead of the whole system: without the worker, uploads still succeed and summaries wait in the queue; without Redis, comments still save and live updates fall back to polling; without the web container, the API still serves. New capabilities are added as new jobs or routes behind the existing contract, not as changes to it.
 
 | Risk | How we handle it |
 |---|---|
@@ -113,12 +113,7 @@ We commit to two advanced features we can build and demonstrate reliably:
 1. **Security and access control.** Passwords stored as bcrypt hashes, JWT sessions, role checks on every route, expiring share links, HTTPS at the Gateway, and credentials in Kubernetes Secrets rather than in images or the repository [6].
 2. **CI/CD.** GitHub Actions has checked linting, formatting and types on every pull request since 28 October. Unit tests and API integration tests against a PostgreSQL service container join the pipeline as each feature is written; a merge to `main` will build the images, push them to the GitHub Container Registry and roll them out.
 
-Planned in priority order, and reported as finished only if they are:
-
-- **Real-time updates**, as designed in 2.3.
-- **Autoscaling and high availability.** More API replicas under load, readiness probes, and a rolling update with no dropped requests, shown on the status page.
-- **Backup and recovery.** A nightly `pg_dump` to Spaces and one rehearsed restore.
-- **External services.** Email on invitations and @-mentions, and two AI features run by the worker through a language-model API: a summary of a document, a long comment thread or the changes between two versions, and suggested tags on upload. Model replies are validated against a schema before they are saved.
+One planned extension, reported as finished only if it is: **autoscaling and high availability**, more API replicas under load, readiness probes and a rolling update with no dropped requests, shown on the status page. The live updates in 2.3, the nightly backup, email and the worker's AI summaries and suggested tags are product work in the plan (section 3), not advanced-feature claims; whatever of it is complete by 24 November is demonstrated as such.
 
 ### 2.8 Scope and feasibility
 
