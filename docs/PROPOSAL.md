@@ -20,9 +20,9 @@ The cloud objective is resilience: an API pod can crash, the database can move t
 
 ### 2.2 Architecture
 
-![System architecture: browser to Gateway, api and web pods, worker, Redis, PostgreSQL on a volume, Spaces, CI and monitoring](https://raw.githubusercontent.com/nabeegh-khan/contentcollab/main/docs/img/architecture.png)
+![Component diagram: browser, Gateway, web, api and worker, PostgreSQL and Redis, Spaces, GitHub Actions and monitoring](https://raw.githubusercontent.com/nabeegh-khan/contentcollab/main/docs/img/architecture.png)
 
-*Figure 1. System architecture. Source: `docs/ARCHITECTURE.md` (Mermaid), rendered to `docs/img/architecture.png`.*
+*Figure 1. Components and their connections. Solid lines carry application traffic; dashed lines are configuration, deployment and monitoring. Source: `docs/img/architecture.svg`.*
 
 A small React web app calls a JSON API through one Gateway, which terminates HTTPS for `contentcollab.app`; it exists because live comments in two browsers cannot be shown with curl. Files live in DigitalOcean Spaces, reachable from every replica; users, workspaces, versions and comments live in PostgreSQL.
 
