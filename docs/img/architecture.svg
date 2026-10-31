@@ -1,5 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" font-family="Helvetica, Arial, sans-serif" font-size="20">
-<rect width="1600" height="900" fill="white"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="920" viewBox="0 0 1600 920" font-family="Helvetica, Arial, sans-serif" font-size="20">
+<rect width="1600" height="920" fill="white"/>
 <defs><marker id="arr" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#444"/></marker></defs>
 <rect x="330" y="50" width="920" height="800" rx="12" fill="#fcfcfc" stroke="#6b6b6b" stroke-width="1.8" stroke-dasharray="8 5"/>
 <text x="346" y="78" font-size="17" font-weight="600" fill="#6b6b6b">DigitalOcean Kubernetes · two nodes · Toronto</text>
@@ -15,32 +15,32 @@
 <text x="1120.0" y="164.0" text-anchor="middle" font-weight="600" font-size="21">Kubernetes Secrets</text>
 <text x="1120.0" y="190.0" text-anchor="middle" fill="#333" font-size="18">keys and passwords</text>
 <rect x="360" y="300" width="860" height="220" rx="12" fill="none" stroke="#3f7d4e" stroke-width="1.8" stroke-dasharray="8 5"/>
-<text x="376" y="328" font-size="17" font-weight="600" fill="#3f7d4e">Application</text>
+<text x="376" y="328" font-size="17" font-weight="600" fill="#3f7d4e">Application · frontend (web) and backend (api, worker)</text>
 <rect x="390" y="380" width="210" height="90" rx="8" fill="#e8f3ea" stroke="#3f7d4e" stroke-width="2"/>
-<text x="495.0" y="414.0" text-anchor="middle" font-weight="600" font-size="21">web</text>
-<text x="495.0" y="440.0" text-anchor="middle" fill="#333" font-size="18">static React build</text>
-<rect x="660" y="380" width="250" height="90" rx="8" fill="#e8f3ea" stroke="#3f7d4e" stroke-width="2"/>
-<text x="785.0" y="414.0" text-anchor="middle" font-weight="600" font-size="21">api · 2 replicas</text>
+<text x="495.0" y="414.0" text-anchor="middle" font-weight="600" font-size="21">web · frontend</text>
+<text x="495.0" y="440.0" text-anchor="middle" fill="#333" font-size="18">static React build, Nginx</text>
+<rect x="650" y="380" width="270" height="90" rx="8" fill="#e8f3ea" stroke="#3f7d4e" stroke-width="2"/>
+<text x="785.0" y="414.0" text-anchor="middle" font-weight="600" font-size="21">api · backend · 2 replicas</text>
 <text x="785.0" y="440.0" text-anchor="middle" fill="#333" font-size="18">JSON API, JWT auth, roles</text>
 <rect x="970" y="380" width="220" height="90" rx="8" fill="#e8f3ea" stroke="#3f7d4e" stroke-width="2"/>
-<text x="1080.0" y="414.0" text-anchor="middle" font-weight="600" font-size="21">worker</text>
+<text x="1080.0" y="414.0" text-anchor="middle" font-weight="600" font-size="21">worker · backend</text>
 <text x="1080.0" y="440.0" text-anchor="middle" fill="#333" font-size="18">background jobs</text>
 <rect x="360" y="590" width="860" height="240" rx="12" fill="none" stroke="#3d5bb8" stroke-width="1.8" stroke-dasharray="8 5"/>
 <text x="376" y="618" font-size="17" font-weight="600" fill="#3d5bb8">State · survives pod restarts</text>
 <path d="M420,664 a170.0,14 0 0 1 340,0 v122 a170.0,14 0 0 1 -340,0 z" fill="#e9eefb" stroke="#3d5bb8" stroke-width="2"/>
 <ellipse cx="590.0" cy="664" rx="170.0" ry="14" fill="#e9eefb" stroke="#3d5bb8" stroke-width="2"/>
-<text x="590.0" y="722.0" text-anchor="middle" font-weight="600" font-size="21">PostgreSQL</text>
-<text x="590.0" y="748.0" text-anchor="middle" fill="#333" font-size="18">StatefulSet, persistent volume</text>
+<text x="590.0" y="728.0" text-anchor="middle" font-weight="600" font-size="21">PostgreSQL</text>
+<text x="590.0" y="754.0" text-anchor="middle" fill="#333" font-size="18">StatefulSet, persistent volume</text>
 <path d="M850,664 a140.0,14 0 0 1 280,0 v122 a140.0,14 0 0 1 -280,0 z" fill="#e9eefb" stroke="#3d5bb8" stroke-width="2"/>
 <ellipse cx="990.0" cy="664" rx="140.0" ry="14" fill="#e9eefb" stroke="#3d5bb8" stroke-width="2"/>
-<text x="990.0" y="722.0" text-anchor="middle" font-weight="600" font-size="21">Redis</text>
-<text x="990.0" y="748.0" text-anchor="middle" fill="#333" font-size="18">live events, job queue</text>
+<text x="990.0" y="728.0" text-anchor="middle" font-weight="600" font-size="21">Redis</text>
+<text x="990.0" y="754.0" text-anchor="middle" fill="#333" font-size="18">live events, job queue</text>
 <rect x="1290" y="50" width="290" height="800" rx="12" fill="none" stroke="#777" stroke-width="1.8" stroke-dasharray="8 5"/>
 <text x="1306" y="78" font-size="17" font-weight="600" fill="#777">Outside the cluster</text>
-<path d="M1320,154 a115.0,14 0 0 1 230,0 v62 a115.0,14 0 0 1 -230,0 z" fill="#f3f3f3" stroke="#777" stroke-width="2"/>
-<ellipse cx="1435.0" cy="154" rx="115.0" ry="14" fill="#f3f3f3" stroke="#777" stroke-width="2"/>
-<text x="1435.0" y="182.0" text-anchor="middle" font-weight="600" font-size="21">DigitalOcean Spaces</text>
-<text x="1435.0" y="208.0" text-anchor="middle" fill="#333" font-size="18">uploaded files</text>
+<path d="M1320,144 a115.0,14 0 0 1 230,0 v82 a115.0,14 0 0 1 -230,0 z" fill="#f3f3f3" stroke="#777" stroke-width="2"/>
+<ellipse cx="1435.0" cy="144" rx="115.0" ry="14" fill="#f3f3f3" stroke="#777" stroke-width="2"/>
+<text x="1435.0" y="188.0" text-anchor="middle" font-weight="600" font-size="21">DigitalOcean Spaces</text>
+<text x="1435.0" y="214.0" text-anchor="middle" fill="#333" font-size="18">uploaded files</text>
 <rect x="1320" y="420" width="230" height="90" rx="8" fill="#f3f3f3" stroke="#777" stroke-width="2"/>
 <text x="1435.0" y="454.0" text-anchor="middle" font-weight="600" font-size="21">GitHub Actions</text>
 <text x="1435.0" y="480.0" text-anchor="middle" fill="#333" font-size="18">tests, build, roll out</text>
@@ -70,4 +70,6 @@
 <path d="M1305,725 L1275,725 L1275,560 L840,560 L840,470" fill="none" stroke="#444" stroke-width="2" stroke-dasharray="6 5" marker-end="url(#arr)"/>
 <rect x="1084.2" y="559" width="131.6" height="20" fill="white"/>
 <text x="1150" y="573" text-anchor="middle" font-size="17" fill="#333">metrics, logs</text>
+<text x="330" y="878" font-size="16" fill="#555">Each block in the cluster is one container image: built with Docker, run together locally with Docker Compose,</text>
+<text x="330" y="900" font-size="16" fill="#555">deployed as a Kubernetes Deployment (PostgreSQL as a StatefulSet).</text>
 </svg>
