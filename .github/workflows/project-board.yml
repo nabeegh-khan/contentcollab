@@ -20,8 +20,6 @@ permissions:
   contents: read
 
 env:
-  # "@me" is the token owner; a login would need the read:org scope to resolve
-  OWNER: "@me"
   PROJECT_NUMBER: 2
 
 jobs:
@@ -61,14 +59,19 @@ jobs:
           # Until the PROJECT_TOKEN secret is added the run ends here, green,
           # so a missing secret never shows up as a failed check
           if [ -z "$GH_TOKEN" ]; then echo "No PROJECT_TOKEN secret: cards not moved"; exit 0; fi
-          project_id=$(gh project view "$PROJECT_NUMBER" --owner "$OWNER" --format json --jq .id)
-          field=$(gh project field-list "$PROJECT_NUMBER" --owner "$OWNER" --format json --jq '.fields[] | select(.name == "Status")')
-          field_id=$(printf '%s' "$field" | jq -r .id)
-          option_id=$(printf '%s' "$field" | jq -r --arg s "$STATUS" '.options[] | select(.name == $s) | .id')
-          items=$(gh project item-list "$PROJECT_NUMBER" --owner "$OWNER" --format json --limit 500)
+          # Plain GraphQL instead of the gh CLI: the CLI demands the read:org
+          # scope for project commands; the API needs only the project scope
+          gql() { curl -sS https://api.github.com/graphql -H "Authorization: Bearer $GH_TOKEN" -H "Content-Type: application/json" -d "$1"; }
+          q='{"query":"{ viewer { projectV2(number: '"$PROJECT_NUMBER"') { id field(name: \"Status\") { ... on ProjectV2SingleSelectField { id options { id name } } } items(first: 100) { nodes { id content { ... on Issue { number } } } } } } }"}'
+          data=$(gql "$q")
+          project_id=$(printf '%s' "$data" | jq -r .data.viewer.projectV2.id)
+          field_id=$(printf '%s' "$data" | jq -r .data.viewer.projectV2.field.id)
+          option_id=$(printf '%s' "$data" | jq -r --arg s "$STATUS" '.data.viewer.projectV2.field.options[] | select(.name == $s) | .id')
           for n in $ISSUES; do
-            item_id=$(printf '%s' "$items" | jq -r --argjson n "$n" '.items[] | select(.content.number == $n) | .id')
+            item_id=$(printf '%s' "$data" | jq -r --argjson n "$n" '.data.viewer.projectV2.items.nodes[] | select(.content.number == $n) | .id')
             if [ -z "$item_id" ]; then echo "#$n is not on the board"; continue; fi
-            gh project item-edit --project-id "$project_id" --id "$item_id" --field-id "$field_id" --single-select-option-id "$option_id"
+            m=$(jq -nc --arg p "$project_id" --arg i "$item_id" --arg f "$field_id" --arg o "$option_id" \
+              '{query: "mutation($p:ID!,$i:ID!,$f:ID!,$o:String!){ updateProjectV2ItemFieldValue(input:{projectId:$p,itemId:$i,fieldId:$f,value:{singleSelectOptionId:$o}}) { projectV2Item { id } } }", variables: {p:$p,i:$i,f:$f,o:$o}}')
+            gql "$m" | jq -e '.data.updateProjectV2ItemFieldValue.projectV2Item.id' > /dev/null
             echo "#$n -> $STATUS"
           done
