@@ -20,7 +20,8 @@ permissions:
   contents: read
 
 env:
-  OWNER: nabeegh-khan
+  # "@me" is the token owner; a login would need the read:org scope to resolve
+  OWNER: "@me"
   PROJECT_NUMBER: 2
 
 jobs:
