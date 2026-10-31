@@ -6,17 +6,9 @@ apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
   name: contentcollab
-  annotations:
-    # cert-manager issues contentcollab-tls for the hostname below
-    cert-manager.io/cluster-issuer: letsencrypt
 spec:
   gatewayClassName: nginx
   listeners:
-    # Port 80 exists for the Let's Encrypt HTTP-01 challenge only
-    - name: http
-      protocol: HTTP
-      port: 80
-      hostname: contentcollab.app
     - name: https
       protocol: HTTPS
       port: 443
