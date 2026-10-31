@@ -1,0 +1,16 @@
+# Non-secret settings, the same keys as .env.example (INF-2). Hosts are the
+# Service names below, so the API finds Postgres and Redis by DNS (CON-7).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+data:
+  PORT: "3000"
+  DB_HOST: postgres
+  DB_PORT: "5432"
+  DB_NAME: contentcollab
+  REDIS_HOST: redis
+  REDIS_PORT: "6379"
+  SPACES_ENDPOINT: https://tor1.digitaloceanspaces.com
+  SPACES_REGION: tor1
+  SPACES_BUCKET: contentcollab

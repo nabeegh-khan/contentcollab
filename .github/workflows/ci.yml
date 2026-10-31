@@ -22,3 +22,24 @@ jobs:
       - run: npm run lint # ESLint: catches bugs and unsafe patterns
       - run: npm run format:check # Prettier: fails if any file is not formatted
       - run: npm run typecheck # tsc: fails on type errors without building
+
+  # Renders both overlays and checks every object against the Kubernetes
+  # schemas, so a bad manifest fails the PR instead of the cluster
+  k8s:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: azure/setup-kubectl@v4
+      - name: Install kubeconform
+        run: |
+          curl -sSL https://github.com/yannh/kubeconform/releases/download/v0.7.0/kubeconform-linux-amd64.tar.gz | tar xz
+          sudo mv kubeconform /usr/local/bin/
+      - name: Render and validate
+        run: |
+          for overlay in minikube doks; do
+            kubectl kustomize k8s/$overlay > /tmp/$overlay.yaml
+            kubeconform -strict -summary -kubernetes-version 1.33.0 \
+              -schema-location default \
+              -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+              /tmp/$overlay.yaml
+          done
