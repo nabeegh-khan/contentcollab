@@ -1,0 +1,77 @@
+name: Project board
+
+# Keeps the board's Status column in step with what happens on issues and pull
+# requests, so nobody moves cards by hand:
+#   issue assigned            -> Ready
+#   issue has no assignee     -> Backlog
+#   PR opened with "Closes #n" -> In progress for each #n
+#   PR review requested        -> In review for each #n
+# GitHub's own board workflows already put new items in Backlog and closed ones in Done.
+# Needs the repository secret PROJECT_TOKEN: a personal access token of the board owner
+# with the "project" and "repo" scopes (the default GITHUB_TOKEN cannot see user projects).
+
+on:
+  issues:
+    types: [assigned, unassigned]
+  pull_request:
+    types: [opened, reopened, ready_for_review, review_requested]
+
+permissions:
+  contents: read
+
+env:
+  PROJECT_NUMBER: 2
+
+jobs:
+  move:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Decide the column and the issues to move
+        id: plan
+        env:
+          EVENT: ${{ github.event_name }}
+          ACTION: ${{ github.event.action }}
+          ISSUE: ${{ github.event.issue.number }}
+          ASSIGNEES: ${{ toJson(github.event.issue.assignees) }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          if [ "$EVENT" = issues ]; then
+            if [ "$(echo "$ASSIGNEES" | jq length)" -gt 0 ]; then status=Ready; else status=Backlog; fi
+            issues="$ISSUE"
+          else
+            case "$ACTION" in
+              review_requested) status="In review" ;;
+              *) status="In progress" ;;
+            esac
+            # Every "Closes #n", "Fixes #n" or "Resolves #n" in the PR description.
+            issues=$(printf '%s' "$PR_BODY" | grep -oiE '(close[sd]?|fix(e[sd])?|resolve[sd]?) #[0-9]+' | grep -oE '[0-9]+' | sort -u | tr '\n' ' ')
+          fi
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          echo "issues=$issues" >> "$GITHUB_OUTPUT"
+
+      - name: Move the cards
+        if: steps.plan.outputs.issues != ''
+        env:
+          GH_TOKEN: ${{ secrets.PROJECT_TOKEN }}
+          STATUS: ${{ steps.plan.outputs.status }}
+          ISSUES: ${{ steps.plan.outputs.issues }}
+        run: |
+          # Until the PROJECT_TOKEN secret is added the run ends here, green,
+          # so a missing secret never shows up as a failed check
+          if [ -z "$GH_TOKEN" ]; then echo "No PROJECT_TOKEN secret: cards not moved"; exit 0; fi
+          # Plain GraphQL instead of the gh CLI: the CLI demands the read:org
+          # scope for project commands; the API needs only the project scope
+          gql() { curl -sS https://api.github.com/graphql -H "Authorization: Bearer $GH_TOKEN" -H "Content-Type: application/json" -d "$1"; }
+          q='{"query":"{ viewer { projectV2(number: '"$PROJECT_NUMBER"') { id field(name: \"Status\") { ... on ProjectV2SingleSelectField { id options { id name } } } items(first: 100) { nodes { id content { ... on Issue { number } } } } } } }"}'
+          data=$(gql "$q")
+          project_id=$(printf '%s' "$data" | jq -r .data.viewer.projectV2.id)
+          field_id=$(printf '%s' "$data" | jq -r .data.viewer.projectV2.field.id)
+          option_id=$(printf '%s' "$data" | jq -r --arg s "$STATUS" '.data.viewer.projectV2.field.options[] | select(.name == $s) | .id')
+          for n in $ISSUES; do
+            item_id=$(printf '%s' "$data" | jq -r --argjson n "$n" '.data.viewer.projectV2.items.nodes[] | select(.content.number == $n) | .id')
+            if [ -z "$item_id" ]; then echo "#$n is not on the board"; continue; fi
+            m=$(jq -nc --arg p "$project_id" --arg i "$item_id" --arg f "$field_id" --arg o "$option_id" \
+              '{query: "mutation($p:ID!,$i:ID!,$f:ID!,$o:String!){ updateProjectV2ItemFieldValue(input:{projectId:$p,itemId:$i,fieldId:$f,value:{singleSelectOptionId:$o}}) { projectV2Item { id } } }", variables: {p:$p,i:$i,f:$f,o:$o}}')
+            gql "$m" | jq -e '.data.updateProjectV2ItemFieldValue.projectV2Item.id' > /dev/null
+            echo "#$n -> $STATUS"
+          done
