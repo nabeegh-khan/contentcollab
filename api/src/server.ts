@@ -2,15 +2,19 @@ import express from "express";
 import { fileURLToPath } from "node:url";
 import { errorHandler } from "./middleware/errorHandler.js";
 import { requestLogger } from "./middleware/logger.js";
+import { requestMetrics } from "./middleware/metrics.js";
 import { connectRedis } from "./lib/redis.js";
 import { pool } from "./lib/db.js";
 import healthRoutes from "./routes/health.js";
+import metricsRoutes from "./routes/metrics.js";
 
 const app = express();
 
 app.use(express.json({ limit: "1mb" }));
 app.use(requestLogger);
+app.use(requestMetrics);
 app.use("/health", healthRoutes);
+app.use("/metrics", metricsRoutes);
 app.use((req, res) => res.status(404).json({ error: "Not Found" }));
 app.use(errorHandler);
 
