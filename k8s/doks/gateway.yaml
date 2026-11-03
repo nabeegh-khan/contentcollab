@@ -1,0 +1,42 @@
+# Traffic entry (D11): one Gateway terminates TLS, HTTPRoutes send /api and
+# /socket.io to the API. The `web` route is added when that container exists.
+# Needs the Gateway API CRDs, a controller and cert-manager installed first
+# (scripts/cluster-up.sh, stage 3).
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: contentcollab
+spec:
+  gatewayClassName: nginx
+  listeners:
+    - name: https
+      protocol: HTTPS
+      port: 443
+      hostname: contentcollab.app
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - name: contentcollab-tls # issued by cert-manager
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: api
+spec:
+  parentRefs:
+    - name: contentcollab
+  hostnames: ["contentcollab.app"]
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /api
+        - path:
+            type: PathPrefix
+            value: /socket.io
+        - path:
+            type: Exact
+            value: /health
+      backendRefs:
+        - name: api
+          port: 3000

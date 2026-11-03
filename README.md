@@ -4,7 +4,7 @@ Upload a document, share it with the right people, and review it together: comme
 
 Team project for ECE1779 Introduction to Cloud Computing, University of Toronto, Fall 2026.
 
-**Status, 31 October:** proposal sections 2, 3 and 4 open as pull requests ([#31](https://github.com/nabeegh-khan/contentcollab/pull/31), [#34](https://github.com/nabeegh-khan/contentcollab/pull/34), [#33](https://github.com/nabeegh-khan/contentcollab/pull/33)), due 7 November; API contract on main ([docs/API.md](docs/API.md)); Kubernetes manifests with minikube and DigitalOcean overlays run on minikube with the restart test passed ([#35](https://github.com/nabeegh-khan/contentcollab/pull/35), [#52](https://github.com/nabeegh-khan/contentcollab/issues/52)); `/metrics` ([#57](https://github.com/nabeegh-khan/contentcollab/pull/57)) and the worker skeleton ([#58](https://github.com/nabeegh-khan/contentcollab/pull/58)) in review; one Issue per piece of work in every slice (#37 to #55). Minutes in [docs/meetings/](docs/meetings/).
+**Status, 2 November:** proposal sections 2, 3 and 4 in review ([#31](https://github.com/nabeegh-khan/contentcollab/pull/31), [#34](https://github.com/nabeegh-khan/contentcollab/pull/34), [#33](https://github.com/nabeegh-khan/contentcollab/pull/33)), due 7 November; API contract on main ([docs/API.md](docs/API.md)). Cloud and operations work in review: Kubernetes base manifests with minikube and DigitalOcean overlays and a GitHub Container Registry deploy workflow, run on minikube with the restart test passed ([#35](https://github.com/nabeegh-khan/contentcollab/pull/35), [#52](https://github.com/nabeegh-khan/contentcollab/issues/52)); `/metrics` with prom-client ([#57](https://github.com/nabeegh-khan/contentcollab/pull/57)); the BullMQ worker skeleton with a health endpoint ([#58](https://github.com/nabeegh-khan/contentcollab/pull/58)) and its Deployment ([#60](https://github.com/nabeegh-khan/contentcollab/pull/60)); cluster bring-up and tear-down scripts with a Let's Encrypt issuer ([#59](https://github.com/nabeegh-khan/contentcollab/pull/59)); Datadog autodiscovery of `/metrics` ([#61](https://github.com/nabeegh-khan/contentcollab/pull/61)); DigitalOcean alert policies and smoke checks ([#62](https://github.com/nabeegh-khan/contentcollab/pull/62)); and the API image built and smoke-tested against Redis on every pull request ([#64](https://github.com/nabeegh-khan/contentcollab/pull/64)). One Issue per piece of work in every slice (#37 to #55). Minutes in [docs/meetings/](docs/meetings/).
 
 ## Architecture
 
@@ -25,7 +25,7 @@ Decisions and trade-offs: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## What it does
 
-A review workspace for any file a team has to sign off on. Members are invited by email as Owner, Reviewer or Viewer, and outside reviewers get an expiring link. PDFs and images render in the browser; Word, Excel and PowerPoint files are converted to PDF by the worker for read-only review, with the original kept for download; text, Markdown and code render with line numbers. Collaborators leave threaded comments and pins on a page position or a line, @-mention each other, and mark a version Approved or Changes requested. Each upload becomes a new version, the changes from the previous one are highlighted, and any version can be restored. Everyone viewing the same version sees new comments without refreshing.
+A workspace where people share files and discuss them in place. Members are invited by email as Owner, Editor, Commenter or Viewer, and a link with an expiry admits people without an account. PDFs and images render in the browser; Office files are converted to PDF by the worker, with the original kept for download; other types are stored, versioned and downloadable. Collaborators leave threaded comments and pins on a page position and @-mention each other; everyone viewing the same version sees new comments without refreshing. Each upload is a version, and any version can be restored.
 
 This is a review tool, not an editor. Live text editing and track changes are out of scope; the reasons are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), decision D3.
 
@@ -38,7 +38,7 @@ This is a review tool, not an editor. Live text editing and track changes are ou
 | Files | DigitalOcean Spaces (S3-compatible object storage) |
 | Orchestration | DigitalOcean Kubernetes: Deployments, Services, a StatefulSet for PostgreSQL, HorizontalPodAutoscaler; one Kustomize base with minikube and DigitalOcean overlays ([k8s/](k8s/)) |
 | Frontend | small React app served as static files by its own container |
-| Background jobs | worker container on a Redis queue (BullMQ): Office-to-PDF conversion, bulk imports, thumbnails, version comparison |
+| Background jobs | worker container on a Redis queue (BullMQ): Office-to-PDF conversion, bulk imports, thumbnails |
 | Local development | Docker Compose |
 | Monitoring | DigitalOcean metrics and alerts; `/metrics` on the API (Prometheus format), collected with container logs by Datadog |
 | CI/CD | GitHub Actions: lint and test on every pull request, build and deploy on merge to `main` |
