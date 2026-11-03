@@ -1,0 +1,15 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../base
+
+# The image built inside minikube's Docker (`minikube image build`), so no
+# registry pull; `imagePullPolicy: Never` in the patch enforces that.
+images:
+  - name: ghcr.io/nabeegh-khan/contentcollab-api
+    newName: contentcollab-api
+    newTag: dev
+
+patches:
+  - path: api-patch.yaml
