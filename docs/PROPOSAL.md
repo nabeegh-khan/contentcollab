@@ -14,7 +14,7 @@ Owner: Yiqing Liu. Problem, intended users, why it is worth addressing, limitati
 
 ContentCollab is a workspace where people share files and discuss them in place. Files, versions and comments stay together instead of scattering across email, chat and file copies.
 
-Anyone can sign up, create a workspace and invite people as Owner, Editor, Commenter or Viewer, the roles Google Drive and Figma use; a link with an expiry admits people without an account. Everyone viewing a version sees new comments and pins (notes attached to a spot on the page) without refreshing. Each upload is a version, and any version can be restored.
+Anyone can sign up, create a workspace and invite people as Owner, Editor, Commenter or Viewer, the roles Google Drive uses [11]; a link with an expiry admits people without an account. Everyone viewing a version sees new comments and pins (notes attached to a spot on the page) without refreshing. Each upload is a version, and any version can be restored.
 
 The cloud objective is resilience: an API pod can crash, the database can move to another node, or a release can roll out, and no user loses a comment.
 
@@ -56,7 +56,7 @@ API pods hold no state, so any pod can be killed or added without losing data. E
 | PostgreSQL | Users, workspaces, roles, versions and comments, linked by foreign keys and changed inside transactions |
 | Persistent storage | A persistent volume backed by a DigitalOcean Volume; the demonstration deletes the database pod and shows the data survives |
 | Orchestration | DigitalOcean Kubernetes: Deployments, Services, a StatefulSet for PostgreSQL, a HorizontalPodAutoscaler for the API, each a manifest the cluster keeps converged to its desired state [8]; manifests tested on minikube first, Swarm as the fallback if the cluster is unstable on 14 November [9] |
-| Deployment provider | DigitalOcean, the course's IaaS provider [7]; Fly.io offers Kubernetes only as a paid beta |
+| Deployment provider | DigitalOcean, the course's IaaS provider [7] |
 | Monitoring | DigitalOcean alerts on CPU, memory and disk; request counts, errors and latency at `/metrics`; Datadog for dashboards and container logs |
 
 ### 2.6 Core features
@@ -108,3 +108,5 @@ Owner: Jyotiraditya Kale. Initial understanding (10 October notes), technical hy
 [9] ECE1779 lecture slides, Lecture 6: From VMs to managed deployment and Swarm rolling updates, slides 38 and 44–45, Fall 2026.
 
 [10] ECE1779 lecture slides, Lecture 1: Project requirements, slide 14, Fall 2026.
+
+[11] Google, "Share files from Google Drive," Google Drive Help. https://support.google.com/drive/answer/2494822
