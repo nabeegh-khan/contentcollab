@@ -40,7 +40,8 @@ kubectl get nodes
 #    load balancer in front of it.
 kubectl kustomize "https://github.com/nginx/nginx-gateway-fabric/config/crd/gateway-api/standard?ref=$NGF_VERSION" | kubectl apply -f -
 helm upgrade --install ngf oci://ghcr.io/nginx/charts/nginx-gateway-fabric \
-  --version "${NGF_VERSION#v}" --create-namespace -n nginx-gateway
+  --version "${NGF_VERSION#v}" --create-namespace -n nginx-gateway \
+  --set nginxGateway.productTelemetry.enable=false # vendor usage reporting; unused, and its export fails (BUILD_LOG.md)
 
 # 3. cert-manager, with Gateway API support so the HTTP-01 challenge can be
 #    answered through an HTTPRoute instead of an Ingress
@@ -87,4 +88,4 @@ else
   echo "Gateway address: $addr"
   echo "Next: A record contentcollab.app to $addr at the registrar. The certificate is issued on the first HTTPS request."
 fi
-echo "For CI rollouts, add the repository secret KUBECONFIG with: base64 -w0 ~/.kube/config"
+echo "For CI rollouts (deploy.yml): repository secret DIGITALOCEAN_ACCESS_TOKEN, and variable SMOKE_URL once DNS and TLS work"
