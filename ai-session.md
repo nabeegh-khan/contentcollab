@@ -62,3 +62,19 @@ One Kustomize base with a `minikube` and a `doks` overlay: the overlays patch on
 - Beyond the lecture: Kustomize overlays, the StatefulSet, the PodDisruptionBudget and probe tuning were not covered in class, so each was checked against the Kubernetes documentation before use, and the manifests were written from this layout, then rendered with `kubectl kustomize` and validated with kubeconform against the Kubernetes 1.33 and Gateway API schemas; the same check runs in CI on every pull request.
 - Corrected: a `PGDATA` override in the first draft was removed because `compose.yaml` lets the `postgres:18` image choose its data directory under the mounted volume, and the two environments must match.
 - Found on minikube the same day: both api pods had been restarted once, because the liveness probe pointed at `/health` and failed while PostgreSQL was still starting. A dependency outage must not kill a healthy process, so liveness now checks only that the socket accepts connections and readiness keeps the dependency check. The autoscaler's `minReplicas: 2` had also overridden the overlay's single replica; the overlay now sets it to 1. The restart test passed: a row written, `postgres-0` deleted, the row read back from the recreated pod on the same claim.
+
+## Load test for the autoscaling extension (#69), 4 November 2026
+
+### Prompt
+
+For the autoscaling and high-availability extension in section 2.7, we need to step the request rate up against the deployed API and see when latency or errors climb, how many API replicas the HPA adds, and whether a rolling update under load drops requests. Can this be one script with no new dependencies, since the team runs it from different laptops?
+
+### AI Response
+
+A Node script using the built-in `fetch`: an open-loop request schedule at a fixed rate per step (so slow responses don't lower the offered load), p50 and p95 latency and the error rate per step, the ready replica count read with `kubectl` at the end of each step, and an optional mode that runs `kubectl rollout restart` halfway through a constant-load step and counts every failed request.
+
+### What Your Team Did With It
+
+- Checked locally against the API with PostgreSQL and Redis at 20 and 100 req/s (no errors, p95 10 and 22 ms); the replicas column shows "-" without cluster access, which is the intended fallback.
+- Changed: the step-length variable is `STEP_SECONDS`, not `SECONDS`, because `SECONDS` is a built-in bash variable.
+- Not yet run on DigitalOcean: that needs the cluster from #54, and the results table goes into `docs/loadtest/` for the presentation and the final report.
