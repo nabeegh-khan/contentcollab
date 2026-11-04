@@ -5,8 +5,8 @@
 # idempotent, so re-running after a failure is safe (INF-3).
 #
 # Needs: doctl (authenticated with `doctl auth init`), kubectl, helm.
-# Creates billable resources: two nodes and one load balancer (RESEARCH.md,
-# about US$46 a month). Run `scripts/cluster-down.sh` after grading (INF-7).
+# Creates billable resources: two US$18 nodes and one US$12 load balancer,
+# about US$48 a month (docs/ARCHITECTURE.md). Run `scripts/cluster-down.sh` after grading (INF-7).
 set -euo pipefail
 
 : "${CLUSTER_NAME:=contentcollab}"
