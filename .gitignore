@@ -21,3 +21,4 @@ Thumbs.db
 # Editor
 .vscode/
 .idea/
+k8s/**/secrets.yaml
