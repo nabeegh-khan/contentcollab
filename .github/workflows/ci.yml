@@ -4,6 +4,8 @@ name: ci
 on:
   pull_request:
     branches: [main]
+  # deploy.yml calls these same checks on main before it builds anything
+  workflow_call:
 
 jobs:
   api:
