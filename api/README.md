@@ -13,10 +13,14 @@ api/
     services/        the work behind a route: storage client (Spaces), realtime (Socket.IO), queue (BullMQ)
     db/              Prisma schema or SQL, migrations, one shared client
     types.ts         raw input types and validated types, kept apart
-  tests/             Jest and Supertest, one file per resource, run serially against a reset test database
+    **/*.test.ts     Jest and Supertest tests next to the file they test, run serially against PostgreSQL and Redis
   Dockerfile
   package.json
 ```
+
+## Tests
+
+`npm test` runs Jest with Supertest against the Express app (`src/server.ts` exports it without listening) and a real PostgreSQL and Redis. CI starts both as service containers on every pull request (the `test` job in `.github/workflows/ci.yml`). Locally, point `DB_*` and `REDIS_*` at a PostgreSQL and Redis you can reach. Each new route adds a `<route>.test.ts` beside it, starting from `src/routes/health.test.ts`.
 
 Rules that apply here are in `docs/PRACTICES.md` (API-*, DB-*, SEC-*, TST-*).
 
