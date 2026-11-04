@@ -8,8 +8,9 @@ spec:
   selector:
     app: api
   ports:
-    - port: 3000
-      targetPort: 3000
+    - name: http
+      port: 3000
+      targetPort: http
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -41,7 +42,10 @@ spec:
           # CI on merge (doks: the commit SHA), never edited here (INF-5)
           image: ghcr.io/nabeegh-khan/contentcollab-api:latest
           ports:
-            - containerPort: 3000
+            # Named once here; the Service and both probes refer to it by name
+            # (INF-10). Must equal PORT in configmap.yaml (L8 p92)
+            - name: http
+              containerPort: 3000
           envFrom:
             - configMapRef:
                 name: app-config
@@ -53,12 +57,12 @@ spec:
           readinessProbe:
             httpGet:
               path: /health
-              port: 3000
+              port: http
             periodSeconds: 5
             failureThreshold: 3
           livenessProbe:
             tcpSocket:
-              port: 3000
+              port: http
             initialDelaySeconds: 20
             periodSeconds: 15
           resources:
