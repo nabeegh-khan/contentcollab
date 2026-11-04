@@ -43,3 +43,12 @@ jobs:
               -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
               /tmp/$overlay.yaml
           done
+      - name: Every object in the app namespace
+        # A namespace set in the base does not reach resources an overlay
+        # adds; the Gateway once landed in `default` this way (BUILD_LOG.md,
+        # 4 Nov). yq 4 is preinstalled on the Ubuntu runner.
+        run: |
+          for overlay in minikube doks; do
+            stray=$(yq 'select(.kind != "Namespace" and .metadata.namespace != "contentcollab") | .kind + "/" + .metadata.name' /tmp/$overlay.yaml | grep -v '^---$' || true)
+            [ -z "$stray" ] || { echo "::error::$overlay renders objects outside contentcollab: $stray"; exit 1; }
+          done
