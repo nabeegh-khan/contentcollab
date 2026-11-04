@@ -24,8 +24,13 @@ const isEntry = process.argv[1] !== undefined && fileURLToPath(import.meta.url) 
 
 if (isEntry) {
   const port = Number(process.env.PORT ?? 3000);
-  await connectRedis();
   const server = app.listen(port, () => console.log(`api listening on ${port}`));
+
+  // Listen first, then connect to Redis in the background (#65). If Redis is
+  // down when the pod starts, the process stays up: /health answers 503 so
+  // readiness keeps traffic away, liveness (the socket) passes, and the
+  // client's reconnect brings Redis back without a restart loop.
+  connectRedis().catch((err: Error) => console.error("redis: first connect failed:", err.message));
 
   // On SIGTERM (Compose stop, Kubernetes rolling update) stop taking new
   // connections, let in-flight requests finish, then close the pool.
