@@ -56,7 +56,22 @@ kubectl -n cert-manager rollout status deployment/cert-manager --timeout=120s
 kubectl apply -f k8s/base/namespace.yaml
 kubectl apply -f "$SECRETS_FILE"
 sed "s/LETSENCRYPT_EMAIL/$LETSENCRYPT_EMAIL/" k8s/doks/cluster-issuer.yaml | kubectl apply -f -
-kubectl apply -k k8s/doks
+# 4b. The application, pinned to an image CI built, never :latest (INF-9;
+#     L8 p67, p73). IMAGE_TAG defaults to the newest commit on main that
+#     deploy.yml builds for; the registry is checked before anything applies.
+git fetch -q origin main
+: "${IMAGE_TAG:=$(git log -1 --format=%H origin/main -- api k8s .github/workflows/deploy.yml)}"
+rendered=$(kubectl kustomize k8s/doks | sed "s#\(ghcr.io/nabeegh-khan/contentcollab-[a-z]*\):latest#\1:$IMAGE_TAG#g")
+for repo in $(printf '%s\n' "$rendered" | grep -o 'ghcr.io/nabeegh-khan/contentcollab-[a-z]*' | sort -u); do
+  name=${repo#ghcr.io/}
+  token=$(curl -fsS "https://ghcr.io/token?scope=repository:$name:pull" | sed -n 's/.*"token":"\([^"]*\)".*/\1/p')
+  code=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $token" \
+    -H "Accept: application/vnd.oci.image.index.v1+json,application/vnd.docker.distribution.manifest.v2+json" \
+    "https://ghcr.io/v2/$name/manifests/$IMAGE_TAG")
+  [ "$code" = "200" ] || { echo "no image $repo:$IMAGE_TAG in the registry (HTTP $code); set IMAGE_TAG to a commit deploy.yml built"; exit 1; }
+done
+printf '%s\n' "$rendered" | kubectl apply -f -
+kubectl -n contentcollab rollout status deployment/api --timeout=180s
 
 # 5. Where the world reaches it. The Gateway's address is the load balancer;
 #    an A record for contentcollab.app at the registrar points there.
