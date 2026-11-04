@@ -29,6 +29,10 @@ spec:
     metadata:
       labels:
         app: api
+      annotations:
+        # Datadog autodiscovery: scrape /metrics from every api pod (#55, #27)
+        ad.datadoghq.com/api.checks: |
+          {"openmetrics": {"instances": [{"openmetrics_endpoint": "http://%%host%%:3000/metrics", "namespace": "contentcollab", "metrics": ["http_.*", "nodejs_.*", "process_.*"]}]}}
     spec:
       # Longer than any request, so SIGTERM lets in-flight work finish (API-7)
       terminationGracePeriodSeconds: 30

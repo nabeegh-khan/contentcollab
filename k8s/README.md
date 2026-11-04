@@ -32,7 +32,7 @@ Validate without a cluster: `kubectl kustomize k8s/minikube` renders the objects
 
 ## Cluster
 
-`scripts/cluster-up.sh` creates the DOKS cluster and installs what the `doks` overlay expects (Gateway API CRDs, NGINX Gateway Fabric, cert-manager with the Let's Encrypt issuer in `doks/cluster-issuer.yaml`), applies the Secret and the overlay, and prints the load balancer address for the DNS record. Needs `doctl`, `kubectl`, `helm` and `LETSENCRYPT_EMAIL`; it bills from the moment it runs. `scripts/cluster-down.sh` deletes it all after grading.
+`scripts/cluster-up.sh` creates the DOKS cluster and installs what the `doks` overlay expects (Gateway API CRDs, NGINX Gateway Fabric, cert-manager with the Let's Encrypt issuer in `doks/cluster-issuer.yaml`), applies the Secret and the overlay, and prints the load balancer address for the DNS record. Needs `doctl`, `kubectl`, `helm` and `LETSENCRYPT_EMAIL`; it bills from the moment it runs. With `DATADOG_API_KEY` in the environment it also installs the Datadog agent from `doks/datadog-values.yaml` (container logs, Kubernetes state, the API's `/metrics` by autodiscovery). `scripts/cluster-down.sh` deletes it all after grading.
 
 ## Images
 
