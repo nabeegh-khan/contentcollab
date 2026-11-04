@@ -72,6 +72,7 @@ tests/               cross-service checks: restart, scale, end-to-end smoke
 .github/workflows/   CI on pull requests, deploy on merge to main
 docs/
   ARCHITECTURE.md    decisions with the options weighed; the source for proposal section 2
+  BUILD_LOG.md       dated record of the cluster build: decisions, evidence, incidents, sources
   PLAN.md            stages, owners, integration, risks; the source for proposal section 3
   PRACTICES.md       the engineering practices we hold to, with their course sources
   PROPOSAL.md        the proposal, one section per owner, due 7 Nov
@@ -85,7 +86,7 @@ Each folder has a README saying what goes in it, its planned layout, and the pra
 ## How we work
 
 - One Issue per task, assigned to whoever takes it. Issues live on the [project board](https://github.com/users/nabeegh-khan/projects/2) (Backlog, Ready, In progress, In review, Done); new issues land in Backlog on their own, assigned ones move to Ready, a pull request that says `Closes #n` moves #n to In progress, and closed ones move to Done.
-- Reviews: the reviewer is the teammate whose area the change touches, so reviews spread across the team instead of landing on one person. Every request carries a review-by date three to four calendar days out, the same rule for everyone. Anything tied to a course deadline is reviewed at least a week before it.
+- Reviews: the reviewer is the teammate whose area the change touches, so reviews spread across the team instead of landing on one person. Every request gives three calendar days, the same rule for everyone; with no review by then, the author says so in a dated comment on the pull request and squash-merges, so no review stays outstanding. Anything tied to a course deadline is reviewed at least a week before it.
 - Code: one branch per Issue (`feature/`, `fix/`, `ci/`), one pull request per branch with `Closes #<n>`, one review from a teammate, squash and merge. Keep them small.
 - Documentation goes straight to `main`; it does not need a pull request.
 - Commits: `<type>(<scope>): <summary>` in the imperative, under 50 characters. Types: `feat`, `fix`, `docs`, `refactor`, `chore`, `ci`.

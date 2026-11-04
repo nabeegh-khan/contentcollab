@@ -62,3 +62,19 @@ One Kustomize base with a `minikube` and a `doks` overlay: the overlays patch on
 - Beyond the lecture: Kustomize overlays, the StatefulSet, the PodDisruptionBudget and probe tuning were not covered in class, so each was checked against the Kubernetes documentation before use, and the manifests were written from this layout, then rendered with `kubectl kustomize` and validated with kubeconform against the Kubernetes 1.33 and Gateway API schemas; the same check runs in CI on every pull request.
 - Corrected: a `PGDATA` override in the first draft was removed because `compose.yaml` lets the `postgres:18` image choose its data directory under the mounted volume, and the two environments must match.
 - Found on minikube the same day: both api pods had been restarted once, because the liveness probe pointed at `/health` and failed while PostgreSQL was still starting. A dependency outage must not kill a healthy process, so liveness now checks only that the socket accepts connections and readiness keeps the dependency check. The autoscaler's `minReplicas: 2` had also overridden the overlay's single replica; the overlay now sets it to 1. The restart test passed: a row written, `postgres-0` deleted, the row read back from the recreated pod on the same claim.
+
+## Deploy pipeline and lecture 8 fixes (#59, #65, #70, #74), 4 November 2026
+
+### Prompt
+
+Lecture 8 says to use explicit image tags rather than `latest`, to name container ports, and to recover with `kubectl rollout undo`. Our cluster bring-up applied `latest`, our deploy workflow used a static kubeconfig secret, and the API waited for Redis before opening its port. What should change so a merge to `main` only ships tested code, the cluster never runs `latest`, and a bad release rolls itself back?
+
+### AI Response
+
+Render the overlay with the commit SHA substituted for `latest` and check the registry holds that tag before applying; name the port `http` and refer to it by name in the Service and probes; open the port before connecting to Redis so readiness, not a restart loop, handles the outage; call the pull-request checks from the deploy workflow; use DigitalOcean's doctl action with a kubeconfig that expires in 600 seconds; and roll back automatically when `rollout status` or a smoke check fails.
+
+### What Your Team Did With It
+
+- Checked against the sources: lecture 8 slides (p53-55, p67, p73, p76-81, p92, p106-111) and DigitalOcean's push-to-deploy guide, which uses `digitalocean/action-doctl` and `doctl kubernetes cluster kubeconfig save --expiry-seconds 600`. The static `KUBECONFIG` secret was dropped because a doctl kubeconfig authenticates through doctl itself.
+- Tested: the API with Redis absent answered `/health` 503 and stayed up, then 200 once Redis started, in the same process; a CI step now repeats that against the built image. Both overlays render; the bring-up's registry check found the image for the current `main` commit.
+- Kept as a condition: the smoke-and-rollback step runs only once a smoke URL is set, so deploys don't roll back before DNS and TLS exist.
