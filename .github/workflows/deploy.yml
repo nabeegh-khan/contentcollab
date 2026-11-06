@@ -9,12 +9,13 @@ on:
     branches: [main]
     paths:
       - "api/**"
+      - "worker/**"
       - "k8s/**"
       - ".github/workflows/deploy.yml"
 
 # Package names on ghcr.io must be lowercase; the repository name is not
 env:
-  IMAGE: ghcr.io/nabeegh-khan/contentcollab-api
+  REGISTRY: ghcr.io/nabeegh-khan
 
 jobs:
   build:
@@ -22,6 +23,9 @@ jobs:
     permissions:
       contents: read
       packages: write # lets GITHUB_TOKEN push to ghcr.io, no extra secret
+    strategy:
+      matrix:
+        service: [api, worker] # one image per service folder, built in parallel
     steps:
       - uses: actions/checkout@v5
       - uses: docker/login-action@v3
@@ -31,15 +35,15 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - uses: docker/build-push-action@v6
         with:
-          context: api
+          context: ${{ matrix.service }}
           push: true
           # Two tags: the SHA for rollouts and rollbacks, latest for laptops
           tags: |
-            ${{ env.IMAGE }}:${{ github.sha }}
-            ${{ env.IMAGE }}:latest
+            ${{ env.REGISTRY }}/contentcollab-${{ matrix.service }}:${{ github.sha }}
+            ${{ env.REGISTRY }}/contentcollab-${{ matrix.service }}:latest
           # Reuses layers from the last build so the npm ci layer is cached
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
 
   rollout:
     needs: build
@@ -61,12 +65,15 @@ jobs:
           fi
       - uses: azure/setup-kubectl@v4
         if: steps.cluster.outputs.present == 'true'
-      - name: Roll the api Deployment to this commit
+      - name: Roll the Deployments to this commit
         if: steps.cluster.outputs.present == 'true'
         env:
           KUBECONFIG: ${{ runner.temp }}/kubeconfig
         run: |
           kubectl apply -k k8s/doks
-          kubectl -n contentcollab set image deployment/api api=$IMAGE:${{ github.sha }}
+          for svc in api worker; do
+            kubectl -n contentcollab set image deployment/$svc $svc=$REGISTRY/contentcollab-$svc:${{ github.sha }}
+          done
           # Fails the job, and so the run, if the new pods never become ready
           kubectl -n contentcollab rollout status deployment/api --timeout=180s
+          kubectl -n contentcollab rollout status deployment/worker --timeout=180s

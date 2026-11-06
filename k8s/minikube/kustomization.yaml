@@ -10,6 +10,10 @@ images:
   - name: ghcr.io/nabeegh-khan/contentcollab-api
     newName: contentcollab-api
     newTag: dev
+  - name: ghcr.io/nabeegh-khan/contentcollab-worker
+    newName: contentcollab-worker
+    newTag: dev
 
 patches:
   - path: api-patch.yaml
+  - path: worker-patch.yaml

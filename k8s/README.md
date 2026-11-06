@@ -5,19 +5,20 @@ Kubernetes manifests, applied with `kubectl apply -k` (Kustomize) in two overlay
 ```
 k8s/
   base/        Namespace, ConfigMap, StatefulSet (postgres) with its volume claim, Deployment (redis),
-               Deployment + Service + HorizontalPodAutoscaler + PodDisruptionBudget (api),
+               Deployment + Service + HorizontalPodAutoscaler + PodDisruptionBudget (api), Deployment (worker),
                secrets.example.yaml (the shape of the one Secret; real values are never committed)
   minikube/    overlay: one api replica, image built inside minikube, NodePort
   doks/        overlay: DigitalOcean block-storage class for the database, Gateway and HTTPRoute for traffic
 ```
 
-`web` and `worker` get their Deployments when those containers exist; the backup CronJob lands with the backup slice.
+`web` gets its Deployment when that container exists; the backup CronJob lands with the backup slice.
 
 ## Run on minikube
 
 ```
 minikube start --cpus 2 --memory 4096
 minikube image build -t contentcollab-api:dev api
+minikube image build -t contentcollab-worker:dev worker
 cp k8s/base/secrets.example.yaml k8s/base/secrets.yaml      # edit the values; the file is git-ignored
 kubectl apply -f k8s/base/namespace.yaml
 kubectl apply -f k8s/base/secrets.yaml
@@ -32,7 +33,7 @@ Validate without a cluster: `kubectl kustomize k8s/minikube` renders the objects
 
 ## Images
 
-CI (`.github/workflows/deploy.yml`) pushes `ghcr.io/nabeegh-khan/contentcollab-api:<sha>` and `:latest` on every merge to `main`. The base manifest points at `:latest`; the cluster is moved to a SHA by the same workflow, so the manifest's tag is never edited by hand.
+CI (`.github/workflows/deploy.yml`) pushes `ghcr.io/nabeegh-khan/contentcollab-api` and `contentcollab-worker`, tagged `<sha>` and `latest`, on every merge to `main`. The base manifest points at `:latest`; the cluster is moved to a SHA by the same workflow, so the manifest's tag is never edited by hand.
 <!-- PRACTICES:start -->
 
 ## Practices that apply here
