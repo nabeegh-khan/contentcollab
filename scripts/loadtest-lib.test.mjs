@@ -20,6 +20,17 @@ test("a fetch network error is named by its cause code", () => {
   assert.equal(failureReason(null, e), "ECONNRESET");
 });
 
+// Shapes seen from Node 24 fetch on 6 Nov 2026: localhost gives an AggregateError that carries the code;
+// a blocked port ("bad port") gives a cause with a message and no code
+test("a refused connection to localhost (AggregateError cause) is named by its code", () => {
+  const cause = Object.assign(new AggregateError([new Error("connect ECONNREFUSED ::1:59999")]), { code: "ECONNREFUSED" });
+  assert.equal(failureReason(null, new TypeError("fetch failed", { cause })), "ECONNREFUSED");
+});
+
+test("a cause without a code is named by its message", () => {
+  assert.equal(failureReason(null, new TypeError("fetch failed", { cause: new Error("bad port") })), "bad port");
+});
+
 test("an error without a code falls back to its name", () => {
   assert.equal(failureReason(null, new TypeError("fetch failed")), "TypeError");
 });

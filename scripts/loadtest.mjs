@@ -16,9 +16,11 @@
 // set by the end of the step. Results also go to docs/loadtest/<timestamp>.csv
 // for the final report.
 
-import { execFileSync } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
+import { promisify } from "node:util";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { hpaReadiness, readHpa } from "./hpa-ready.mjs";
+import { failureReason, summarizeFailures, parseTopNodes, overMemory } from "./loadtest-lib.mjs";
 
 const BASE = process.env.BASE;
 if (!BASE) {
@@ -31,6 +33,8 @@ const SECONDS = Number(process.env.STEP_SECONDS ?? 60);
 const ROLLOUT = process.env.ROLLOUT === "1";
 const NS = process.env.NAMESPACE ?? "contentcollab";
 const TIMEOUT_MS = Number(process.env.TIMEOUT_MS ?? 5000);
+// Stop the run if any node's memory goes above this (kubectl top nodes, every 15 s)
+const MAX_NODE_MEMORY_PCT = Number(process.env.MAX_NODE_MEMORY_PCT ?? 95);
 
 // An HPA that cannot read CPU never scales, and a flat replica count would
 // then pass for the cluster's limit (ARCHITECTURE D5). SKIP_HPA_CHECK=1 for
@@ -66,14 +70,35 @@ const replicas = () => kubectl(["get", "deployment", "api", "-o", "jsonpath={.st
 
 async function one(latencies, counts) {
   const start = performance.now();
+  let reason;
   try {
     const res = await fetch(BASE + PATH, { signal: AbortSignal.timeout(TIMEOUT_MS) });
     await res.arrayBuffer();
-    counts[res.status < 500 ? "ok" : "fail"]++;
-  } catch {
-    counts.fail++; // timeout or connection refused
+    reason = failureReason(res);
+  } catch (err) {
+    reason = failureReason(null, err);
+  }
+  if (reason) {
+    counts.fail++;
+    counts.byReason[reason] = (counts.byReason[reason] ?? 0) + 1;
+  } else {
+    counts.ok++;
   }
   latencies.push(performance.now() - start);
+}
+
+// Node memory, polled without blocking the request timer; null when kubectl cannot reach a cluster
+const run = promisify(execFile);
+const memory = { peak: 0, over: null };
+async function pollMemory() {
+  try {
+    const { stdout } = await run("kubectl", ["top", "nodes", "--no-headers"]);
+    const nodes = parseTopNodes(stdout);
+    for (const n of nodes) memory.peak = Math.max(memory.peak, n.memoryPct);
+    memory.over ??= overMemory(nodes, MAX_NODE_MEMORY_PCT);
+  } catch {
+    // no metrics: the guard cannot act, said once at the start
+  }
 }
 
 const pct = (sorted, p) =>
@@ -81,14 +106,20 @@ const pct = (sorted, p) =>
 
 async function step(rate, seconds, midway) {
   const latencies = [];
-  const counts = { ok: 0, fail: 0 };
+  const counts = { ok: 0, fail: 0, byReason: {} };
+  memory.peak = 0;
   const inflight = new Set();
   const tickMs = 100; // send rate/10 requests every 100 ms
   const perTick = rate / (1000 / tickMs);
   let owed = 0;
   const started = Date.now();
   let midwayDone = false;
-  while (Date.now() - started < seconds * 1000) {
+  let lastPoll = 0;
+  while (Date.now() - started < seconds * 1000 && !memory.over) {
+    if (Date.now() - lastPoll >= 15000) {
+      lastPoll = Date.now();
+      pollMemory();
+    }
     owed += perTick;
     while (owed >= 1) {
       const p = one(latencies, counts).finally(() => inflight.delete(p));
@@ -104,34 +135,52 @@ async function step(rate, seconds, midway) {
   await Promise.all(inflight);
   const sorted = latencies.sort((a, b) => a - b);
   const total = counts.ok + counts.fail;
+  const ran = (Date.now() - started) / 1000;
   return {
     target: rate,
-    achieved: (total / seconds).toFixed(1),
+    achieved: (ran > 0 ? total / ran : 0).toFixed(1),
     p50: pct(sorted, 50).toFixed(0),
     p95: pct(sorted, 95).toFixed(0),
     errors: total ? ((100 * counts.fail) / total).toFixed(2) : "0.00",
     failed: counts.fail,
+    failures: summarizeFailures(counts.byReason),
+    peakMemory: memory.peak || "-",
     replicas: replicas(),
   };
 }
 
 const rows = [];
 console.log(`Target ${BASE}${PATH}, ${SECONDS} s per step${ROLLOUT ? ", rolling restart halfway" : ""}`);
-console.log("| target req/s | achieved req/s | p50 ms | p95 ms | errors % | failed | API replicas |");
-console.log("|---|---|---|---|---|---|---|");
+await pollMemory();
+if (!memory.peak) console.warn("kubectl top nodes gave nothing: the node-memory guard is off for this run");
+if (memory.over) {
+  console.error(`not starting: ${memory.over.node} is already at ${memory.over.memoryPct}% memory (limit ${MAX_NODE_MEMORY_PCT}%)`);
+  process.exit(1);
+}
+console.log("| target req/s | achieved req/s | p50 ms | p95 ms | errors % | failed | failure reasons | peak node memory % | API replicas |");
+console.log("|---|---|---|---|---|---|---|---|---|");
 for (const rate of STEPS) {
   const midway = ROLLOUT ? () => kubectl(["rollout", "restart", "deployment/api"]) : null;
   const r = await step(rate, SECONDS, midway);
   rows.push(r);
-  console.log(`| ${r.target} | ${r.achieved} | ${r.p50} | ${r.p95} | ${r.errors} | ${r.failed} | ${r.replicas} |`);
+  console.log(
+    `| ${r.target} | ${r.achieved} | ${r.p50} | ${r.p95} | ${r.errors} | ${r.failed} | ${r.failures || "-"} | ${r.peakMemory} | ${r.replicas} |`,
+  );
+  if (memory.over) {
+    console.error(`STOPPED: ${memory.over.node} at ${memory.over.memoryPct}% memory (limit ${MAX_NODE_MEMORY_PCT}%)`);
+    break;
+  }
 }
 
 mkdirSync("docs/loadtest", { recursive: true });
 const file = `docs/loadtest/${new Date().toISOString().replace(/[:.]/g, "-")}${ROLLOUT ? "-rollout" : ""}.csv`;
 writeFileSync(
   file,
-  "target,achieved,p50_ms,p95_ms,error_pct,failed,replicas\n" +
-    rows.map((r) => [r.target, r.achieved, r.p50, r.p95, r.errors, r.failed, r.replicas].join(",")).join("\n") +
-    "\n",
+  "target,achieved,p50_ms,p95_ms,error_pct,failed,failure_reasons,peak_node_memory_pct,replicas\n" +
+    rows
+      .map((r) => [r.target, r.achieved, r.p50, r.p95, r.errors, r.failed, r.failures, r.peakMemory, r.replicas].join(","))
+      .join("\n") +
+    "\n" +
+    (memory.over ? `# stopped: ${memory.over.node} at ${memory.over.memoryPct}% memory\n` : ""),
 );
 console.log(`Saved ${file}`);
