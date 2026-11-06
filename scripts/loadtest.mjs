@@ -14,6 +14,7 @@
 
 import { execFileSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
+import { hpaReadiness, readHpa } from "./hpa-ready.mjs";
 
 const BASE = process.env.BASE;
 if (!BASE) {
@@ -26,6 +27,22 @@ const SECONDS = Number(process.env.STEP_SECONDS ?? 60);
 const ROLLOUT = process.env.ROLLOUT === "1";
 const NS = process.env.NAMESPACE ?? "contentcollab";
 const TIMEOUT_MS = Number(process.env.TIMEOUT_MS ?? 5000);
+
+// An HPA that cannot read CPU never scales, and a flat replica count would
+// then pass for the cluster's limit (ARCHITECTURE D5). SKIP_HPA_CHECK=1 for
+// runs that do not measure scaling, e.g. ROLLOUT=1 at a fixed rate.
+if (process.env.SKIP_HPA_CHECK !== "1") {
+  const hpa = readHpa(NS);
+  if (!hpa) {
+    console.warn("kubectl cannot read hpa/api: scaling not checked; the replicas column will show -");
+  } else {
+    const { ok, reason } = hpaReadiness(hpa);
+    if (!ok) {
+      console.error(`hpa/api cannot scale: ${reason}. Run scripts/metrics-server.sh, or set SKIP_HPA_CHECK=1.`);
+      process.exit(1);
+    }
+  }
+}
 
 function kubectl(args) {
   try {
