@@ -1,7 +1,7 @@
 // Tests for loadtest-lib.mjs: failure reasons per request and the node-memory guard for the load test (#69).
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { failureReason, summarizeFailures, parseTopNodes, overMemory } from "./loadtest-lib.mjs";
+import { failureReason, summarizeFailures, parseTopNodes, overMemory, scalingChanges, alignFailures } from "./loadtest-lib.mjs";
 
 test("a 5xx response is failed with its status; anything below 500 is not a failure", () => {
   assert.equal(failureReason({ status: 503 }), "http 503");
@@ -77,4 +77,33 @@ test("something thrown that is not an Error is named 'error'", () => {
 test("the guard stops only above the limit, not at it", () => {
   assert.equal(overMemory([{ node: "a", memoryPct: 95 }], 95), null);
   assert.deepEqual(overMemory([{ node: "a", memoryPct: 96 }], 95), { node: "a", memoryPct: 96 });
+});
+
+test("scaling samples become changes: replicas added and pods turning ready, with their times", () => {
+  const samples = [
+    { t: 0, desired: 2, replicas: 2, ready: 2 },
+    { t: 2000, desired: 2, replicas: 2, ready: 2 },
+    { t: 4000, desired: 3, replicas: 3, ready: 2 },
+    { t: 9000, desired: 3, replicas: 3, ready: 3 },
+    { t: 11000, desired: 2, replicas: 2, ready: 2 },
+  ];
+  assert.deepEqual(scalingChanges(samples), [
+    { t: 4000, kind: "added", from: 2, to: 3 },
+    { t: 9000, kind: "ready", from: 2, to: 3 },
+    { t: 11000, kind: "removed", from: 3, to: 2 },
+  ]);
+});
+
+test("each failure is placed after the latest pod added or turned ready, and counted inside the window", () => {
+  const changes = [
+    { t: 4000, kind: "added", from: 2, to: 3 },
+    { t: 9000, kind: "ready", from: 2, to: 3 },
+  ];
+  const failures = [1000, 5000, 9500, 60000];
+  assert.deepEqual(alignFailures(failures, changes, 30000), {
+    total: 4,
+    inWindow: 2,
+    beforeAnyChange: 1,
+    secondsAfter: [null, 1, 0.5, 51],
+  });
 });

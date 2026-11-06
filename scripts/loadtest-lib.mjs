@@ -38,3 +38,37 @@ export function parseTopNodes(text) {
 export function overMemory(nodes, limitPct) {
   return nodes.find((n) => n.memoryPct > limitPct) ?? null;
 }
+
+/**
+ * Turns timed samples of {desired, replicas, ready} into changes: pods added or
+ * removed (Deployment replicas) and pods turning ready (readyReplicas going up).
+ */
+export function scalingChanges(samples) {
+  const changes = [];
+  for (let i = 1; i < samples.length; i++) {
+    const a = samples[i - 1];
+    const b = samples[i];
+    if (b.replicas > a.replicas) changes.push({ t: b.t, kind: "added", from: a.replicas, to: b.replicas });
+    if (b.replicas < a.replicas) changes.push({ t: b.t, kind: "removed", from: a.replicas, to: b.replicas });
+    if (b.ready > a.ready) changes.push({ t: b.t, kind: "ready", from: a.ready, to: b.ready });
+  }
+  return changes;
+}
+
+/**
+ * For each failure time (ms), the seconds since the latest pod was added or turned
+ * ready (null if none yet), and how many fall within windowMs after such a change.
+ */
+export function alignFailures(failureTimes, changes, windowMs) {
+  const ups = changes.filter((c) => c.kind === "added" || c.kind === "ready").map((c) => c.t);
+  const secondsAfter = failureTimes.map((f) => {
+    const before = ups.filter((t) => t <= f);
+    return before.length ? (f - Math.max(...before)) / 1000 : null;
+  });
+  return {
+    total: failureTimes.length,
+    inWindow: secondsAfter.filter((s) => s !== null && s * 1000 <= windowMs).length,
+    beforeAnyChange: secondsAfter.filter((s) => s === null).length,
+    secondsAfter,
+  };
+}

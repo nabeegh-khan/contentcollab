@@ -14,7 +14,10 @@
 // For each step it prints achieved req/s, p50 and p95 latency, the error rate
 // and, when kubectl can reach the cluster, the API replica count the HPA has
 // set by the end of the step. Results also go to docs/loadtest/<timestamp>.csv
-// for the final report.
+// for the final report, with <timestamp>-failures.csv (time, step and reason
+// of every failed request) and <timestamp>-scaling.csv (HPA desired, pods
+// created and ready every 2 s, and the HPA's rescale events), so failures can
+// be lined up with pods being added (ALIGN_WINDOW_S, default 30).
 //
 // Node memory (MAX_NODE_MEMORY_PCT, default 95) and the replica count are read
 // from kubectl's current context, which must be the cluster behind BASE.
@@ -23,7 +26,14 @@ import { execFile, execFileSync } from "node:child_process";
 import { promisify } from "node:util";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { hpaReadiness, readHpa } from "./hpa-ready.mjs";
-import { failureReason, summarizeFailures, parseTopNodes, overMemory } from "./loadtest-lib.mjs";
+import {
+  failureReason,
+  summarizeFailures,
+  parseTopNodes,
+  overMemory,
+  scalingChanges,
+  alignFailures,
+} from "./loadtest-lib.mjs";
 
 const BASE = process.env.BASE;
 if (!BASE) {
@@ -38,6 +48,7 @@ const NS = process.env.NAMESPACE ?? "contentcollab";
 const TIMEOUT_MS = Number(process.env.TIMEOUT_MS ?? 5000);
 // Stop the run if any node's memory goes above this (kubectl top nodes, every 15 s)
 const MAX_NODE_MEMORY_PCT = Number(process.env.MAX_NODE_MEMORY_PCT ?? 95);
+const ALIGN_WINDOW_S = Number(process.env.ALIGN_WINDOW_S ?? 30);
 if (!(MAX_NODE_MEMORY_PCT > 0 && MAX_NODE_MEMORY_PCT <= 100)) {
   console.error(`MAX_NODE_MEMORY_PCT must be a number from 1 to 100, got "${process.env.MAX_NODE_MEMORY_PCT}"`);
   process.exit(1);
@@ -75,7 +86,9 @@ function kubectl(args) {
 
 const replicas = () => kubectl(["get", "deployment", "api", "-o", "jsonpath={.status.readyReplicas}"]) ?? "-";
 
-async function one(latencies, counts) {
+const failureLog = []; // { t, target, reason }
+
+async function one(latencies, counts, target) {
   const start = performance.now();
   let reason;
   try {
@@ -86,6 +99,7 @@ async function one(latencies, counts) {
     reason = failureReason(null, err);
   }
   if (reason) {
+    failureLog.push({ t: Date.now(), target, reason });
     counts.fail++;
     counts.byReason[reason] = (counts.byReason[reason] ?? 0) + 1;
   } else {
@@ -113,6 +127,48 @@ async function pollMemory(stepStats) {
   }
 }
 
+// HPA desired, pods created and pods ready, sampled every 2 s; one read at a time
+const timeline = { samples: [], sampling: false };
+async function sampleScaling() {
+  if (timeline.sampling) return;
+  timeline.sampling = true;
+  try {
+    const { stdout } = await run("kubectl", ["-n", NS, "get", "hpa/api", "deployment/api", "-o", "json"], {
+      timeout: 5000,
+    });
+    const items = JSON.parse(stdout).items ?? [];
+    const hpa = items.find((i) => i.kind === "HorizontalPodAutoscaler");
+    const dep = items.find((i) => i.kind === "Deployment");
+    timeline.samples.push({
+      t: Date.now(),
+      desired: hpa?.status?.desiredReplicas ?? null,
+      replicas: dep?.status?.replicas ?? 0,
+      ready: dep?.status?.readyReplicas ?? 0,
+    });
+  } catch {
+    // no cluster: no timeline
+  } finally {
+    timeline.sampling = false;
+  }
+}
+
+/** The HPA's SuccessfulRescale events since `since` (ms), oldest first. */
+function rescaleEvents(since) {
+  const out = kubectl([
+    "get",
+    "events",
+    "--field-selector",
+    "involvedObject.kind=HorizontalPodAutoscaler,involvedObject.name=api,reason=SuccessfulRescale",
+    "-o",
+    "json",
+  ]);
+  if (!out) return [];
+  return (JSON.parse(out).items ?? [])
+    .map((e) => ({ t: Date.parse(e.lastTimestamp ?? e.eventTime ?? e.firstTimestamp), message: e.message }))
+    .filter((e) => e.t >= since - 1000)
+    .sort((a, b) => a.t - b.t);
+}
+
 const pct = (sorted, p) =>
   sorted.length ? sorted[Math.min(sorted.length - 1, Math.floor((p / 100) * sorted.length))] : 0;
 
@@ -133,7 +189,7 @@ async function step(rate, seconds, midway) {
     }
     const due = Math.floor((rate * (Date.now() - started)) / 1000);
     while (sent < due) {
-      const p = one(latencies, counts).finally(() => inflight.delete(p));
+      const p = one(latencies, counts, rate).finally(() => inflight.delete(p));
       inflight.add(p);
       sent++;
     }
@@ -170,6 +226,9 @@ if (memory.over) {
   console.error(`not starting: ${memory.over.node} is already at ${memory.over.memoryPct}% memory (limit ${MAX_NODE_MEMORY_PCT}%)`);
   process.exit(1);
 }
+const runStarted = Date.now();
+await sampleScaling();
+const sampler = setInterval(sampleScaling, 2000);
 console.log("| target req/s | achieved req/s | p50 ms | p95 ms | errors % | failed | failure reasons | peak node memory % | API replicas |");
 console.log("|---|---|---|---|---|---|---|---|---|");
 for (const rate of STEPS) {
@@ -185,8 +244,12 @@ for (const rate of STEPS) {
   }
 }
 
+clearInterval(sampler);
+await sampleScaling();
+
 mkdirSync("docs/loadtest", { recursive: true });
-const file = `docs/loadtest/${new Date().toISOString().replace(/[:.]/g, "-")}${ROLLOUT ? "-rollout" : ""}.csv`;
+const stem = `docs/loadtest/${new Date().toISOString().replace(/[:.]/g, "-")}${ROLLOUT ? "-rollout" : ""}`;
+const file = `${stem}.csv`;
 writeFileSync(
   file,
   "target,achieved,p50_ms,p95_ms,error_pct,failed,failure_reasons,peak_node_memory_pct,replicas,stopped\n" +
@@ -198,3 +261,38 @@ writeFileSync(
     "\n",
 );
 console.log(`Saved ${file}`);
+
+const iso = (ms) => new Date(ms).toISOString();
+writeFileSync(
+  `${stem}-failures.csv`,
+  "time,step_target,reason\n" + failureLog.map((f) => [iso(f.t), f.target, f.reason].join(",")).join("\n") + "\n",
+);
+const events = rescaleEvents(runStarted);
+writeFileSync(
+  `${stem}-scaling.csv`,
+  "time,source,hpa_desired,pods_created,pods_ready,event\n" +
+    [
+      ...timeline.samples.map((s) => ({ t: s.t, row: [iso(s.t), "sample", s.desired ?? "", s.replicas, s.ready, ""] })),
+      ...events.map((e) => ({ t: e.t, row: [iso(e.t), "event", "", "", "", e.message.replace(/[,\r\n"]/g, " ")] })),
+    ]
+      .sort((a, b) => a.t - b.t)
+      .map((r) => r.row.join(","))
+      .join("\n") +
+    "\n",
+);
+console.log(`Saved ${stem}-failures.csv and ${stem}-scaling.csv`);
+
+if (timeline.samples.length) {
+  const changes = scalingChanges(timeline.samples);
+  for (const c of changes) console.log(`${iso(c.t)} pods ${c.kind}: ${c.from} -> ${c.to}`);
+  for (const e of events) console.log(`${iso(e.t)} HPA: ${e.message}`);
+  const a = alignFailures(
+    failureLog.map((f) => f.t),
+    changes,
+    ALIGN_WINDOW_S * 1000,
+  );
+  console.log(
+    `${a.inWindow} of ${a.total} failures came within ${ALIGN_WINDOW_S} s after a pod was added or turned ready; ` +
+      `${a.beforeAnyChange} came before any such change`,
+  );
+}
