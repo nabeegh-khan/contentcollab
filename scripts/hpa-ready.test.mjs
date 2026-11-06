@@ -22,15 +22,17 @@ const withoutMetricsServer = {
   },
 };
 
-// Shape of an autoscaling/v2 status once the resource metrics API answers
+// Status of hpa/api on DOKS, 6 Nov 2026, after metrics-server 0.9.0 was installed
+// (ScalingLimited only says the HPA sits at minReplicas; it does not block scaling)
 const reading = {
   status: {
     conditions: [
       { type: "AbleToScale", status: "True", reason: "ReadyForNewScale" },
       { type: "ScalingActive", status: "True", reason: "ValidMetricFound" },
+      { type: "ScalingLimited", status: "True", reason: "TooFewReplicas" },
     ],
     currentMetrics: [
-      { type: "Resource", resource: { name: "cpu", current: { averageUtilization: 3, averageValue: "3m" } } },
+      { type: "Resource", resource: { name: "cpu", current: { averageUtilization: 9, averageValue: "9m" } } },
     ],
     currentReplicas: 2,
     desiredReplicas: 2,
@@ -44,7 +46,7 @@ test("not ready when the resource metrics API is missing", () => {
 });
 
 test("ready when ScalingActive is True and CPU utilization is reported", () => {
-  assert.deepEqual(hpaReadiness(reading), { ok: true, reason: "cpu 3%" });
+  assert.deepEqual(hpaReadiness(reading), { ok: true, reason: "cpu 9%" });
 });
 
 test("not ready when ScalingActive is True but no CPU reading yet", () => {
@@ -54,7 +56,7 @@ test("not ready when ScalingActive is True but no CPU reading yet", () => {
 });
 
 test("not ready when the HPA cannot scale its target", () => {
-  const conditions = [{ type: "AbleToScale", status: "False", reason: "FailedGetScale" }, reading.status.conditions[1]];
+  const conditions = [{ type: "AbleToScale", status: "False", reason: "FailedGetScale" }, ...reading.status.conditions.slice(1)];
   const r = hpaReadiness({ status: { ...reading.status, conditions } });
   assert.deepEqual(r, { ok: false, reason: "AbleToScale is not True (FailedGetScale)" });
 });
