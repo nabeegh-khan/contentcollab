@@ -1,6 +1,10 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
+# The base's namespace covers only the base's resources; the Gateway and
+# HTTPRoute listed here need it set again (BUILD_LOG.md, 4 Nov)
+namespace: contentcollab
+
 resources:
   - ../base
   - gateway.yaml
