@@ -8,10 +8,14 @@
 export function failureReason(res, err) {
   if (err !== undefined && err !== null) {
     if (err?.name === "TimeoutError") return "timeout"; // AbortSignal.timeout
-    return err?.cause?.code ?? err?.code ?? (err?.cause?.message || undefined) ?? err?.name ?? "error";
+    const code = [err?.cause?.code, err?.code].find((c) => typeof c === "string"); // DOMException.code is a number
+    return clean(code ?? (err?.cause?.message || undefined) ?? (err instanceof Error ? err.name : "error"));
   }
   return res && res.status >= 500 ? `http ${res.status}` : null;
 }
+
+/** A reason is written into a CSV cell: no commas, quotes or newlines, at most 60 characters. */
+const clean = (reason) => String(reason).replace(/[,\r\n"]/g, " ").slice(0, 60);
 
 /** "http 503:5 timeout:3", most frequent first; "" when nothing failed. */
 export function summarizeFailures(byReason) {

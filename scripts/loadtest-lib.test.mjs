@@ -58,3 +58,23 @@ test("the guard names the first node above the limit, or null", () => {
   assert.equal(overMemory(nodes, 95), null);
   assert.deepEqual(overMemory(nodes, 85), { node: "default-3es04n", memoryPct: 89 });
 });
+
+test("a reason never contains a comma, quote or newline, and is at most 60 characters", () => {
+  const e = new TypeError("fetch failed", { cause: new Error('invalid header, value "x"\nnext') });
+  const r = failureReason(null, e);
+  assert.equal(r, "invalid header  value  x  next");
+  assert.ok(failureReason(null, new TypeError("x", { cause: new Error("y".repeat(100)) })).length <= 60);
+});
+
+test("a DOMException other than a timeout is named, not given its numeric legacy code", () => {
+  assert.equal(failureReason(null, new DOMException("aborted", "AbortError")), "AbortError");
+});
+
+test("something thrown that is not an Error is named 'error'", () => {
+  assert.equal(failureReason(null, "boom"), "error");
+});
+
+test("the guard stops only above the limit, not at it", () => {
+  assert.equal(overMemory([{ node: "a", memoryPct: 95 }], 95), null);
+  assert.deepEqual(overMemory([{ node: "a", memoryPct: 96 }], 95), { node: "a", memoryPct: 96 });
+});
