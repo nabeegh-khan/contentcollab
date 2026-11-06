@@ -69,7 +69,7 @@ jobs:
   docker:
     runs-on: ubuntu-latest
     services:
-      redis: # the API connects to Redis before it listens, so the smoke run needs one
+      redis: # so /health can report Redis up in the smoke run
         image: redis:8
         ports: ["6379:6379"]
     steps:
@@ -96,3 +96,15 @@ jobs:
             sleep 1
           done
           echo "api did not answer on 3000"; docker logs api; exit 1
+      - name: Starts without Redis (#65)
+        # Points the image at a Redis that does not exist: the process must
+        # still listen and answer /health with 503, not crash or hang, so
+        # Kubernetes never restart-loops a pod over a dependency outage
+        run: |
+          docker run -d --name api-noredis --network host -e PORT=3002 -e REDIS_HOST=127.0.0.1 -e REDIS_PORT=6399 contentcollab-api:pr
+          for i in $(seq 1 20); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:3002/health || true)
+            if [ "$code" = "503" ]; then echo "listening without Redis, /health 503"; exit 0; fi
+            sleep 1
+          done
+          echo "api did not listen without Redis (last $code)"; docker logs api-noredis; exit 1
