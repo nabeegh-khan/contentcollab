@@ -78,3 +78,66 @@ A Node script using the built-in `fetch`: an open-loop request schedule at a fix
 - Checked locally against the API with PostgreSQL and Redis at 20 and 100 req/s (no errors, p95 10 and 22 ms); the replicas column shows "-" without cluster access, which is the intended fallback.
 - Changed: the step-length variable is `STEP_SECONDS`, not `SECONDS`, because `SECONDS` is a built-in bash variable.
 - Not yet run on DigitalOcean: that needs the cluster from #54, and the results table goes into `docs/loadtest/` for the presentation and the final report.
+
+## Deploy pipeline and lecture 8 fixes (#59, #65, #70, #74), 4 November 2026
+
+### Prompt
+
+Lecture 8 says to use explicit image tags rather than `latest`, to name container ports, and to recover with `kubectl rollout undo`. Our cluster bring-up applied `latest`, our deploy workflow used a static kubeconfig secret, and the API waited for Redis before opening its port. What should change so a merge to `main` only ships tested code, the cluster never runs `latest`, and a bad release rolls itself back?
+
+### AI Response
+
+Render the overlay with the commit SHA substituted for `latest` and check the registry holds that tag before applying; name the port `http` and refer to it by name in the Service and probes; open the port before connecting to Redis so readiness, not a restart loop, handles the outage; call the pull-request checks from the deploy workflow; use DigitalOcean's doctl action with a kubeconfig that expires in 600 seconds; and roll back automatically when `rollout status` or a smoke check fails.
+
+### What Your Team Did With It
+
+- Checked against the sources: lecture 8 slides (p53-55, p67, p73, p76-81, p92, p106-111) and DigitalOcean's push-to-deploy guide, which uses `digitalocean/action-doctl` and `doctl kubernetes cluster kubeconfig save --expiry-seconds 600`. The static `KUBECONFIG` secret was dropped because a doctl kubeconfig authenticates through doctl itself.
+- Tested: the API with Redis absent answered `/health` 503 and stayed up, then 200 once Redis started, in the same process; a CI step now repeats that against the built image. Both overlays render; the bring-up's registry check found the image for the current `main` commit.
+- Kept as a condition: the smoke-and-rollback step runs only once a smoke URL is set, so deploys don't roll back before DNS and TLS exist.
+
+## Gateway namespace fault and its CI check (#59), 4 November 2026
+
+### Prompt
+
+After bring-up the Gateway had no address in the `contentcollab` namespace, though every pod was running. Why, and how do we stop it happening again?
+
+### AI Response
+
+The Gateway and HTTPRoute were in `default`: a kustomization's `namespace` field covers only that kustomization's resources, and the DigitalOcean overlay adds the Gateway without setting one. Set the namespace in the overlay, add a CI step that fails when any rendered object other than the Namespace falls outside `contentcollab`, push the check before the fix so it can be seen failing, then move the live objects by creating them in `contentcollab` before deleting the copies in `default`.
+
+### What Your Team Did With It
+
+- Checked against the sources: Kustomize's `namespace` reference, the GitHub runner image list (yq preinstalled) and the NGINX Gateway Fabric v2.8.0 chart values, which is also where product telemetry, failing on every run, was turned off.
+- Tested: CI failed on the check alone, naming `Gateway/contentcollab`, and passed with the fix. Recorded in `docs/BUILD_LOG.md`.
+
+## Proposal freeze: review check and word budget (#9, #31, #33, #34, #66), 6 November 2026
+
+### Prompt
+
+The four sections are written and reviewed, and the file must be one Markdown document of at most 2,000 words, references included. My plan: merge each section's pull request with a merge commit so its author's history stays; check each section against every review comment, the handout and our architecture; fix what is open, naming the owner in each commit; trim my Section 2 to about 870 words without losing a table or handout item; and keep live updates as decided on 24 October. For each section, which review comments are still unanswered, which claims lack a source, and where can words go without losing a rubric item?
+
+### AI Response
+
+A list per section. Section 1: the tool claims had no sources, one citation pointed to a reference that did not exist, and the gap claim was too broad, because Acrobat's shared review and Hypothesis already offer live, anchored PDF comments. Section 3: nobody was named for a demo failure, the testing wording was generic, and the review rule disagreed with the README. Section 4: the ingress-nginx change and the reason behind the AI evaluation had been dropped. The response also suggested where to cut words in each section.
+
+### What Your Team Did With It
+
+- Checked against the sources, live on 6 November: the course handout (section requirements, the advanced-feature list, 2,000 words); Adobe's share-and-review page and Hypothesis's site for Section 1; and the NGINX Gateway Fabric 2.8 release blog and session-persistence docs, plus DigitalOcean's load-balancer docs. Those sources confirmed that cookie persistence is now open source but experimental. Sticky sessions stayed, and D12 records where affinity comes from.
+- Not accepted as given: "closed per-seat services" for the competitors. Hypothesis's server is open source and Acrobat reviewers need no account, so Section 1 contrasts vendor-run services with a deployment we run and observe ourselves. The advanced features were set by the team: four committed, each with an owner, and backup and email as stretch goals.
+- Counted: 1,970 words with table pipes and URLs removed (1,990 by `wc`); every reference is cited and every citation is defined.
+
+## Spreading the API replicas across nodes (#69), 6 November 2026
+
+### Prompt
+
+The proposal says the API runs two replicas on two nodes for high availability, but on 4 November they landed on different nodes only by chance. My approach: state the rule in the architecture first, add a CI check that fails on the current manifests, then add the rule to the API Deployment, so the check shows it working. Which Kubernetes mechanism fits a Deployment that the autoscaler takes from two to five replicas on two nodes, and how do I check for it in CI?
+
+### AI Response
+
+Use a topology spread constraint on `kubernetes.io/hostname` with `maxSkew: 1` rather than required pod anti-affinity, which allows only one pod per node and would leave extra replicas and the rolling-update surge pod Pending. Prefer `ScheduleAnyway`, and add `matchLabelKeys: [pod-template-hash]` so each rollout revision spreads on its own. In CI, render both overlays and assert the constraint with yq. The first draft gave two wrong reasons. It said the scheduler's default allows a skew of 3, and that `ScheduleAnyway` was needed for single-node minikube.
+
+### What Your Team Did With It
+
+- Checked against the sources: the Kubernetes topology spread and node assignment pages, live on 6 November. The default spread does not score nodes missing a zone label, and `kubectl get nodes` showed our nodes have none, so the real reason is stronger than the first draft's. The `ScheduleAnyway` reason was corrected to a drained or lost node, because with one node the skew is zero either way.
+- Tested: the check was pushed first and failed in CI (run 42286395192); with the constraint it passed (run 42287294841). An independent review also made the check assert `ScheduleAnyway` and the hash, which it had let slip.
+- Left open in the pull request: `ScheduleAnyway` is a preference, and spreading is not rebalanced after a scale-down.

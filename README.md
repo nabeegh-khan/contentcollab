@@ -43,7 +43,7 @@ This is a review tool, not an editor. Live text editing and track changes are ou
 | Monitoring | DigitalOcean metrics and alerts; `/metrics` on the API (Prometheus format), collected with container logs by Datadog |
 | CI/CD | GitHub Actions: lint and test on every pull request, build and deploy on merge to `main` |
 
-Advanced features promised in the proposal: security (sign-in, roles, HTTPS, secrets) and CI/CD. Planned extension: auto-scaling and high availability. Everything else on the board is for the final report, not the proposal.
+Advanced features committed in the proposal: security (sign-in, roles, HTTPS, secrets), CI/CD, real-time, and auto-scaling with high availability. Stretch goals: backup and recovery, external email. Everything else on the board is for the final report, not the proposal.
 
 ## Timeline
 
@@ -72,6 +72,7 @@ tests/               cross-service checks: restart, scale, end-to-end smoke
 .github/workflows/   CI on pull requests, deploy on merge to main
 docs/
   ARCHITECTURE.md    decisions with the options weighed; the source for proposal section 2
+  BUILD_LOG.md       dated record of the cluster build: decisions, evidence, incidents, sources
   PLAN.md            stages, owners, integration, risks; the source for proposal section 3
   PRACTICES.md       the engineering practices we hold to, with their course sources
   PROPOSAL.md        the proposal, one section per owner, due 7 Nov
