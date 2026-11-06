@@ -3,9 +3,13 @@
 //
 //   BASE=https://<host> node scripts/loadtest.mjs                 # steps 10,25,50,100,200 req/s, 60 s each
 //   BASE=... STEPS=20,40 STEP_SECONDS=30 node scripts/loadtest.mjs     # custom steps
-//   BASE=... ROLLOUT=1 STEPS=50 STEP_SECONDS=120 node scripts/loadtest.mjs
+//   BASE=... ROLLOUT=1 SKIP_HPA_CHECK=1 STEPS=50 STEP_SECONDS=120 node scripts/loadtest.mjs
 //        # constant load; halfway through, `kubectl rollout restart deployment/api`
 //        # runs, and every failed request during the rollout is counted
+//
+// Run from the repository root (results go to docs/loadtest/). Before a
+// scaling run it checks that hpa/api can read CPU and stops if not;
+// SKIP_HPA_CHECK=1 skips that for runs that do not measure scaling.
 //
 // For each step it prints achieved req/s, p50 and p95 latency, the error rate
 // and, when kubectl can reach the cluster, the API replica count the HPA has
@@ -32,11 +36,14 @@ const TIMEOUT_MS = Number(process.env.TIMEOUT_MS ?? 5000);
 // then pass for the cluster's limit (ARCHITECTURE D5). SKIP_HPA_CHECK=1 for
 // runs that do not measure scaling, e.g. ROLLOUT=1 at a fixed rate.
 if (process.env.SKIP_HPA_CHECK !== "1") {
-  const hpa = readHpa(NS);
-  if (!hpa) {
-    console.warn("kubectl cannot read hpa/api: scaling not checked; the replicas column will show -");
+  const read = readHpa(NS);
+  if (read.unreachable) {
+    console.warn(`no cluster (${read.error.split("\n")[0]}): hpa/api in ${NS} not checked; the replicas column will show -`);
+  } else if (!read.hpa) {
+    console.error(`cannot read hpa/api in ${NS}: ${read.error}`);
+    process.exit(1);
   } else {
-    const { ok, reason } = hpaReadiness(hpa);
+    const { ok, reason } = hpaReadiness(read.hpa);
     if (!ok) {
       console.error(`hpa/api cannot scale: ${reason}. Run scripts/metrics-server.sh, or set SKIP_HPA_CHECK=1.`);
       process.exit(1);

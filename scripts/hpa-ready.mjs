@@ -17,9 +17,9 @@ export function hpaReadiness(hpa) {
   const status = hpa?.status;
   if (!status) return { ok: false, reason: "HPA has no status yet" };
 
-  const active = (status.conditions ?? []).find((c) => c.type === "ScalingActive");
-  if (active?.status !== "True") {
-    return { ok: false, reason: `ScalingActive is not True (${active?.reason ?? "no condition"})` };
+  for (const type of ["AbleToScale", "ScalingActive"]) {
+    const c = (status.conditions ?? []).find((x) => x.type === type);
+    if (c?.status !== "True") return { ok: false, reason: `${type} is not True (${c?.reason ?? "no condition"})` };
   }
 
   const cpu = (status.currentMetrics ?? []).find(
@@ -31,28 +31,35 @@ export function hpaReadiness(hpa) {
   return { ok: true, reason: `cpu ${utilization}%` };
 }
 
-/** Reads the HPA through kubectl; null when kubectl or the cluster is unreachable. */
+const UNREACHABLE = /Unable to connect|connection refused|no such host|dial tcp|i\/o timeout|no configuration has been provided/i;
+
+/**
+ * Reads the HPA through kubectl.
+ * @returns {{hpa: object} | {unreachable: true, error: string} | {unreachable: false, error: string}}
+ *   unreachable: kubectl missing or no cluster (fine for a local run); otherwise a real error (wrong namespace, no HPA, no access)
+ */
 export function readHpa(namespace = "contentcollab", name = "api") {
   try {
     const out = execFileSync("kubectl", ["-n", namespace, "get", "hpa", name, "-o", "json"], {
       encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
+      stdio: ["ignore", "pipe", "pipe"],
     });
-    return JSON.parse(out);
-  } catch {
-    return null;
+    return { hpa: JSON.parse(out) };
+  } catch (e) {
+    const error = String(e.stderr ?? e.message).trim();
+    return { unreachable: e.code === "ENOENT" || UNREACHABLE.test(error), error };
   }
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
   const ns = process.env.NAMESPACE ?? "contentcollab";
   const name = process.env.HPA ?? "api";
-  const hpa = readHpa(ns, name);
-  if (!hpa) {
-    console.error(`cannot read hpa/${name} in ${ns}: is kubectl pointed at the cluster?`);
+  const read = readHpa(ns, name);
+  if (!read.hpa) {
+    console.error(`cannot read hpa/${name} in ${ns}: ${read.error}`);
     process.exit(1);
   }
-  const { ok, reason } = hpaReadiness(hpa);
+  const { ok, reason } = hpaReadiness(read.hpa);
   console.log(`hpa/${name}: ${ok ? "reading cpu" : "NOT READY"}: ${reason}`);
   process.exit(ok ? 0 : 1);
 }

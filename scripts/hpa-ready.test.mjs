@@ -40,7 +40,7 @@ const reading = {
 test("not ready when the resource metrics API is missing", () => {
   const r = hpaReadiness(withoutMetricsServer);
   assert.equal(r.ok, false);
-  assert.match(r.reason, /FailedGetResourceMetric/);
+  assert.equal(r.reason, "ScalingActive is not True (FailedGetResourceMetric)");
 });
 
 test("ready when ScalingActive is True and CPU utilization is reported", () => {
@@ -50,7 +50,13 @@ test("ready when ScalingActive is True and CPU utilization is reported", () => {
 test("not ready when ScalingActive is True but no CPU reading yet", () => {
   const r = hpaReadiness({ status: { ...reading.status, currentMetrics: [] } });
   assert.equal(r.ok, false);
-  assert.match(r.reason, /no cpu utilization/);
+  assert.equal(r.reason, "no cpu utilization reported yet");
+});
+
+test("not ready when the HPA cannot scale its target", () => {
+  const conditions = [{ type: "AbleToScale", status: "False", reason: "FailedGetScale" }, reading.status.conditions[1]];
+  const r = hpaReadiness({ status: { ...reading.status, conditions } });
+  assert.deepEqual(r, { ok: false, reason: "AbleToScale is not True (FailedGetScale)" });
 });
 
 test("not ready when the HPA has no status", () => {
