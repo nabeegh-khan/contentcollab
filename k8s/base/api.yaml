@@ -33,10 +33,11 @@ spec:
       # Longer than any request, so SIGTERM lets in-flight work finish (API-7)
       terminationGracePeriodSeconds: 30
       # One replica per node where possible, so losing a node leaves one
-      # serving (INF-4, ARCHITECTURE D5). ScheduleAnyway, not required
-      # anti-affinity: replicas 3-5 and the rollout surge pod still schedule
-      # on two nodes, and single-node minikube still runs. pod-template-hash
-      # spreads each rollout revision on its own.
+      # serving (INF-4, ARCHITECTURE D5). Not required anti-affinity:
+      # replicas 3-5 and the rollout surge pod must still schedule on two
+      # nodes. ScheduleAnyway, not DoNotSchedule: a drained or lost node
+      # still counts as a domain with no API pods. pod-template-hash spreads
+      # each rollout revision on its own.
       topologySpreadConstraints:
         - maxSkew: 1
           topologyKey: kubernetes.io/hostname
