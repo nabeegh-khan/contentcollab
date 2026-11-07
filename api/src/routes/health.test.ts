@@ -4,6 +4,7 @@ import app from "../server.js";
 import { pool } from "../lib/db.js";
 import { connectRedis, redis } from "../lib/redis.js";
 import { requireServices } from "../lib/reachable.js";
+import { requireDatabase } from "../lib/dbReady.js";
 
 // These run against a real PostgreSQL and Redis: the service containers in
 // ci.yml, or locally `docker compose -f compose.yaml -f compose.test.yaml up -d db redis`
@@ -25,6 +26,7 @@ beforeAll(async () => {
     ],
     1000,
   );
+  await requireDatabase(pool);
   await connectRedis();
 });
 
