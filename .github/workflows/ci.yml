@@ -44,7 +44,10 @@ jobs:
               /tmp/$overlay.yaml
           done
           # The issuer is applied by scripts/cluster-up.sh, not by the overlay
-          kubeconform -strict -summary -kubernetes-version 1.33.0 \n            -schema-location default \n            -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \n            k8s/doks/cluster-issuer.yaml
+          kubeconform -strict -summary -kubernetes-version 1.33.0 \
+            -schema-location default \
+            -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+            k8s/doks/cluster-issuer.yaml
       - name: Every object in the app namespace
         # A namespace set in the base does not reach resources an overlay
         # adds; the Gateway once landed in `default` this way (BUILD_LOG.md,
