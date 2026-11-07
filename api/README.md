@@ -20,7 +20,7 @@ api/
 
 ## Tests
 
-`npm test` runs Jest with Supertest against the Express app (`src/server.ts` exports it without listening) and a real PostgreSQL and Redis. CI starts both as service containers on every pull request (the `test` job in `.github/workflows/ci.yml`). Locally, point `DB_*` and `REDIS_*` at a PostgreSQL and Redis you can reach. Each new route adds a `<route>.test.ts` beside it, starting from `src/routes/health.test.ts`.
+`npm test` runs Jest with Supertest against the Express app (`src/server.ts` exports it without listening) and a real PostgreSQL and Redis. CI starts both as service containers on every pull request (the `test` job in `.github/workflows/ci.yml`). Locally, from the repository root, `docker compose -f compose.yaml -f compose.test.yaml up -d db redis` starts the same two with their ports published on localhost and the test credentials; `jest.env.js` points `DB_*` and `REDIS_*` at them unless the variables are already set. If either service is down the suite stops at once with the service, host and port and that command (`src/lib/reachable.ts`). Each new route adds a `<route>.test.ts` beside it, starting from `src/routes/health.test.ts`.
 
 Rules that apply here are in `docs/PRACTICES.md` (API-*, DB-*, SEC-*, TST-*).
 

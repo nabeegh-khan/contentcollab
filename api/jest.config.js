@@ -12,4 +12,6 @@ export default {
     "^(\\.{1,2}/.*)\\.js$": "$1",
   },
   testMatch: ["<rootDir>/src/**/*.test.ts"],
+  // Local defaults for DB_* and REDIS_*, the same values ci.yml sets
+  setupFiles: ["<rootDir>/jest.env.js"],
 };

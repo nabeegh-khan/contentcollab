@@ -3,11 +3,20 @@ import request from "supertest";
 import app from "../server.js";
 import { pool } from "../lib/db.js";
 import { connectRedis, redis } from "../lib/redis.js";
+import { requireServices } from "../lib/reachable.js";
 
-// These run against a real PostgreSQL and Redis: the services in ci.yml, or
-// `docker compose up postgres redis` locally. Every endpoint adds its tests
+// These run against a real PostgreSQL and Redis: the service containers in
+// ci.yml, or locally `docker compose -f compose.yaml -f compose.test.yaml up -d db redis`
+// (jest.env.js points DB_* and REDIS_* at them). Every endpoint adds its tests
 // next to its route file, the same way.
 beforeAll(async () => {
+  await requireServices(
+    [
+      { name: "PostgreSQL", host: process.env.DB_HOST ?? "localhost", port: Number(process.env.DB_PORT ?? 5432) },
+      { name: "Redis", host: process.env.REDIS_HOST ?? "localhost", port: Number(process.env.REDIS_PORT ?? 6379) },
+    ],
+    1000,
+  );
   await connectRedis();
 });
 
