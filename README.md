@@ -4,7 +4,7 @@ Upload a document, share it with the right people, and review it together: comme
 
 Team project for ECE1779 Introduction to Cloud Computing, University of Toronto, Fall 2026.
 
-**Status, 2 November:** proposal sections 2, 3 and 4 in review ([#31](https://github.com/nabeegh-khan/contentcollab/pull/31), [#34](https://github.com/nabeegh-khan/contentcollab/pull/34), [#33](https://github.com/nabeegh-khan/contentcollab/pull/33)), due 7 November; API contract on main ([docs/API.md](docs/API.md)). Cloud and operations work in review: Kubernetes base manifests with minikube and DigitalOcean overlays and a GitHub Container Registry deploy workflow, run on minikube with the restart test passed ([#35](https://github.com/nabeegh-khan/contentcollab/pull/35), [#52](https://github.com/nabeegh-khan/contentcollab/issues/52)); `/metrics` with prom-client ([#57](https://github.com/nabeegh-khan/contentcollab/pull/57)); the BullMQ worker skeleton with a health endpoint ([#58](https://github.com/nabeegh-khan/contentcollab/pull/58)) and its Deployment ([#60](https://github.com/nabeegh-khan/contentcollab/pull/60)); cluster bring-up and tear-down scripts with a Let's Encrypt issuer ([#59](https://github.com/nabeegh-khan/contentcollab/pull/59)); Datadog autodiscovery of `/metrics` ([#61](https://github.com/nabeegh-khan/contentcollab/pull/61)); DigitalOcean alert policies and smoke checks ([#62](https://github.com/nabeegh-khan/contentcollab/pull/62)); and the API image built and smoke-tested against Redis on every pull request ([#64](https://github.com/nabeegh-khan/contentcollab/pull/64)). One Issue per piece of work in every slice (#37 to #55). Minutes in [docs/meetings/](docs/meetings/).
+**Status, 6 November:** the schema ([#37](https://github.com/nabeegh-khan/contentcollab/issues/37)) slipped and no feature code is merged yet; recovery dates are in [docs/PLAN.md](docs/PLAN.md#status-and-recovery-6-november). The proposal is on `main` for submission on 7 November. Open for review: test harness [#71](https://github.com/nabeegh-khan/contentcollab/pull/71); cloud pull requests #59, #60, #61, #72, #74, #75, #76, #78, and #62 as a draft.
 
 ## Architecture
 
@@ -43,7 +43,7 @@ This is a review tool, not an editor. Live text editing and track changes are ou
 | Monitoring | DigitalOcean metrics and alerts; `/metrics` on the API (Prometheus format), collected with container logs by Datadog |
 | CI/CD | GitHub Actions: lint and test on every pull request, build and deploy on merge to `main` |
 
-Advanced features promised in the proposal: security (sign-in, roles, HTTPS, secrets) and CI/CD. Planned extension: auto-scaling and high availability. Everything else on the board is for the final report, not the proposal.
+Advanced features committed in the proposal: security (sign-in, roles, HTTPS, secrets), CI/CD, real-time, and auto-scaling with high availability. Stretch goals: backup and recovery, external email. Everything else on the board is for the final report, not the proposal.
 
 ## Timeline
 
@@ -51,8 +51,8 @@ Course deadlines are 11:59pm Toronto with no late submissions. The windows are w
 
 | Window | What happens | Course deadline |
 |--------|--------------|-----------------|
-| 17 Oct to 24 Oct | architecture and plan agreed; API contract; team formation on Quercus | team formation, Sat 24 Oct |
-| 19 Oct to 1 Nov | skeleton: Compose stack, schema and first migration, health endpoint, CI on pull requests, manifests on minikube | Assignment 3, Sat 31 Oct |
+| 17 Oct to 24 Oct | architecture and plan agreed; API contract (slipped: agreed by Mon 9 Nov, #10); team formation on Quercus | team formation, Sat 24 Oct |
+| 19 Oct to 1 Nov | skeleton: Compose stack, schema and first migration (slipped: merged by Mon 9 Nov, #37), health endpoint, CI on pull requests, manifests on minikube | Assignment 3, Sat 31 Oct |
 | 26 Oct to 7 Nov | proposal written from the architecture docs; core features under way | **proposal, Sat 7 Nov (15%)** |
 | 2 Nov to 14 Nov | cloud: DOKS cluster, TLS, PostgreSQL on a volume with the restart test, autoscaling, alerts, deploy on merge | |
 | 9 Nov to 20 Nov | real-time, additive features, integration checkpoints Sat 14 and Fri 20 Nov; new features stop Sat 21 Nov | health check, Mon 16 Nov; Assignment 4, Sat 21 Nov |
@@ -75,7 +75,7 @@ docs/
   BUILD_LOG.md       dated record of the cluster build: decisions, evidence, incidents, sources
   PLAN.md            stages, owners, integration, risks; the source for proposal section 3
   PRACTICES.md       the engineering practices we hold to, with their course sources
-  PROPOSAL.md        the proposal, one section per owner, due 7 Nov
+  ECE1779_Team22_Project_Proposal.md  the proposal, one section per owner, due 7 Nov; the file every member submits on Quercus
   API.md             the endpoint contract (written before feature work starts)
   meetings/          one file per team meeting, YYYY-MM-DD.md
 .env.example         environment variable template; copy to .env, which is never committed
