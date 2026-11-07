@@ -78,3 +78,97 @@ ts-jest with `useESM`, `.ts` treated as ESM, a `moduleNameMapper` that strips th
 - Changed: tests sit next to the file they test (`src/routes/health.test.ts`) rather than in a top-level `tests/` folder, because `tsconfig.json` sets `rootDir` to `src` and files outside it fail the typecheck; the layout in `api/README.md` was updated to match.
 - Checked: the three tests (`/health` with both services up, the 404 error shape, the request counter on `/metrics`) were run locally against PostgreSQL and Redis before pushing, and lint, Prettier and the typecheck pass. With Redis stopped, the suite fails on test timeouts rather than at once, which is why CI starts Redis as a service instead of relying on the client's reconnect.
 - Kept out of the image: test files and the Jest config are listed in `api/.dockerignore`.
+## Deploy pipeline and lecture 8 fixes (#59, #65, #70, #74), 4 November 2026
+
+### Prompt
+
+Lecture 8 says to use explicit image tags rather than `latest`, to name container ports, and to recover with `kubectl rollout undo`. Our cluster bring-up applied `latest`, our deploy workflow used a static kubeconfig secret, and the API waited for Redis before opening its port. What should change so a merge to `main` only ships tested code, the cluster never runs `latest`, and a bad release rolls itself back?
+
+### AI Response
+
+Render the overlay with the commit SHA substituted for `latest` and check the registry holds that tag before applying; name the port `http` and refer to it by name in the Service and probes; open the port before connecting to Redis so readiness, not a restart loop, handles the outage; call the pull-request checks from the deploy workflow; use DigitalOcean's doctl action with a kubeconfig that expires in 600 seconds; and roll back automatically when `rollout status` or a smoke check fails.
+
+### What Your Team Did With It
+
+- Checked against the sources: lecture 8 slides (p53-55, p67, p73, p76-81, p92, p106-111) and DigitalOcean's push-to-deploy guide, which uses `digitalocean/action-doctl` and `doctl kubernetes cluster kubeconfig save --expiry-seconds 600`. The static `KUBECONFIG` secret was dropped because a doctl kubeconfig authenticates through doctl itself.
+- Tested: the API with Redis absent answered `/health` 503 and stayed up, then 200 once Redis started, in the same process; a CI step now repeats that against the built image. Both overlays render; the bring-up's registry check found the image for the current `main` commit.
+- Kept as a condition: the smoke-and-rollback step runs only once a smoke URL is set, so deploys don't roll back before DNS and TLS exist.
+
+## Gateway namespace fault and its CI check (#59), 4 November 2026
+
+### Prompt
+
+After bring-up the Gateway had no address in the `contentcollab` namespace, though every pod was running. Why, and how do we stop it happening again?
+
+### AI Response
+
+The Gateway and HTTPRoute were in `default`: a kustomization's `namespace` field covers only that kustomization's resources, and the DigitalOcean overlay adds the Gateway without setting one. Set the namespace in the overlay, add a CI step that fails when any rendered object other than the Namespace falls outside `contentcollab`, push the check before the fix so it can be seen failing, then move the live objects by creating them in `contentcollab` before deleting the copies in `default`.
+
+### What Your Team Did With It
+
+- Checked against the sources: Kustomize's `namespace` reference, the GitHub runner image list (yq preinstalled) and the NGINX Gateway Fabric v2.8.0 chart values, which is also where product telemetry, failing on every run, was turned off.
+- Tested: CI failed on the check alone, naming `Gateway/contentcollab`, and passed with the fix. Recorded in `docs/BUILD_LOG.md`.
+
+## Proposal freeze: review check and word budget (#9, #31, #33, #34, #66), 6 November 2026
+
+### Prompt
+
+The four sections are written and reviewed, and the file must be one Markdown document of at most 2,000 words, references included. My plan: merge each section's pull request with a merge commit so its author's history stays; check each section against every review comment, the handout and our architecture; fix what is open, naming the owner in each commit; trim my Section 2 to about 870 words without losing a table or handout item; and keep live updates as decided on 24 October. For each section, which review comments are still unanswered, which claims lack a source, and where can words go without losing a rubric item?
+
+### AI Response
+
+A list per section. Section 1: the tool claims had no sources, one citation pointed to a reference that did not exist, and the gap claim was too broad, because Acrobat's shared review and Hypothesis already offer live, anchored PDF comments. Section 3: nobody was named for a demo failure, the testing wording was generic, and the review rule disagreed with the README. Section 4: the ingress-nginx change and the reason behind the AI evaluation had been dropped. The response also suggested where to cut words in each section.
+
+### What Your Team Did With It
+
+- Checked against the sources, live on 6 November: the course handout (section requirements, the advanced-feature list, 2,000 words); Adobe's share-and-review page and Hypothesis's site for Section 1; and the NGINX Gateway Fabric 2.8 release blog and session-persistence docs, plus DigitalOcean's load-balancer docs. Those sources confirmed that cookie persistence is now open source but experimental. Sticky sessions stayed, and D12 records where affinity comes from.
+- Not accepted as given: "closed per-seat services" for the competitors. Hypothesis's server is open source and Acrobat reviewers need no account, so Section 1 contrasts vendor-run services with a deployment we run and observe ourselves. The advanced features were set by the team: four committed, each with an owner, and backup and email as stretch goals.
+- Counted: 1,970 words with table pipes and URLs removed (1,990 by `wc`); every reference is cited and every citation is defined.
+
+## Spreading the API replicas across nodes (#69), 6 November 2026
+
+### Prompt
+
+The proposal says the API runs two replicas on two nodes for high availability, but on 4 November they landed on different nodes only by chance. My approach: state the rule in the architecture first, add a CI check that fails on the current manifests, then add the rule to the API Deployment, so the check shows it working. Which Kubernetes mechanism fits a Deployment that the autoscaler takes from two to five replicas on two nodes, and how do I check for it in CI?
+
+### AI Response
+
+Use a topology spread constraint on `kubernetes.io/hostname` with `maxSkew: 1` rather than required pod anti-affinity, which allows only one pod per node and would leave extra replicas and the rolling-update surge pod Pending. Prefer `ScheduleAnyway`, and add `matchLabelKeys: [pod-template-hash]` so each rollout revision spreads on its own. In CI, render both overlays and assert the constraint with yq. The first draft gave two wrong reasons. It said the scheduler's default allows a skew of 3, and that `ScheduleAnyway` was needed for single-node minikube.
+
+### What Your Team Did With It
+
+- Checked against the sources: the Kubernetes topology spread and node assignment pages, live on 6 November. The default spread does not score nodes missing a zone label, and `kubectl get nodes` showed our nodes have none, so the real reason is stronger than the first draft's. The `ScheduleAnyway` reason was corrected to a drained or lost node, because with one node the skew is zero either way.
+- Tested: the check was pushed first and failed in CI (run 42286395192); with the constraint it passed (run 42287294841). An independent review also made the check assert `ScheduleAnyway` and the hash, which it had let slip.
+- Left open in the pull request: `ScheduleAnyway` is a preference, and spreading is not rebalanced after a scale-down.
+
+## Component diagram after the advanced-feature change (#69), 6 November 2026
+
+### Prompt
+
+Section 2.7 now commits four advanced features, but the diagram still shows two generic "Advanced feature" badges and "2 replicas". My plan: rename the existing badges to Security and CI/CD, add Real-time on Redis and Auto-scaling on the api in the same style, show the autoscaler's range on the api box, and re-render the PNG at the same size without changing the proposal text. Where do the new badges and the longer api title fit without covering lines or text?
+
+### AI Response
+
+At 21 px the new api title measures 357 px against a 270 px box, so widen the box to 330 px around the same centre and set that title at 18 px. Put the two api badges side by side, left of the line that leaves the box at x = 885. Move the Redis badge inside the cylinder top, because on the rim it would cover the arrowhead from the api. Size each badge to its text with the old badges' padding.
+
+### What Your Team Did With It
+
+- Measured rather than estimated: text widths came from the browser's own font metrics, and a script over the rendered SVG checked for overlapping text, badges covering other labels, and titles outside their boxes. It found none.
+- Looked at the rendered PNG: every label is readable. The Gateway arrow still ends on the api badge, as it did before.
+- Kept as it was: the image paths and captions in the README and the proposal; the proposal text and word count did not change.
+
+## The autoscaler that could not read CPU (#69), 6 November 2026
+
+### Prompt
+
+Before running the load test on DigitalOcean I checked the HPA, and it showed `cpu: <unknown>`. My approach: record the cause and the fix in the architecture first, put the install in a pinned script rather than a dashboard click, and make the load test refuse to run while the autoscaler is blind, with a test written before the code. How should metrics-server be installed on DOKS, and how do we tell from the HPA's status that it is really reading CPU?
+
+### AI Response
+
+Install the upstream metrics-server chart at a pinned version, with the same two replicas and verified kubelet TLS that DigitalOcean's own Marketplace stack uses. Treat the HPA as ready only when its AbleToScale and ScalingActive conditions are True and a CPU utilization is reported. Build the test fixture from the live status, and have the load test stop on a real kubectl error but continue with a warning when no cluster is reachable.
+
+### What Your Team Did With It
+
+- Checked against the sources: DigitalOcean's HPA guide, the chart's Chart.yaml at tag 3.14.0, the metrics-server compatibility table (Kubernetes 1.34 and later) and DigitalOcean's Marketplace stack, which installs the same chart unpinned.
+- Tested: the readiness test failed in CI before the module existed (run 42296688552) and passed after it (run 42297775626). On the live cluster the check reports `FailedGetResourceMetric` and the load test refuses to start.
+- An independent review caught that `--atomic` is deprecated in Helm 4, that PowerShell's `bash` is WSL rather than Git Bash, and that any kubectl failure let the load test continue. All three were fixed. Kubelet TLS on our cluster remains unverified until the install runs.

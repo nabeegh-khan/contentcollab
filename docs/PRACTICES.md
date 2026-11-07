@@ -1,6 +1,6 @@
 # Engineering practices for ContentCollab
 
-What the course has taught so far about building systems that keep running, collected in one place so the proposal, the code reviews and the presentation Q&A all draw on the same list. "L5 p27" means ECE1779 lecture 5 slides, PDF page 27. A1 and A2 are the course assignments. Rows get added as lectures and assignments cover more; anyone on the team can add one.
+What the course has taught so far about building systems that keep running, collected in one place so the proposal, the code reviews and the presentation Q&A all draw on the same list. "L5 p27" means ECE1779 lecture 5 slides, PDF page 27. A1 and A2 are the course assignments. Rows get added as lectures and assignments cover more (through lecture 8 as of 4 November); anyone on the team can add one.
 
 Each row says what we do, where it comes from, and where in ContentCollab it applies. If a pull request breaks one of these, the review says which ID.
 
@@ -15,6 +15,10 @@ Each row says what we do, where it comes from, and where in ContentCollab it app
 | INF-5 | Roll out updates gradually with versioned image tags; keep the manifest's tag in step | L4 p58-59, L5 p72, L6 p29-30 | CI tags images by commit SHA; a rollout can be undone with one command |
 | INF-6 | Deploy near users and know the cold-start cost | L6 p47, p63-64, p73-74 | Toronto region; the API never scales to zero |
 | INF-7 | Destroy what you are not using; stopped machines and detached volumes still bill | L3 p3, L6 p53, A1 handout | Cluster deleted after grades; a budget line in the proposal |
+| INF-8 | A Deployment owns a ReplicaSet that keeps the replica count, so a deleted pod is replaced; the selector must match the pod template's labels, and a Service routes only to ready pods it selects | L8 p23-31, p43, p83 | API and worker Deployments; Service selectors match `app:` labels |
+| INF-9 | Explicit image tags in the cluster, never `:latest`; watch with `kubectl rollout status`, recover with `kubectl rollout undo` | L8 p53-55, p67, p73 | CI sets the commit SHA on every rollout; the bring-up pins the image built from `main`; automatic undo on a failed smoke check (#70) |
+| INF-10 | Name container ports and refer to them by name in Services and probes, so each port number is written once | L8 p76-81, p91-92 | `http` on the api and the worker |
+| INF-11 | A readiness probe gates traffic and never restarts the container; restarts are the liveness probe's job | L8 p106-111 | Readiness on `/health` (dependencies), liveness on the socket only |
 
 ## Containers and local development
 
@@ -41,6 +45,7 @@ Each row says what we do, where it comes from, and where in ContentCollab it app
 | SEC-7 | Escape stored text before rendering it as HTML | A1 (query page) | Comment bodies and filenames are rendered as text, never injected as HTML |
 | SEC-8 | Restrict network paths: firewall, private network, no public database port | L2 p29-34 | Postgres and Redis on ClusterIP Services only |
 | SEC-9 | Share links carry a random token and an expiry, and the role check runs on every request, not only when the link is created | project idea (link access limited to the people shared with) | `shares` table, role middleware |
+| SEC-10 | A Kubernetes Secret is base64, not encryption: keep real values out of Git and out of images, and treat anyone with cluster access as able to read them | L8 p99-105 | `k8s/base/secrets.yaml` is git-ignored; the cluster token and kubeconfig stay with the cluster owner |
 
 ## Data
 
