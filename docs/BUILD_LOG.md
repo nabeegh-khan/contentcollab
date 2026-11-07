@@ -18,7 +18,7 @@ Entry format: what was done; decision and the option it beat; evidence; sources 
 - **Done:** Gateway API CRDs (standard channel, from NGINX Gateway Fabric v2.8.0), NGINX Gateway Fabric 2.8.0 and cert-manager v1.19.2 with Gateway API support, all by Helm.
 - **Found:** DOKS 1.37 already ships the Gateway API CRDs and a `cilium` GatewayClass. Applying our CRDs updated them in place (the `last-applied-configuration` warnings in the bring-up output).
 - **Decision:** keep NGINX Gateway Fabric (`nginx` class) as D11 records. Cilium's built-in gateway would remove one controller, but it was not evaluated before bring-up and would change D11; noted as an alternative, not adopted.
-- **Sources (checked 4 Nov):** [NGINX Gateway Fabric Helm install](https://docs.nginx.com/nginx-gateway-fabric/install/helm/).
+- **Sources (checked 4 Nov):** [NGINX Gateway Fabric Helm install](https://docs.nginx.com/nginx-gateway-fabric/install/helm/). Added 7 Nov, for the values `scripts/cluster-up.sh` and `cluster-down.sh` use: [cert-manager v1.19 Helm install](https://cert-manager.io/v1.19-docs/installation/helm/) (`crds.enabled=true`; the chart's current patch is v1.19.6, the script pins v1.19.2), [cert-manager v1.19 Gateway API usage](https://cert-manager.io/v1.19-docs/usage/gateway/) (`config.apiVersion`, `config.kind`, `config.enableGatewayAPI=true`), [cert-manager kubectl install, verifying](https://cert-manager.io/docs/installation/kubectl/) (the webhook is ready after the controller; `cmctl check api --wait`), [doctl kubernetes cluster create](https://docs.digitalocean.com/reference/doctl/reference/kubernetes/cluster/create/) (`--node-pool "name=…;size=…;count=…"`, `--wait`), [doctl kubernetes cluster delete](https://docs.digitalocean.com/reference/doctl/reference/kubernetes/cluster/delete/) (`--dangerous` also deletes load balancers and volumes; `--force` skips doctl's own prompt).
 
 ### Application deployed, pinned to a commit (INF-9)
 
@@ -104,3 +104,22 @@ Entry format: what was done; decision and the option it beat; evidence; sources 
 - **Failures:** all 30 were `UND_ERR_SOCKET` (the connection was closed from the server side), and all came in the step where the HPA added three pods. There were none at 200 or 250 req/s once five pods were ready. The likely cause is connections closed while the set of API pods changed; the script does not timestamp failures, so this is not confirmed.
 - **Memory:** peak node memory was 93%, under the 95% stop. Three of the five API pods ran on one node, because the spread rule (#78) is not merged yet.
 - **Open:** confirm the cause of the socket closures by timestamping failures against scaling events. The rolling update under load waits for #78 (note on #69).
+
+## 7 November 2026
+
+### Proposal file renamed to the Quercus submission name
+
+- **Done:** `docs/PROPOSAL.md` is now `docs/ECE1779_Team22_Project_Proposal.md`, the exact name of the file each member submits on Quercus. The content did not change: 13,876 bytes, sha256 beginning `d35d288f`, the same blob as commit `d47d567`, 1,999 words by the submission count (URLs, table rules and pipes removed before counting). The six links in the README and in the 17, 24 and 31 October minutes point at the new name. Commit `dcd3786`.
+- **Decision:** rename the file in the repository rather than keep a copy under the Quercus name. One file under one name lets anyone compare the repository and the submission byte for byte; a second copy would drift.
+- **Check:** `git grep PROPOSAL.md` finds no remaining reference; the raw GitHub URL for the new path answers 200 with 13,876 bytes (checked 7 November, 9:50).
+
+### Worker Deployment and the two-image deploy workflow (PR #60)
+
+- **Done:** `k8s/base/worker.yaml` runs one worker pod with the API's ConfigMap and Secret; `deploy.yml` builds and pushes the api and worker images in a matrix and, once cluster credentials exist, sets both Deployments to the commit SHA.
+- **Values and their basis:** `terminationGracePeriodSeconds: 60`, twice the Kubernetes default of 30 s, because the worker's SIGTERM handler calls BullMQ `worker.close()`, which in the TypeScript SDK waits for active jobs with no built-in timeout, so the pod's grace period is the only bound (Kubernetes pod lifecycle page and BullMQ "Graceful shutdown" guide, both checked 7 November 2026). `WORKER_CONCURRENCY: "2"` and the 512 MiB memory limit are starting values with no measurement behind them: the only job so far is the ping job from #58. Both are revisited when a real job exists and the load test (#69) covers the worker.
+- **Not exercised:** the rollout step. No cluster credentials exist in the repository (deploy runs 41693157835, 41735879190 and 41899572808 all stopped at "No KUBECONFIG secret: image pushed, no rollout"); #76 replaces the KUBECONFIG check with doctl-issued credentials. One defect is carried in that step and left for #76 to remove with it: `kubectl apply -k k8s/doks` re-applies the `:latest` tag from the base before `set image` pins the SHA, so a deploy would roll each Deployment twice (INF-9).
+
+### Cluster bring-up script hardened before merge (#59)
+
+- **Change:** `cluster-up.sh` now waits for all three cert-manager Deployments (controller, cainjector, webhook) before applying the issuer, because the webhook comes up after the controller and the first `kubectl apply` of a ClusterIssuer can fail until it answers; it changes to the repository root so it runs from any directory; the sed that fills in the Let's Encrypt address uses `|` as delimiter so an address with `&` or `/` cannot break it; its closing line names the secret `deploy.yml` reads today (`KUBECONFIG`), with #76 as the change that replaces it; the cost comment matches ARCHITECTURE (US$48 for the cluster alone, US$54 with Spaces and the volume). CI now runs kubeconform on `k8s/doks/cluster-issuer.yaml` as well as the two overlays, since the script applies the issuer outside the overlay.
+- **Not verified:** whether the 4 November run hit the webhook race; the bring-up output was not kept in enough detail to say. The wait costs nothing when the webhook is already ready.

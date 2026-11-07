@@ -172,3 +172,19 @@ Install the upstream metrics-server chart at a pinned version, with the same two
 - Checked against the sources: DigitalOcean's HPA guide, the chart's Chart.yaml at tag 3.14.0, the metrics-server compatibility table (Kubernetes 1.34 and later) and DigitalOcean's Marketplace stack, which installs the same chart unpinned.
 - Tested: the readiness test failed in CI before the module existed (run 42296688552) and passed after it (run 42297775626). On the live cluster the check reports `FailedGetResourceMetric` and the load test refuses to start.
 - An independent review caught that `--atomic` is deprecated in Helm 4, that PowerShell's `bash` is WSL rather than Git Bash, and that any kubectl failure let the load test continue. All three were fixed. Kubelet TLS on our cluster remains unverified until the install runs.
+
+## Proposal file renamed to the Quercus name, 7 November 2026
+
+### Prompt
+
+Rename `docs/PROPOSAL.md` to `docs/ECE1779_Team22_Project_Proposal.md`, the exact file every member submits on Quercus, without changing a byte of its content. Update every link in the repository, confirm the strict word count is still 1,999 and the sha256 still begins `d35d288f`, and push one commit to main under the docs rule.
+
+### AI Response
+
+Used `git mv` so Git records a rename rather than a delete and an add, updated the six links (the README tree and the 17, 24 and 31 October minutes), searched the whole repository for the old name, and compared the moved file with the committed one: the same 13,876 bytes and sha256, and 1,999 words once URLs, table rules and pipes are removed. Pushed as one commit, `dcd3786`.
+
+### What Your Team Did With It
+
+- Checked: `git grep` for the old name finds nothing; the raw GitHub URL for the new path answers 200 with 13,876 bytes; the word-count method is the one used for the freeze on 6 November, reproduced from its recorded totals.
+- Kept: the content, byte for byte. Only the file name and the links changed.
+- Open: the 6 November comment on #79 still names the old path at `d47d567`; it points at the same content.

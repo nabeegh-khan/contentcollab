@@ -75,7 +75,7 @@ docs/
   BUILD_LOG.md       dated record of the cluster build: decisions, evidence, incidents, sources
   PLAN.md            stages, owners, integration, risks; the source for proposal section 3
   PRACTICES.md       the engineering practices we hold to, with their course sources
-  PROPOSAL.md        the proposal, one section per owner, due 7 Nov
+  ECE1779_Team22_Project_Proposal.md  the proposal, one section per owner, due 7 Nov; the file every member submits on Quercus
   API.md             the endpoint contract (written before feature work starts)
   meetings/          one file per team meeting, YYYY-MM-DD.md
 .env.example         environment variable template; copy to .env, which is never committed
