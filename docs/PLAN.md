@@ -10,8 +10,8 @@ The demo path (sign in, upload, share, comment, live update, restart test, scale
 
 | Stage | Dates | Done when |
 |---|---|---|
-| 0. Architecture and proposal | 17 Oct to 7 Nov | ARCHITECTURE.md agreed; API contract in `docs/API.md`; proposal submitted 7 Nov; team formation on Quercus by 24 Oct |
-| 1. Skeleton | 19 Oct to 1 Nov | `compose.yaml` with api, postgres, redis runs locally; schema and first migration; health endpoint; CI runs lint and tests on a PR; manifests run on minikube |
+| 0. Architecture and proposal | 17 Oct to 7 Nov | ARCHITECTURE.md agreed; API contract in `docs/API.md` (slipped to 9 Nov, see Status and recovery); proposal submitted 7 Nov; team formation on Quercus by 24 Oct |
+| 1. Skeleton | 19 Oct to 1 Nov | `compose.yaml` with api, postgres, redis runs locally; schema and first migration; health endpoint; CI runs lint and tests on a PR; manifests run on minikube; slipped, see Status and recovery |
 | 2. Core features | 26 Oct to 14 Nov | auth and roles; upload to Spaces with versions; share by user and link; comments; the minimal browser client |
 | 3. Cloud | 2 to 14 Nov | DOKS cluster with a Gateway and TLS; PostgreSQL on a PVC with the restart test passed; HPA and probes; DO alerts; CI deploys on merge |
 | 4. Real-time and additive features | 9 to 20 Nov | Socket.IO with Redis adapter; tags, search, export; backups; notifications; health check quiz submitted 16 Nov |
@@ -20,6 +20,19 @@ The demo path (sign in, upload, share, comment, live update, restart test, scale
 
 Assignment 3 (31 Oct) and Assignment 4 (21 Nov) land inside stages 1 and 4; the plan leaves those weeks lighter.
 
+## Status and recovery, 6 November
+
+Checked on 6 November against the branches, pull requests and issues on GitHub.
+
+| Stage | Planned | State on 6 Nov | Recovery date |
+|---|---|---|---|
+| 0. Architecture and proposal | API contract agreed (#10) before feature work | Contract drafted in `docs/API.md` on 31 Oct; not agreed, #10 open | Agreed and #10 closed by Mon 9 Nov |
+| 1. Skeleton | Schema and first migration (#37) and tests in CI (#38), by 1 Nov | Done except two items. #37: not started (no branch). #38: harness built in #71, waiting on review. The #77 contract test waits on #37 | #37 merged by Mon 9 Nov, with #77 switched on; #71 merged by Mon 9 Nov |
+| 2. Core features | Auth #39, documents #40, shares #41, comments #42, web #47 to #49, by 14 Nov | Not started: no branches for #39 to #42; branches for #47 to #49 exist with no commits; no feature code on `main` | Pull requests open by Wed 11 Nov, reviewed Thu 12 and Fri 13 Nov, merged for the Sat 14 Nov checkpoint |
+| 3. Cloud | Cluster with Gateway and TLS, restart test on DOKS, HPA and probes, alerts, deploy on merge, by 14 Nov | On track. Cluster running since 4 Nov with HTTPS; HPA reading CPU and load-tested on 6 Nov; each merge pushes an image to GHCR, but no rollout runs yet (no cluster credentials in CI; #76). Restart test on DOKS (#68) not yet run. Open pull requests: review requested on #59, #60, #61, #72, #74, #75, #78; #76 has no reviewer yet, because every member is at the three-request limit (requested when one merges); #62 is a draft | Merged by Sat 14 Nov (unchanged) |
+
+Additive features (stage 4) and the 21 November feature freeze are unchanged. Anything not merged by 14 November is shown as planned work and picked up by whoever is ahead, as the Risks table says.
+
 ## Slices
 
 | Slice | Owner | What lands in Git under the owner's name | On the demo path |
@@ -27,7 +40,7 @@ Assignment 3 (31 Oct) and Assignment 4 (21 Nov) land inside stages 1 and 4; the 
 | Architecture, plan and proposal | Nabeegh | `docs/`, the proposal document | |
 | Cloud: Kubernetes manifests, cluster, CI/CD, monitoring, autoscaling | Nabeegh | `k8s/`, `scripts/`, `.github/workflows/`, `/metrics`, alert policies, deployment section of the README | yes |
 | API and data: schema, migrations, auth and roles, documents, versions, upload to Spaces, comments | Eyrika and Jyotiraditya | `api/src/db`, auth routes and role middleware, document and comment routes, their tests | yes |
-| Real-time: Socket.IO server, Redis adapter, live comment and pin events | Jyotiraditya | `api/src/services/realtime`, the client hook | planned feature |
+| Real-time: Socket.IO server, Redis adapter, live comment and pin events | Jyotiraditya | `api/src/services/realtime`, the client hook | committed feature |
 | Frontend: sign-in, document list, upload, document view, share dialog | Milton | `web/` | yes, if the demo uses it |
 | Tags, search, metadata export; email notifications | Eyrika | tag and search routes, CSV and JSON export, email integration, their tests | no |
 | Backup and recovery; API documentation; user guide | Milton | `pg_dump` CronJob and restore runbook, `docs/API.md`, screenshots and user guide section of the README | no |
@@ -36,8 +49,8 @@ Seven slices for four people: the architecture slice is small once the proposal 
 
 ## Integration strategy
 
-- One `compose.yaml` from week one; every slice adds to it, and `docker compose up --build` plus the test suite must pass on every PR (checked in CI).
-- API contract first: the endpoint table (path, method, request, responses, status codes) is agreed before stage 2 and lives in `docs/API.md`, so the client, the real-time layer and the additive features can be written against it.
+- One `compose.yaml` from week one; every slice adds to it, and `docker compose up --build` plus the test suite must pass on every PR (tests in CI once #71 merges; Compose in CI is not set up yet).
+- API contract first: the endpoint table (path, method, request, responses, status codes) is agreed by Mon 9 Nov (#10), before the critical-path pull requests open, and lives in `docs/API.md`, so the client, the real-time layer and the additive features can be written against it.
 - Integration checkpoints: Saturday 14 Nov (cloud plus core features) and Friday 20 Nov (everything; new features stop Saturday 21 Nov, restart and scale test, demo dry run).
 
 ## Dependencies and coordination
@@ -59,7 +72,7 @@ Seven slices for four people: the architecture slice is small once the proposal 
 
 | Risk | Effect | Mitigation |
 |---|---|---|
-| Real-time across replicas is harder than expected | feature 3 slips | it is not one of the two promised features; the demo runs without it |
+| Real-time across replicas is harder than expected | feature 3 slips | it is one of four committed features; WebSocket-only is the fallback |
 | A slice stalls | its feature is late | additive slices are off the demo path; open Issues are picked up by whoever is ahead |
 | Cluster not stable in time | stage 3 slips | manifests proven on minikube first; Swarm fallback from the same Compose file |
 | DigitalOcean cost | deployment goes down during grading | smallest nodes, one volume, budget stated in the proposal; cost split four ways; cluster deleted after grades |
