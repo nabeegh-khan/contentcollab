@@ -1,5 +1,5 @@
 import { describe, expect, it } from "@jest/globals";
-import { createServer } from "node:net";
+import { createServer, type Socket } from "node:net";
 import { Pool } from "pg";
 import { requireDatabase } from "./dbReady.js";
 
@@ -47,6 +47,33 @@ describe("requireDatabase", () => {
       );
     } finally {
       await pool.end();
+    }
+  });
+
+  it("gives up within the timeout when a server accepts the connection and never answers", async () => {
+    const sockets = new Set<Socket>();
+    const server = createServer((socket) => sockets.add(socket));
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    const port = typeof address === "object" && address ? address.port : 0;
+    const pool = new Pool({
+      host: "127.0.0.1",
+      port,
+      user: "test",
+      password: "test",
+      database: "x",
+    });
+    try {
+      await expect(requireDatabase(pool, 500)).rejects.toThrow(
+        new RegExp(
+          `^PostgreSQL unreachable at 127.0.0.1:${port} .*Start the services first: docker compose`,
+        ),
+      );
+      // Nothing may be left pending in the pool: this must return at once.
+      await pool.end();
+    } finally {
+      for (const socket of sockets) socket.destroy();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
     }
   });
 
