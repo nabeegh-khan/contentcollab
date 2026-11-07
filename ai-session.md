@@ -205,3 +205,20 @@ The tests need a real PostgreSQL and Redis; CI starts both as service containers
 - Checked against the sources: Docker Compose "Merge Compose files" (volumes merge by mount path; environment and ports override) and the Jest `setupFiles` option, both read on 7 November.
 - Tested: the reachability test failed in CI before the module existed and passes after it; the full suite passes locally against the override and in CI; with Redis stopped the suite now stops at once with `Redis unreachable at localhost:6379` and the compose command.
 - Replied to the teammate with the cause and the command, and corrected the first reply the same day because its command did not publish the ports.
+
+
+## Test harness names a refused credential (#38, PR #71), 7 November 2026
+
+### Prompt
+
+A teammate ran the suite with the compose override and got `bind: address already in use` on 127.0.0.1:5432; `/health` then answered 503 and one test failed. Explain it, answer the teammate, make the suite name the cause with the test written first, and have the change checked independently before it merges.
+
+### AI Response
+
+Their own PostgreSQL holds 5432, so the test container never started; the reachability check passed against that server and the test credentials were refused, which `/health` reports only as a 503. Proposed one `SELECT 1` before the first test that fails with host, port, user, database and the `TEST_DB_PORT=55432` remedy. The independent check added that network errors must keep the start-the-services message and that the query needs a timeout, and found a practice ID that does not exist.
+
+### What Your Team Did With It
+
+- Test first (failing in CI on 5931cef), module after; three cases covered (credentials accepted, refused, nothing listening); 10 tests pass locally and in CI.
+- Six findings from the independent check (misleading message on connection refused, missing public record, the practice ID `NET-2` that is CON-7, an unmentioned red CI run, the shared Compose project, no timeout) were fixed before the merge.
+- Replied to the teammate by editing the morning's comment, under the same-day rule.
