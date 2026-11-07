@@ -29,7 +29,8 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await redis.quit();
+  // The client is never opened when the reachability check above fails
+  if (redis.isOpen) await redis.quit();
   await pool.end();
 });
 

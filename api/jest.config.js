@@ -1,5 +1,6 @@
 // Jest runs the TypeScript tests through ts-jest as ES modules, matching how
-// tsx runs the server. Run with `npm test` (which sets --experimental-vm-modules).
+// tsx runs the server. Run with `npm test` (node --experimental-vm-modules, so
+// the script also works where npm uses cmd.exe).
 /** @type {import('jest').Config} */
 export default {
   testEnvironment: "node",
