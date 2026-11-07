@@ -78,6 +78,7 @@ ts-jest with `useESM`, `.ts` treated as ESM, a `moduleNameMapper` that strips th
 - Changed: tests sit next to the file they test (`src/routes/health.test.ts`) rather than in a top-level `tests/` folder, because `tsconfig.json` sets `rootDir` to `src` and files outside it fail the typecheck; the layout in `api/README.md` was updated to match.
 - Checked: the three tests (`/health` with both services up, the 404 error shape, the request counter on `/metrics`) were run locally against PostgreSQL and Redis before pushing, and lint, Prettier and the typecheck pass. With Redis stopped, the suite fails on test timeouts rather than at once (superseded 7 November: the suite now stops at once, see the entry below), which is why CI starts Redis as a service instead of relying on the client's reconnect.
 - Kept out of the image: test files and the Jest config are listed in `api/.dockerignore`.
+
 ## Deploy pipeline and lecture 8 fixes (#59, #65, #70, #74), 4 November 2026
 
 ### Prompt
