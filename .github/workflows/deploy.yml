@@ -1,7 +1,8 @@
-# Runs on every merge to main. Builds the API image, tags it with the commit
-# SHA and pushes it to the GitHub Container Registry; then, once the cluster
-# exists and KUBECONFIG is set as a repository secret, rolls the api
-# Deployment to that tag and waits for it to finish (proposal section 2.7).
+# Runs on every merge to main. Builds the api and worker images, tags them with
+# the commit SHA and pushes them to the GitHub Container Registry; then, once
+# KUBECONFIG is set as a repository secret, rolls both Deployments to that tag
+# and waits for each (proposal section 2.7). The rollout step has not run yet:
+# no cluster credentials exist in the repository; #76 replaces this check.
 name: deploy
 
 on:

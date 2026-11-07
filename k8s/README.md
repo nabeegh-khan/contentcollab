@@ -33,7 +33,7 @@ Validate without a cluster: `kubectl kustomize k8s/minikube` renders the objects
 
 ## Images
 
-CI (`.github/workflows/deploy.yml`) pushes `ghcr.io/nabeegh-khan/contentcollab-api` and `contentcollab-worker`, tagged `<sha>` and `latest`, on every merge to `main`. The base manifest points at `:latest`; the cluster is moved to a SHA by the same workflow, so the manifest's tag is never edited by hand.
+CI (`.github/workflows/deploy.yml`) pushes `ghcr.io/nabeegh-khan/contentcollab-api` and `contentcollab-worker`, tagged `<sha>` and `latest`, on every merge to `main`. The base manifest points at `:latest`. The same workflow has a rollout step that moves both Deployments to the commit SHA, but it has not run yet: no cluster credentials exist in the repository, and #76 replaces the credential check. Until then the cluster is moved to a SHA by hand (`kubectl set image`, as on 4 November), never by editing the manifest.
 <!-- PRACTICES:start -->
 
 ## Practices that apply here
