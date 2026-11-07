@@ -37,7 +37,7 @@ Validate without a cluster: `kubectl kustomize k8s/minikube` renders the objects
 
 ## Images
 
-CI (`.github/workflows/deploy.yml`) pushes `ghcr.io/nabeegh-khan/contentcollab-api` and `contentcollab-worker`, tagged `<sha>` and `latest`, on every merge to `main`. The base manifest points at `:latest`. The same workflow has a rollout step that moves both Deployments to the commit SHA, but it has not run yet: no cluster credentials exist in the repository, and #76 replaces the credential check. Until then the cluster is moved to a SHA by hand (`kubectl set image`, as on 4 November), never by editing the manifest.
+CI (`.github/workflows/deploy.yml`) pushes `ghcr.io/nabeegh-khan/contentcollab-api` and `contentcollab-worker`, tagged `<sha>` and `latest` (the registry keeps `latest` for laptops; nothing in `k8s/` uses it), on every merge to `main`. The base manifests carry the placeholder tag `unpinned`, which is not a real tag: the minikube overlay replaces it with `dev`, and the rollout step runs `kustomize edit set image` to the commit SHA in `k8s/doks` before a single `kubectl apply -k k8s/doks`. If a Deployment does not become ready within 180 s the step runs `kubectl rollout undo` on it and fails the job. The step has not run yet: no cluster credentials exist in the repository, and #76 replaces the credential check. Until then the cluster is moved to a SHA by hand (`kubectl set image`, as on 4 November), never by editing the manifest. `tests/test_k8s_deploy.py` checks the pinning, the undo and the named API port (`http`, used by the Service `targetPort` and both probes) in the `k8s` CI job.
 <!-- PRACTICES:start -->
 
 ## Practices that apply here

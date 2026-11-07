@@ -206,3 +206,19 @@ Their own PostgreSQL holds 5432, so the test container never started; the reacha
 - Test first (failing in CI on 5931cef), module after; three cases covered (credentials accepted, refused, nothing listening); 10 tests pass locally and in CI.
 - Six findings from the independent check (misleading message on connection refused, missing public record, the practice ID `NET-2` that is CON-7, an unmentioned red CI run, the shared Compose project, no timeout) were fixed before the merge.
 - Replied to the teammate by editing the morning's comment, under the same-day rule.
+
+
+## Deploy path pinning, rollback and named port (#82), 7 November 2026
+
+### Prompt
+
+Fix three deploy-path gaps from the Lecture 8 review: pin the image to the commit SHA before `kubectl apply -k`, with no `:latest` left in `k8s/`; undo a failed rollout of the API and the worker; name the API container port `http` and use the name in the Service and both probes. Test first, one issue, one PR, independent check at the end.
+
+### AI Response
+
+Wrote a stdlib test that renders the overlays and reads `deploy.yml`, ran it red (9 of 9 failing), then changed the manifests, the deploy step and the bring-up script. Chose a placeholder tag over a tagless image name because Kubernetes reads a tagless name as `latest`. The rollback loop undoes each failed Deployment and still fails the job.
+
+### What Your Team Did With It
+
+- The test failed on the old files and passes on the new ones; the workflow step itself cannot run until cluster credentials exist (#76), and this is stated in the build log.
+- A regex edit left a control character in `deploy.yml`; the rollback test caught it and it was fixed before the commit.

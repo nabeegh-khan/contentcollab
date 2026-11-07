@@ -48,6 +48,10 @@ jobs:
             -schema-location default \
             -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
             k8s/doks/cluster-issuer.yaml
+      - name: Deploy path checks
+        # Image pinning, rollback on a failed rollout and the named API port
+        # (tests/test_k8s_deploy.py). python3-yaml ships with the runner image.
+        run: python3 -m unittest tests.test_k8s_deploy -v
       - name: Every object in the app namespace
         # A namespace set in the base does not reach resources an overlay
         # adds; the Gateway once landed in `default` this way (BUILD_LOG.md,

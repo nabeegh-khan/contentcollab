@@ -9,7 +9,7 @@ spec:
     app: api
   ports:
     - port: 3000
-      targetPort: 3000
+      targetPort: http # the container port's name, so 3000 is written once (NET-6)
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -37,11 +37,16 @@ spec:
         runAsUser: 1000 # the `node` user in the image (SEC-6)
       containers:
         - name: api
-          # The tag is replaced by the overlay (minikube: local build) or by
-          # CI on merge (doks: the commit SHA), never edited here (INF-5)
-          image: ghcr.io/nabeegh-khan/contentcollab-api:latest
+          # `unpinned` is not a real tag: the overlay (minikube: local build) or
+          # CI on merge (doks: `kustomize edit set image` to the commit SHA)
+          # replaces it, so an unpinned apply fails to pull instead of
+          # running whatever `latest` was (INF-5, DEP-12)
+          image: ghcr.io/nabeegh-khan/contentcollab-api:unpinned
           ports:
-            - containerPort: 3000
+            # Named once; the Service and both probes refer to it by name
+            # (NET-6). Must equal PORT in configmap.yaml (L8 p92)
+            - name: http
+              containerPort: 3000
           envFrom:
             - configMapRef:
                 name: app-config
@@ -53,12 +58,12 @@ spec:
           readinessProbe:
             httpGet:
               path: /health
-              port: 3000
+              port: http
             periodSeconds: 5
             failureThreshold: 3
           livenessProbe:
             tcpSocket:
-              port: 3000
+              port: http
             initialDelaySeconds: 20
             periodSeconds: 15
           resources:
