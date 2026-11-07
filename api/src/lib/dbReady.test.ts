@@ -1,14 +1,27 @@
 import { describe, expect, it } from "@jest/globals";
+import { createServer } from "node:net";
 import { Pool } from "pg";
 import { requireDatabase } from "./dbReady.js";
 
-// Both cases talk to the test database that jest.env.js points at (the CI
-// service container, or the one compose.test.yaml publishes locally).
+// The first two cases talk to the test database that jest.env.js points at
+// (the CI service container, or the one compose.test.yaml publishes locally).
 const target = {
   host: process.env.DB_HOST ?? "localhost",
   port: Number(process.env.DB_PORT ?? 5432),
   database: process.env.DB_NAME,
 };
+
+// A port that was free a moment ago: nothing answers there.
+function freePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const server = createServer();
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      const port = typeof address === "object" && address ? address.port : 0;
+      server.close(() => (port ? resolve(port) : reject(new Error("no port"))));
+    });
+  });
+}
 
 describe("requireDatabase", () => {
   it("resolves when the test credentials are accepted", async () => {
@@ -18,7 +31,7 @@ describe("requireDatabase", () => {
       password: process.env.DB_PASSWORD,
     });
     try {
-      await expect(requireDatabase(pool)).resolves.toBeUndefined();
+      await expect(requireDatabase(pool, 2000)).resolves.toBeUndefined();
     } finally {
       await pool.end();
     }
@@ -27,9 +40,29 @@ describe("requireDatabase", () => {
   it("names host, port, user and the TEST_DB_PORT remedy when the server refuses the credentials", async () => {
     const pool = new Pool({ ...target, user: "nobody", password: "wrong" });
     try {
-      await expect(requireDatabase(pool)).rejects.toThrow(
+      await expect(requireDatabase(pool, 2000)).rejects.toThrow(
         new RegExp(
           `^PostgreSQL at ${target.host}:${target.port} refused user nobody .*TEST_DB_PORT=55432`,
+        ),
+      );
+    } finally {
+      await pool.end();
+    }
+  });
+
+  it("keeps the start-the-services message when nothing listens on the port", async () => {
+    const port = await freePort();
+    const pool = new Pool({
+      host: "127.0.0.1",
+      port,
+      user: "test",
+      password: "test",
+      database: "x",
+    });
+    try {
+      await expect(requireDatabase(pool, 2000)).rejects.toThrow(
+        new RegExp(
+          `^PostgreSQL unreachable at 127.0.0.1:${port} .*Start the services first: docker compose`,
         ),
       );
     } finally {

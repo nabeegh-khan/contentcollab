@@ -26,7 +26,7 @@ beforeAll(async () => {
     ],
     1000,
   );
-  await requireDatabase(pool);
+  await requireDatabase(pool, 1000);
   await connectRedis();
 });
 
