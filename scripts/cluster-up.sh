@@ -6,8 +6,10 @@
 #
 # Needs: doctl (authenticated with `doctl auth init`), kubectl, helm.
 # Creates billable resources: two US$18 nodes and one US$12 load balancer,
-# about US$48 a month (docs/ARCHITECTURE.md). Run `scripts/cluster-down.sh` after grading (INF-7).
+# about US$48 a month for the cluster alone; US$54 with Spaces and the database
+# volume (docs/ARCHITECTURE.md). Run `scripts/cluster-down.sh` after grading (INF-7).
 set -euo pipefail
+cd "$(dirname "$0")/.."   # paths below are relative to the repository root
 
 : "${CLUSTER_NAME:=contentcollab}"
 : "${REGION:=tor1}"
@@ -51,12 +53,16 @@ helm upgrade --install cert-manager oci://quay.io/jetstack/charts/cert-manager \
   --set config.apiVersion=controller.config.cert-manager.io/v1alpha1 \
   --set config.kind=ControllerConfiguration \
   --set config.enableGatewayAPI=true
-kubectl -n cert-manager rollout status deployment/cert-manager --timeout=120s
+for d in cert-manager cert-manager-cainjector cert-manager-webhook; do
+  # The webhook comes up after the controller; applying the issuer before it
+  # answers fails the first run (cert-manager docs, "Verifying the installation")
+  kubectl -n cert-manager rollout status "deployment/$d" --timeout=120s
+done
 
 # 4. Namespace, Secret, issuer, then the application
 kubectl apply -f k8s/base/namespace.yaml
 kubectl apply -f "$SECRETS_FILE"
-sed "s/LETSENCRYPT_EMAIL/$LETSENCRYPT_EMAIL/" k8s/doks/cluster-issuer.yaml | kubectl apply -f -
+sed "s|LETSENCRYPT_EMAIL|$LETSENCRYPT_EMAIL|" k8s/doks/cluster-issuer.yaml | kubectl apply -f -   # | delimiter: an address may contain & or /
 # 4b. The application, pinned to an image CI built, never :latest (INF-9;
 #     L8 p67, p73). IMAGE_TAG defaults to the newest commit on main that
 #     deploy.yml builds for; the registry is checked before anything applies.
@@ -88,4 +94,4 @@ else
   echo "Gateway address: $addr"
   echo "Next: A record contentcollab.app to $addr at the registrar. The certificate is issued on the first HTTPS request."
 fi
-echo "For CI rollouts (deploy.yml): repository secret DIGITALOCEAN_ACCESS_TOKEN, and variable SMOKE_URL once DNS and TLS work"
+echo "For CI rollouts: deploy.yml reads the repository secret KUBECONFIG (base64 of the kubeconfig) today; #76 replaces it with DIGITALOCEAN_ACCESS_TOKEN. Set the variable SMOKE_URL once DNS and TLS work"
