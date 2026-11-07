@@ -12,8 +12,16 @@ import { requireServices } from "../lib/reachable.js";
 beforeAll(async () => {
   await requireServices(
     [
-      { name: "PostgreSQL", host: process.env.DB_HOST ?? "localhost", port: Number(process.env.DB_PORT ?? 5432) },
-      { name: "Redis", host: process.env.REDIS_HOST ?? "localhost", port: Number(process.env.REDIS_PORT ?? 6379) },
+      {
+        name: "PostgreSQL",
+        host: process.env.DB_HOST ?? "localhost",
+        port: Number(process.env.DB_PORT ?? 5432),
+      },
+      {
+        name: "Redis",
+        host: process.env.REDIS_HOST ?? "localhost",
+        port: Number(process.env.REDIS_PORT ?? 6379),
+      },
     ],
     1000,
   );

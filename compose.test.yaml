@@ -11,7 +11,7 @@ services:
       POSTGRES_PASSWORD: test
       POSTGRES_DB: contentcollab_test
     ports:
-      - "127.0.0.1:5432:5432"
+      - "127.0.0.1:${TEST_DB_PORT:-5432}:5432" # TEST_DB_PORT when 5432 is taken on the laptop
     volumes:
       - test-db-data:/var/lib/postgresql
     healthcheck:
