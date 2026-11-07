@@ -173,3 +173,19 @@ Used `git mv` so Git records a rename rather than a delete and an add, updated t
 - Checked: `git grep` for the old name finds nothing; the raw GitHub URL for the new path answers 200 with 13,876 bytes; the word-count method is the one used for the freeze on 6 November, reproduced from its recorded totals.
 - Kept: the content, byte for byte. Only the file name and the links changed.
 - Open: the 6 November comment on #79 still names the old path at `d47d567`; it points at the same content.
+
+## Test harness that says what is missing (#38, PR #71), 7 November 2026
+
+### Prompt
+
+A teammate ran `npm test` in `api/` and got three failures: a 5 s hook timeout and repeated empty `redis:` error lines. CI is green on the same branch. Explain the difference, answer the teammate, and make the suite fail with a clear message when the services it needs are not running, writing the test before the code.
+
+### AI Response
+
+The tests need a real PostgreSQL and Redis; CI starts both as service containers, the laptop had neither, and the Redis client's reconnect loop ran until Jest's hook timeout. Three defects were on our side: the test's comment named a compose service that does not exist, `compose.yaml` publishes neither port so no one-command local run existed, and the failure hid its cause. Proposed a 1 s TCP reachability check before the first test that names the service, host, port and the start command, a `compose.test.yaml` override that publishes both ports on localhost with the CI credentials on a separate volume, and Jest defaults for the connection variables.
+
+### What Your Team Did With It
+
+- Checked against the sources: Docker Compose "Merge Compose files" (volumes merge by mount path; environment and ports override) and the Jest `setupFiles` option, both read on 7 November.
+- Tested: the reachability test failed in CI before the module existed and passes after it; the full suite passes locally against the override and in CI; with Redis stopped the suite now stops at once with `Redis unreachable at localhost:6379` and the compose command.
+- Replied to the teammate with the cause and the command, and corrected the first reply the same day because its command did not publish the ports.
