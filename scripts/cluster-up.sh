@@ -85,12 +85,10 @@ kubectl -n contentcollab rollout status deployment/api --timeout=180s
 # 4c. Datadog agent (#27), only when an API key is in the environment. The key
 #     goes into a Secret; the chart reads it from there (SEC-1).
 if [ -n "$DATADOG_API_KEY" ]; then
-  helm repo add datadog https://helm.datadoghq.com >/dev/null 2>&1 || true
-  helm repo update >/dev/null
   kubectl create namespace datadog --dry-run=client -o yaml | kubectl apply -f -
   kubectl -n datadog create secret generic datadog-secret --from-literal api-key="$DATADOG_API_KEY" \
     --dry-run=client -o yaml | kubectl apply -f -
-  helm upgrade --install datadog-agent datadog/datadog --version "$DATADOG_CHART_VERSION" -n datadog -f k8s/doks/datadog-values.yaml
+  helm upgrade --install datadog-agent datadog --repo https://helm.datadoghq.com --version "$DATADOG_CHART_VERSION" -n datadog -f k8s/doks/datadog-values.yaml
 fi
 
 # 5. Where the world reaches it. The Gateway's address is the load balancer;
