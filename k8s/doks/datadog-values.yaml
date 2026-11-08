@@ -15,10 +15,6 @@ datadog:
   # Kubernetes state metrics: pod restarts, pending pods, HPA replica counts
   kubeStateMetricsCore:
     enabled: true
-  # Scrape the API's Prometheus endpoint (#55) through autodiscovery
-  prometheusScrape:
-    enabled: true
-    serviceEndpoints: true
   # DOKS kubelets use a self-signed certificate
   kubelet:
     tlsVerify: false
