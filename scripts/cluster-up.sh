@@ -21,6 +21,7 @@ cd "$(dirname "$0")/.."   # paths below are relative to the repository root
 
 NGF_VERSION="v2.8.0"            # https://docs.nginx.com/nginx-gateway-fabric/install/helm/
 CERT_MANAGER_VERSION="v1.19.2"  # https://cert-manager.io/docs/installation/helm/
+DATADOG_CHART_VERSION="3.269.1" # https://github.com/DataDog/helm-charts/blob/main/charts/datadog/Chart.yaml (8 Nov 2026)
 
 for tool in doctl kubectl helm; do
   command -v "$tool" >/dev/null || { echo "missing: $tool"; exit 1; }
@@ -89,7 +90,7 @@ if [ -n "$DATADOG_API_KEY" ]; then
   kubectl create namespace datadog --dry-run=client -o yaml | kubectl apply -f -
   kubectl -n datadog create secret generic datadog-secret --from-literal api-key="$DATADOG_API_KEY" \
     --dry-run=client -o yaml | kubectl apply -f -
-  helm upgrade --install datadog-agent datadog/datadog -n datadog -f k8s/doks/datadog-values.yaml
+  helm upgrade --install datadog-agent datadog/datadog --version "$DATADOG_CHART_VERSION" -n datadog -f k8s/doks/datadog-values.yaml
 fi
 
 # 5. Where the world reaches it. The Gateway's address is the load balancer;
