@@ -83,24 +83,6 @@ done
 printf '%s\n' "$rendered" | kubectl apply -f -
 kubectl -n contentcollab rollout status deployment/api --timeout=180s
 
-# 4c. Datadog agent (#27), only when an API key is in the environment. The key
-#     goes into a Secret; the chart reads it from there (SEC-1).
-if [ -n "$DATADOG_API_KEY" ]; then
-  # A wrong key or site would otherwise install cleanly and send nothing.
-  # 200 = valid, 403 = invalid (GET /api/v1/validate, Datadog API spec)
-  code=$(printf 'DD-API-KEY: %s\n' "$DATADOG_API_KEY" | curl -s -o /dev/null -w '%{http_code}' -H @- \
-    "https://api.$DATADOG_SITE/api/v1/validate")
-  [ "$code" = "200" ] || { echo "Datadog rejected DATADOG_API_KEY at api.$DATADOG_SITE (HTTP $code): check the key and DATADOG_SITE"; exit 1; }
-  kubectl create namespace datadog --dry-run=client -o yaml | kubectl apply -f -
-  # Through stdin (printf is a shell builtin), so the key is never in a
-  # process argument list; works the same in Git Bash on Windows
-  printf 'apiVersion: v1\nkind: Secret\nmetadata:\n  name: datadog-secret\n  namespace: datadog\nstringData:\n  api-key: "%s"\n' "$DATADOG_API_KEY" \
-    | kubectl apply -f -
-  helm upgrade --install datadog-agent datadog --repo https://helm.datadoghq.com --version "$DATADOG_CHART_VERSION" -n datadog -f k8s/doks/datadog-values.yaml --set datadog.site="$DATADOG_SITE" --wait --timeout 5m
-else
-  echo "DATADOG_API_KEY not set: Datadog agent not installed (#27)"
-fi
-
 # 5. Where the world reaches it. The Gateway's address is the load balancer;
 #    an A record for contentcollab.app at the registrar points there.
 echo "Waiting for the Gateway address (load balancer provisioning takes a few minutes)"
@@ -116,3 +98,22 @@ else
   echo "Next: A record contentcollab.app to $addr at the registrar. The certificate is issued on the first HTTPS request."
 fi
 echo "For CI rollouts: deploy.yml reads the repository secret KUBECONFIG (base64 of the kubeconfig) today; #76 replaces it with DIGITALOCEAN_ACCESS_TOKEN. Set the variable SMOKE_URL once DNS and TLS work"
+
+# 6. Datadog agent (#27), only when an API key is in the environment. Last, so
+#    the app and the Gateway address never wait on it or fail with it. The key
+#    goes into a Secret; the chart reads it from there (SEC-1).
+if [ -n "$DATADOG_API_KEY" ]; then
+  # A wrong key or site would otherwise install cleanly and send nothing.
+  # 200 = valid, 403 = invalid (GET /api/v1/validate, Datadog API spec)
+  code=$(printf 'DD-API-KEY: %s\n' "$DATADOG_API_KEY" | curl -s -o /dev/null -w '%{http_code}' -H @- \
+    "https://api.$DATADOG_SITE/api/v1/validate")
+  [ "$code" = "200" ] || { echo "Datadog rejected DATADOG_API_KEY at api.$DATADOG_SITE (HTTP $code): check the key and DATADOG_SITE"; exit 1; }
+  kubectl create namespace datadog --dry-run=client -o yaml | kubectl apply -f -
+  # Through stdin (printf is a shell builtin), so the key is never in a
+  # process argument list; works the same in Git Bash on Windows
+  printf 'apiVersion: v1\nkind: Secret\nmetadata:\n  name: datadog-secret\n  namespace: datadog\nstringData:\n  api-key: "%s"\n' "$DATADOG_API_KEY" \
+    | kubectl apply -f -
+  helm upgrade --install datadog-agent datadog --repo https://helm.datadoghq.com --version "$DATADOG_CHART_VERSION" -n datadog -f k8s/doks/datadog-values.yaml --set datadog.site="$DATADOG_SITE" --wait --timeout 5m
+else
+  echo "DATADOG_API_KEY not set: Datadog agent not installed (#27)"
+fi
