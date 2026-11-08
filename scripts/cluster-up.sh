@@ -113,7 +113,9 @@ if [ -n "$DATADOG_API_KEY" ]; then
   # process argument list; works the same in Git Bash on Windows
   printf 'apiVersion: v1\nkind: Secret\nmetadata:\n  name: datadog-secret\n  namespace: datadog\nstringData:\n  api-key: "%s"\n' "$DATADOG_API_KEY" \
     | kubectl apply -f -
-  helm upgrade --install datadog-agent datadog --repo https://helm.datadoghq.com --version "$DATADOG_CHART_VERSION" -n datadog -f k8s/doks/datadog-values.yaml --set datadog.site="$DATADOG_SITE" --wait --timeout 5m
+  helm upgrade --install datadog-agent datadog --repo https://helm.datadoghq.com \
+    --version "$DATADOG_CHART_VERSION" -n datadog -f k8s/doks/datadog-values.yaml \
+    --set datadog.site="$DATADOG_SITE" --wait --timeout 5m
 else
   echo "DATADOG_API_KEY not set: Datadog agent not installed (#27)"
 fi
