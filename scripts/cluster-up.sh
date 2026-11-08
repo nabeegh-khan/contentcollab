@@ -111,9 +111,10 @@ if [ -n "$DATADOG_API_KEY" ]; then
   kubectl create namespace datadog --dry-run=client -o yaml | kubectl apply -f -
   # Through stdin (printf is a shell builtin), so the key is never in a
   # process argument list; works the same in Git Bash on Windows. Server-side
-  # apply, so no last-applied-configuration annotation holds a second copy
+  # apply under its own field manager: with kubectl's default manager the
+  # last-applied-configuration annotation, a second copy, is still written
   printf 'apiVersion: v1\nkind: Secret\nmetadata:\n  name: datadog-secret\n  namespace: datadog\nstringData:\n  api-key: "%s"\n' "$DATADOG_API_KEY" \
-    | kubectl apply --server-side -f -
+    | kubectl apply --server-side --field-manager=cluster-up -f -
   helm upgrade --install datadog-agent datadog --repo https://helm.datadoghq.com \
     --version "$DATADOG_CHART_VERSION" -n datadog -f k8s/doks/datadog-values.yaml \
     --set datadog.site="$DATADOG_SITE" --wait --timeout 5m
