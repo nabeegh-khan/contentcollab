@@ -110,9 +110,10 @@ if [ -n "$DATADOG_API_KEY" ]; then
   [ "$code" = "200" ] || { echo "Datadog rejected DATADOG_API_KEY at api.$DATADOG_SITE (HTTP $code): check the key and DATADOG_SITE"; exit 1; }
   kubectl create namespace datadog --dry-run=client -o yaml | kubectl apply -f -
   # Through stdin (printf is a shell builtin), so the key is never in a
-  # process argument list; works the same in Git Bash on Windows
+  # process argument list; works the same in Git Bash on Windows. Server-side
+  # apply, so no last-applied-configuration annotation holds a second copy
   printf 'apiVersion: v1\nkind: Secret\nmetadata:\n  name: datadog-secret\n  namespace: datadog\nstringData:\n  api-key: "%s"\n' "$DATADOG_API_KEY" \
-    | kubectl apply -f -
+    | kubectl apply --server-side -f -
   helm upgrade --install datadog-agent datadog --repo https://helm.datadoghq.com \
     --version "$DATADOG_CHART_VERSION" -n datadog -f k8s/doks/datadog-values.yaml \
     --set datadog.site="$DATADOG_SITE" --wait --timeout 5m
