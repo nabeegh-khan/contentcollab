@@ -135,6 +135,9 @@ jobs:
             sleep 5
           done
           echo "::error::Smoke check failed (last body: $body): rolling back"
+          # The ten-minute credentials may have run out during two rollouts and
+          # the smoke wait; fetch fresh ones so the rollback is not refused
+          doctl kubernetes cluster kubeconfig save --expiry-seconds 600 contentcollab
           # Both images come from this commit, so both go back together
           for svc in api worker; do
             kubectl -n contentcollab rollout undo deployment/$svc
