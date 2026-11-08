@@ -104,11 +104,13 @@ jobs:
           cd ../..
           kubectl apply -k k8s/doks
           # A rollout that never turns ready is rolled back here, not by hand,
-          # and the job still fails so the run is not green (INF-9)
+          # and the job still fails so the run is not green (INF-9). A failed
+          # undo is reported and the next Deployment is still checked.
           failed=0
           for svc in api worker; do
             kubectl -n contentcollab rollout status deployment/$svc --timeout=180s \
-              || { kubectl -n contentcollab rollout undo deployment/$svc; failed=1; }
+              || { kubectl -n contentcollab rollout undo deployment/$svc \
+                     || echo "::error::undo of deployment/$svc failed: the cluster may run mixed versions"; failed=1; }
           done
           exit $failed
       # Skipped until SMOKE_URL is set, so deploys do not roll back before DNS
