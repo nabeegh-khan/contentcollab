@@ -127,13 +127,14 @@ jobs:
         env:
           SMOKE_URL: ${{ vars.SMOKE_URL }}
         run: |
-          # Reads the body, not just the status: both dependencies must be up
-          for i in $(seq 1 12); do
-            body=$(curl -fsS --max-time 5 "$SMOKE_URL/health" || true)
+          # Reads the body, not just the status: both dependencies must be up.
+          # No -f, so a 503's body (which dependency is down) reaches the log
+          for _ in $(seq 1 12); do
+            body=$(curl -sS --max-time 5 "$SMOKE_URL/health" || true)
             if echo "$body" | grep -q '"status":"ok"'; then echo "smoke ok: $body"; exit 0; fi
             sleep 5
           done
-          echo "Smoke check failed (last body: $body): rolling back"
+          echo "::error::Smoke check failed (last body: $body): rolling back"
           # Both images come from this commit, so both go back together
           for svc in api worker; do
             kubectl -n contentcollab rollout undo deployment/$svc
