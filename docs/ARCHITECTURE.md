@@ -109,7 +109,7 @@ Stretch goals, presented as completed only if they are:
 
 ### D6. Monitoring
 
-DigitalOcean droplet and cluster metrics with alert policies (CPU, memory, disk at 80%) are mandatory and free. The API exposes `/metrics` with `prom-client` (request count, latency histogram, error rate, upload bytes, connected sockets); Prometheus and Grafana run in the cluster from the community Helm chart if time allows. The presentation shows one alert firing and one dashboard.
+DigitalOcean droplet and cluster metrics with alert policies (CPU, memory, disk at 80%) are mandatory and free. The API exposes `/metrics` with `prom-client` (request count, latency histogram, error rate, upload bytes, connected sockets). Datadog collects those metrics, every container's logs and the Kubernetes state (restarts, pending pods, autoscaler replicas) through its agent, and holds the dashboard (#27, decided 8 November; the proposal's monitoring row already named it). It beat Prometheus and Grafana in the cluster, the handout's optional route: the account came with the GitHub Student Developer Pack (24 October minutes), logs outlive the pod that wrote them, and two small nodes carry one agent each instead of a metrics store and a dashboard server. The cost is a vendor account, an API key kept outside the repository, and 100m CPU and 256 MiB requested on each node. `scripts/cluster-up.sh` installs the agent last, from the chart pinned there, after checking the key against the account's Datadog site. The API pods are scraped by an autodiscovery annotation in `k8s/base/api.yaml`. The presentation shows one alert firing and one dashboard.
 
 ### D7. Local development
 
