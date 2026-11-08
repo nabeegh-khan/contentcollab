@@ -86,8 +86,10 @@ kubectl -n contentcollab rollout status deployment/api --timeout=180s
 #     goes into a Secret; the chart reads it from there (SEC-1).
 if [ -n "$DATADOG_API_KEY" ]; then
   kubectl create namespace datadog --dry-run=client -o yaml | kubectl apply -f -
-  kubectl -n datadog create secret generic datadog-secret --from-literal api-key="$DATADOG_API_KEY" \
-    --dry-run=client -o yaml | kubectl apply -f -
+  # Through stdin (printf is a shell builtin), so the key is never in a
+  # process argument list; works the same in Git Bash on Windows
+  printf 'apiVersion: v1\nkind: Secret\nmetadata:\n  name: datadog-secret\n  namespace: datadog\nstringData:\n  api-key: "%s"\n' "$DATADOG_API_KEY" \
+    | kubectl apply -f -
   helm upgrade --install datadog-agent datadog --repo https://helm.datadoghq.com --version "$DATADOG_CHART_VERSION" -n datadog -f k8s/doks/datadog-values.yaml --wait --timeout 5m
 else
   echo "DATADOG_API_KEY not set: Datadog agent not installed (#27)"
