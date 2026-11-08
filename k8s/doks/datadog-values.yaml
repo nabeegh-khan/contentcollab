@@ -28,6 +28,16 @@ datadog:
   # kubelet.tlsVerify stays at the chart default (true). No DigitalOcean or
   # Datadog source says DOKS needs it off; turn it off only if `agent status`
   # in a datadog-agent pod shows an x509 error reaching the kubelet.
+# The cluster agent runs the Kubernetes state check; sized as the chart's own
+# commented example for clusterAgent.resources (OBS-5)
+clusterAgent:
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
 # One agent per node; the small nodes need the agent kept light (OBS-5)
 agents:
   containers:
