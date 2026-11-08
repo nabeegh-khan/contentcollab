@@ -138,9 +138,11 @@ jobs:
           # The ten-minute credentials may have run out during two rollouts and
           # the smoke wait; fetch fresh ones so the rollback is not refused
           doctl kubernetes cluster kubeconfig save --expiry-seconds 600 contentcollab
-          # Both images come from this commit, so both go back together
+          # Both images come from this commit, so both go back together; one
+          # failed undo does not stop the other
           for svc in api worker; do
-            kubectl -n contentcollab rollout undo deployment/$svc
-            kubectl -n contentcollab rollout status deployment/$svc --timeout=180s
+            { kubectl -n contentcollab rollout undo deployment/$svc \
+                && kubectl -n contentcollab rollout status deployment/$svc --timeout=180s; } \
+              || echo "::error::rollback of deployment/$svc failed: the cluster may run mixed versions"
           done
           exit 1
