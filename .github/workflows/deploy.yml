@@ -69,7 +69,9 @@ jobs:
           DO_TOKEN: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
         run: |
           if [ -z "$DO_TOKEN" ]; then
-            echo "No DIGITALOCEAN_ACCESS_TOKEN secret: images pushed, no rollout"
+            msg="No DIGITALOCEAN_ACCESS_TOKEN secret: images pushed, cluster not changed"
+            echo "::warning title=No rollout::$msg"
+            echo "$msg" >> "$GITHUB_STEP_SUMMARY"
             echo "present=false" >> "$GITHUB_OUTPUT"
           else
             echo "present=true" >> "$GITHUB_OUTPUT"
