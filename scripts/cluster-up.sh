@@ -18,6 +18,7 @@ cd "$(dirname "$0")/.."   # paths below are relative to the repository root
 : "${LETSENCRYPT_EMAIL:?set LETSENCRYPT_EMAIL to the address Lets Encrypt notifies about expiry}"
 : "${SECRETS_FILE:=k8s/base/secrets.yaml}"   # git-ignored copy of secrets.example.yaml with real values
 : "${DATADOG_API_KEY:=}"                      # optional: empty skips the Datadog agent
+: "${DATADOG_SITE:=datadoghq.com}"            # the account's site: datadoghq.eu, us3.datadoghq.com, ...
 
 NGF_VERSION="v2.8.0"            # https://docs.nginx.com/nginx-gateway-fabric/install/helm/
 CERT_MANAGER_VERSION="v1.19.2"  # https://cert-manager.io/docs/installation/helm/
@@ -85,12 +86,17 @@ kubectl -n contentcollab rollout status deployment/api --timeout=180s
 # 4c. Datadog agent (#27), only when an API key is in the environment. The key
 #     goes into a Secret; the chart reads it from there (SEC-1).
 if [ -n "$DATADOG_API_KEY" ]; then
+  # A wrong key or site would otherwise install cleanly and send nothing.
+  # 200 = valid, 403 = invalid (GET /api/v1/validate, Datadog API spec)
+  code=$(printf 'DD-API-KEY: %s\n' "$DATADOG_API_KEY" | curl -s -o /dev/null -w '%{http_code}' -H @- \
+    "https://api.$DATADOG_SITE/api/v1/validate")
+  [ "$code" = "200" ] || { echo "Datadog rejected DATADOG_API_KEY at api.$DATADOG_SITE (HTTP $code): check the key and DATADOG_SITE"; exit 1; }
   kubectl create namespace datadog --dry-run=client -o yaml | kubectl apply -f -
   # Through stdin (printf is a shell builtin), so the key is never in a
   # process argument list; works the same in Git Bash on Windows
   printf 'apiVersion: v1\nkind: Secret\nmetadata:\n  name: datadog-secret\n  namespace: datadog\nstringData:\n  api-key: "%s"\n' "$DATADOG_API_KEY" \
     | kubectl apply -f -
-  helm upgrade --install datadog-agent datadog --repo https://helm.datadoghq.com --version "$DATADOG_CHART_VERSION" -n datadog -f k8s/doks/datadog-values.yaml --wait --timeout 5m
+  helm upgrade --install datadog-agent datadog --repo https://helm.datadoghq.com --version "$DATADOG_CHART_VERSION" -n datadog -f k8s/doks/datadog-values.yaml --set datadog.site="$DATADOG_SITE" --wait --timeout 5m
 else
   echo "DATADOG_API_KEY not set: Datadog agent not installed (#27)"
 fi

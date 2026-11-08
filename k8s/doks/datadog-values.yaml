@@ -7,7 +7,7 @@
 datadog:
   apiKeyExistingSecret: datadog-secret
   clusterName: contentcollab
-  site: datadoghq.com
+  # site: set by scripts/cluster-up.sh from DATADOG_SITE (default datadoghq.com)
   # Container logs from every pod (OBS-1, OBS-2)
   logs:
     enabled: true
