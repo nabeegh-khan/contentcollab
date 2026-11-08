@@ -111,7 +111,8 @@ jobs:
           for svc in api worker; do
             # A renamed image would leave set image matching nothing and the
             # old image running with every check green
-            image=$(kubectl -n contentcollab get deployment/$svc -o jsonpath='{.spec.template.spec.containers[0].image}')
+            image=$(kubectl -n contentcollab get deployment/$svc -o jsonpath='{.spec.template.spec.containers[0].image}') \
+              || image="(unreadable)"   # a bare failing assignment would end the step under bash -e
             case "$image" in
               *:${{ github.sha }}) ;;
               *) echo "::error::deployment/$svc runs $image, not this commit"; failed=1; continue ;;
