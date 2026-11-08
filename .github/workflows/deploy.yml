@@ -56,7 +56,8 @@ jobs:
   rollout:
     needs: build
     runs-on: ubuntu-latest
-    # One rollout at a time: a second merge waits instead of racing the first
+    # One rollout at a time. A merge waits for the running one; a newer merge
+    # replaces a rollout still waiting, so the newest commit is what deploys
     concurrency:
       group: rollout
       cancel-in-progress: false
