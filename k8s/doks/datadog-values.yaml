@@ -8,6 +8,16 @@ datadog:
   apiKeyExistingSecret: datadog-secret
   clusterName: contentcollab
   # site: set by scripts/cluster-up.sh from DATADOG_SITE (default datadoghq.com)
+  # Off what the project does not use, so two small nodes carry only the node
+  # agent and the cluster agent (chart 3.269.1 defaults: an operator Deployment
+  # with 8 CRDs, a system-probe container for service discovery, and a
+  # trace-agent for APM; `helm template` with these values renders none of them)
+  operator:
+    enabled: false
+  discovery:
+    enabled: false
+  apm:
+    socketEnabled: false
   # Container logs from every pod, kept after the pod is gone (OBS-1, OBS-2)
   logs:
     enabled: true
