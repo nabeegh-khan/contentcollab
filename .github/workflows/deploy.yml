@@ -108,6 +108,13 @@ jobs:
           # undo is reported and the next Deployment is still checked.
           failed=0
           for svc in api worker; do
+            # A renamed image would leave set image matching nothing and the
+            # old image running with every check green
+            image=$(kubectl -n contentcollab get deployment/$svc -o jsonpath='{.spec.template.spec.containers[0].image}')
+            case "$image" in
+              *:${{ github.sha }}) ;;
+              *) echo "::error::deployment/$svc runs $image, not this commit"; failed=1; continue ;;
+            esac
             kubectl -n contentcollab rollout status deployment/$svc --timeout=180s \
               || { kubectl -n contentcollab rollout undo deployment/$svc \
                      || echo "::error::undo of deployment/$svc failed: the cluster may run mixed versions"; failed=1; }
