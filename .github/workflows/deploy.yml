@@ -67,6 +67,7 @@ jobs:
         id: cluster
         env:
           DO_TOKEN: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+          SMOKE_URL: ${{ vars.SMOKE_URL }}
         run: |
           if [ -z "$DO_TOKEN" ]; then
             msg="No DIGITALOCEAN_ACCESS_TOKEN secret: images pushed, cluster not changed"
@@ -74,6 +75,7 @@ jobs:
             echo "$msg" >> "$GITHUB_STEP_SUMMARY"
             echo "present=false" >> "$GITHUB_OUTPUT"
           else
+            [ -n "$SMOKE_URL" ] || echo "::warning title=No smoke check::SMOKE_URL is not set, so a release that starts but does not serve is not rolled back"
             echo "present=true" >> "$GITHUB_OUTPUT"
           fi
       # DigitalOcean's documented pattern: doctl from the official action and a
