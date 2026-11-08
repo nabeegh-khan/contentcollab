@@ -63,6 +63,22 @@ One Kustomize base with a `minikube` and a `doks` overlay: the overlays patch on
 - Corrected: a `PGDATA` override in the first draft was removed because `compose.yaml` lets the `postgres:18` image choose its data directory under the mounted volume, and the two environments must match.
 - Found on minikube the same day: both api pods had been restarted once, because the liveness probe pointed at `/health` and failed while PostgreSQL was still starting. A dependency outage must not kill a healthy process, so liveness now checks only that the socket accepts connections and readiness keeps the dependency check. The autoscaler's `minReplicas: 2` had also overridden the overlay's single replica; the overlay now sets it to 1. The restart test passed: a row written, `postgres-0` deleted, the row read back from the recreated pod on the same claim.
 
+## Test harness for the API (#38), 4 November 2026
+
+### Prompt
+
+Our API is TypeScript run as ES modules with tsx (NodeNext imports end in `.js`), and `server.ts` exports the app without listening. How do we run Jest and Supertest against it in CI with a real PostgreSQL and Redis, without adding a build step?
+
+### AI Response
+
+ts-jest with `useESM`, `.ts` treated as ESM, a `moduleNameMapper` that strips the `.js` suffix so imports resolve to the `.ts` files, and Node's `--experimental-vm-modules` flag in the test script. PostgreSQL and Redis as GitHub Actions service containers, with a `pg_isready` health check so the steps wait for the database, and `--runInBand` so tests that share a database do not interleave.
+
+### What Your Team Did With It
+
+- Changed: tests sit next to the file they test (`src/routes/health.test.ts`) rather than in a top-level `tests/` folder, because `tsconfig.json` sets `rootDir` to `src` and files outside it fail the typecheck; the layout in `api/README.md` was updated to match.
+- Checked: the three tests (`/health` with both services up, the 404 error shape, the request counter on `/metrics`) were run locally against PostgreSQL and Redis before pushing, and lint, Prettier and the typecheck pass. With Redis stopped, the suite fails on test timeouts rather than at once (superseded 7 November: the suite now stops at once, see the entry below), which is why CI starts Redis as a service instead of relying on the client's reconnect.
+- Kept out of the image: test files and the Jest config are listed in `api/.dockerignore`.
+
 ## Deploy pipeline and lecture 8 fixes (#59, #65, #70, #74), 4 November 2026
 
 ### Prompt
@@ -203,8 +219,8 @@ Their own PostgreSQL holds 5432, so the test container never started; the reacha
 
 ### What Your Team Did With It
 
-- Test first (failing in CI on 5931cef), module after; three cases covered (credentials accepted, refused, nothing listening); 10 tests pass locally and in CI.
-- Six findings from the independent check (misleading message on connection refused, missing public record, the practice ID `NET-2` that is CON-7, an unmentioned red CI run, the shared Compose project, no timeout) were fixed before the merge.
+- Test first (failing in CI on 5931cef), module after; four cases covered (credentials accepted, refused, nothing listening, a server that never answers); 11 tests pass locally and in CI.
+- Six findings from the independent check (misleading message on connection refused, missing public record, the practice ID `NET-2` that is CON-7, an unmentioned red CI run, the shared Compose project, no timeout) were fixed, then its re-check found that the timeout left a connect pending in the pool; fixed with a probe client of its own and a fourth test, and re-checked clean before the merge (3c53210).
 - Replied to the teammate by editing the morning's comment, under the same-day rule.
 
 

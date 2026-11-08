@@ -23,6 +23,47 @@ jobs:
       - run: npm run format:check # Prettier: fails if any file is not formatted
       - run: npm run typecheck # tsc: fails on type errors without building
 
+  # Jest and Supertest against a real PostgreSQL and Redis (#38). Every
+  # endpoint adds its tests next to its route file and they run here on
+  # every pull request, so a change that breaks another member's part fails
+  # before review.
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: api
+    services:
+      postgres:
+        image: postgres:18 # same version as compose.yaml
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: contentcollab_test
+        ports: ["5432:5432"]
+        # wait until the database accepts connections before the steps run
+        options: >-
+          --health-cmd "pg_isready -U test -d contentcollab_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:8
+        ports: ["6379:6379"]
+    env:
+      DB_HOST: localhost
+      DB_PORT: 5432
+      DB_USER: test
+      DB_PASSWORD: test
+      DB_NAME: contentcollab_test
+      REDIS_HOST: localhost
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: api/package-lock.json
+      - run: npm ci
+      - run: npm test
+
   # Renders both overlays and checks every object against the Kubernetes
   # schemas, so a bad manifest fails the PR instead of the cluster
   k8s:
