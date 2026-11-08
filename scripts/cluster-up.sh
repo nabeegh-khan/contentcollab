@@ -5,9 +5,11 @@
 # idempotent, so re-running after a failure is safe (INF-3).
 #
 # Needs: doctl (authenticated with `doctl auth init`), kubectl, helm.
-# Creates billable resources: two nodes and one load balancer (RESEARCH.md,
-# about US$46 a month). Run `scripts/cluster-down.sh` after grading (INF-7).
+# Creates billable resources: two US$18 nodes and one US$12 load balancer,
+# about US$48 a month for the cluster alone; US$54 with Spaces and the database
+# volume (docs/ARCHITECTURE.md). Run `scripts/cluster-down.sh` after grading (INF-7).
 set -euo pipefail
+cd "$(dirname "$0")/.."   # paths below are relative to the repository root
 
 : "${CLUSTER_NAME:=contentcollab}"
 : "${REGION:=tor1}"
@@ -41,7 +43,8 @@ kubectl get nodes
 #    load balancer in front of it.
 kubectl kustomize "https://github.com/nginx/nginx-gateway-fabric/config/crd/gateway-api/standard?ref=$NGF_VERSION" | kubectl apply -f -
 helm upgrade --install ngf oci://ghcr.io/nginx/charts/nginx-gateway-fabric \
-  --version "${NGF_VERSION#v}" --create-namespace -n nginx-gateway
+  --version "${NGF_VERSION#v}" --create-namespace -n nginx-gateway \
+  --set nginxGateway.productTelemetry.enable=false # vendor usage reporting; unused, and its export fails (BUILD_LOG.md)
 
 # 3. cert-manager, with Gateway API support so the HTTP-01 challenge can be
 #    answered through an HTTPRoute instead of an Ingress
@@ -51,15 +54,34 @@ helm upgrade --install cert-manager oci://quay.io/jetstack/charts/cert-manager \
   --set config.apiVersion=controller.config.cert-manager.io/v1alpha1 \
   --set config.kind=ControllerConfiguration \
   --set config.enableGatewayAPI=true
-kubectl -n cert-manager rollout status deployment/cert-manager --timeout=120s
+for d in cert-manager cert-manager-cainjector cert-manager-webhook; do
+  # The webhook comes up after the controller; applying the issuer before it
+  # answers fails the first run (cert-manager docs, "Verifying the installation")
+  kubectl -n cert-manager rollout status "deployment/$d" --timeout=120s
+done
 
 # 4. Namespace, Secret, issuer, then the application
 kubectl apply -f k8s/base/namespace.yaml
 kubectl apply -f "$SECRETS_FILE"
-sed "s/LETSENCRYPT_EMAIL/$LETSENCRYPT_EMAIL/" k8s/doks/cluster-issuer.yaml | kubectl apply -f -
-kubectl apply -k k8s/doks
+sed "s|LETSENCRYPT_EMAIL|$LETSENCRYPT_EMAIL|" k8s/doks/cluster-issuer.yaml | kubectl apply -f -   # | delimiter: an address may contain & or /
+# 4b. The application, pinned to an image CI built, never :latest (INF-9;
+#     L8 p67, p73). IMAGE_TAG defaults to the newest commit on main that
+#     deploy.yml builds for; the registry is checked before anything applies.
+git fetch -q origin main
+: "${IMAGE_TAG:=$(git log -1 --format=%H origin/main -- api k8s .github/workflows/deploy.yml)}"
+rendered=$(kubectl kustomize k8s/doks | sed "s#\(ghcr.io/nabeegh-khan/contentcollab-[a-z]*\):latest#\1:$IMAGE_TAG#g")
+for repo in $(printf '%s\n' "$rendered" | grep -o 'ghcr.io/nabeegh-khan/contentcollab-[a-z]*' | sort -u); do
+  name=${repo#ghcr.io/}
+  token=$(curl -fsS "https://ghcr.io/token?scope=repository:$name:pull" | sed -n 's/.*"token":"\([^"]*\)".*/\1/p')
+  code=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $token" \
+    -H "Accept: application/vnd.oci.image.index.v1+json,application/vnd.docker.distribution.manifest.v2+json" \
+    "https://ghcr.io/v2/$name/manifests/$IMAGE_TAG")
+  [ "$code" = "200" ] || { echo "no image $repo:$IMAGE_TAG in the registry (HTTP $code); set IMAGE_TAG to a commit deploy.yml built"; exit 1; }
+done
+printf '%s\n' "$rendered" | kubectl apply -f -
+kubectl -n contentcollab rollout status deployment/api --timeout=180s
 
-# 4b. Datadog agent (#27), only when an API key is in the environment. The key
+# 4c. Datadog agent (#27), only when an API key is in the environment. The key
 #     goes into a Secret; the chart reads it from there (SEC-1).
 if [ -n "$DATADOG_API_KEY" ]; then
   helm repo add datadog https://helm.datadoghq.com >/dev/null 2>&1 || true
@@ -84,4 +106,4 @@ else
   echo "Gateway address: $addr"
   echo "Next: A record contentcollab.app to $addr at the registrar. The certificate is issued on the first HTTPS request."
 fi
-echo "For CI rollouts, add the repository secret KUBECONFIG with: base64 -w0 ~/.kube/config"
+echo "For CI rollouts: deploy.yml reads the repository secret KUBECONFIG (base64 of the kubeconfig) today; #76 replaces it with DIGITALOCEAN_ACCESS_TOKEN. Set the variable SMOKE_URL once DNS and TLS work"
