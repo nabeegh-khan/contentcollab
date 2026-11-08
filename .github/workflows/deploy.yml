@@ -57,7 +57,8 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     # One rollout at a time. A merge waits for the running one; a newer merge
-    # replaces a rollout still waiting, so the newest commit is what deploys
+    # replaces a rollout still waiting, so usually the newest commit deploys
+    # (GitHub does not guarantee the order in which waiting runs start)
     concurrency:
       group: rollout
       cancel-in-progress: false
