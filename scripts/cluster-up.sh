@@ -89,6 +89,8 @@ if [ -n "$DATADOG_API_KEY" ]; then
   kubectl -n datadog create secret generic datadog-secret --from-literal api-key="$DATADOG_API_KEY" \
     --dry-run=client -o yaml | kubectl apply -f -
   helm upgrade --install datadog-agent datadog --repo https://helm.datadoghq.com --version "$DATADOG_CHART_VERSION" -n datadog -f k8s/doks/datadog-values.yaml --wait --timeout 5m
+else
+  echo "DATADOG_API_KEY not set: Datadog agent not installed (#27)"
 fi
 
 # 5. Where the world reaches it. The Gateway's address is the load balancer;
