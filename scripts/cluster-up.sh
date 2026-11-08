@@ -106,7 +106,7 @@ if [ -n "$DATADOG_API_KEY" ]; then
   # A wrong key or site would otherwise install cleanly and send nothing.
   # 200 = valid, 403 = invalid (GET /api/v1/validate, Datadog API spec)
   code=$(printf 'DD-API-KEY: %s\n' "$DATADOG_API_KEY" | curl -s -o /dev/null -w '%{http_code}' -H @- \
-    "https://api.$DATADOG_SITE/api/v1/validate")
+    "https://api.$DATADOG_SITE/api/v1/validate" || true)   # 000 when the site is unreachable
   [ "$code" = "200" ] || { echo "Datadog rejected DATADOG_API_KEY at api.$DATADOG_SITE (HTTP $code): check the key and DATADOG_SITE"; exit 1; }
   kubectl create namespace datadog --dry-run=client -o yaml | kubectl apply -f -
   # Through stdin (printf is a shell builtin), so the key is never in a
