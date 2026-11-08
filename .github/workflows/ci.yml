@@ -23,6 +23,47 @@ jobs:
       - run: npm run format:check # Prettier: fails if any file is not formatted
       - run: npm run typecheck # tsc: fails on type errors without building
 
+  # Jest and Supertest against a real PostgreSQL and Redis (#38). Every
+  # endpoint adds its tests next to its route file and they run here on
+  # every pull request, so a change that breaks another member's part fails
+  # before review.
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: api
+    services:
+      postgres:
+        image: postgres:18 # same version as compose.yaml
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: contentcollab_test
+        ports: ["5432:5432"]
+        # wait until the database accepts connections before the steps run
+        options: >-
+          --health-cmd "pg_isready -U test -d contentcollab_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:8
+        ports: ["6379:6379"]
+    env:
+      DB_HOST: localhost
+      DB_PORT: 5432
+      DB_USER: test
+      DB_PASSWORD: test
+      DB_NAME: contentcollab_test
+      REDIS_HOST: localhost
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: api/package-lock.json
+      - run: npm ci
+      - run: npm test
+
   # Renders both overlays and checks every object against the Kubernetes
   # schemas, so a bad manifest fails the PR instead of the cluster
   k8s:
@@ -52,6 +93,19 @@ jobs:
           for overlay in minikube doks; do
             ok=$(yq 'select(.kind == "Deployment" and .metadata.name == "api") | (.spec.template.spec.topologySpreadConstraints // []) | map(select(.topologyKey == "kubernetes.io/hostname" and .maxSkew == 1 and .whenUnsatisfiable == "ScheduleAnyway" and .labelSelector.matchLabels.app == "api" and ((.matchLabelKeys // []) | contains(["pod-template-hash"])))) | length > 0' /tmp/$overlay.yaml)
             [ "$ok" = "true" ] || { echo "::error::$overlay: api Deployment has no kubernetes.io/hostname spread constraint (maxSkew 1, ScheduleAnyway, app=api, pod-template-hash); got '$ok'"; exit 1; }
+          # The issuer is applied by scripts/cluster-up.sh, not by the overlay
+          kubeconform -strict -summary -kubernetes-version 1.33.0 \
+            -schema-location default \
+            -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+            k8s/doks/cluster-issuer.yaml
+      - name: Every object in the app namespace
+        # A namespace set in the base does not reach resources an overlay
+        # adds; the Gateway once landed in `default` this way (BUILD_LOG.md,
+        # 4 Nov). yq 4 is preinstalled on the Ubuntu runner.
+        run: |
+          for overlay in minikube doks; do
+            stray=$(yq 'select(.kind != "Namespace" and .metadata.namespace != "contentcollab") | .kind + "/" + .metadata.name' /tmp/$overlay.yaml | grep -v '^---$' || true)
+            [ -z "$stray" ] || { echo "::error::$overlay renders objects outside contentcollab: $stray"; exit 1; }
           done
 
   worker:

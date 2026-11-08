@@ -5,19 +5,20 @@ Kubernetes manifests, applied with `kubectl apply -k` (Kustomize) in two overlay
 ```
 k8s/
   base/        Namespace, ConfigMap, StatefulSet (postgres) with its volume claim, Deployment (redis),
-               Deployment + Service + HorizontalPodAutoscaler + PodDisruptionBudget (api),
+               Deployment + Service + HorizontalPodAutoscaler + PodDisruptionBudget (api), Deployment (worker),
                secrets.example.yaml (the shape of the one Secret; real values are never committed)
   minikube/    overlay: one api replica, image built inside minikube, NodePort
   doks/        overlay: DigitalOcean block-storage class for the database, Gateway and HTTPRoute for traffic
 ```
 
-`web` and `worker` get their Deployments when those containers exist; the backup CronJob lands with the backup slice.
+`web` gets its Deployment when that container exists; the backup CronJob lands with the backup slice.
 
 ## Run on minikube
 
 ```
 minikube start --cpus 2 --memory 4096
 minikube image build -t contentcollab-api:dev api
+minikube image build -t contentcollab-worker:dev worker
 cp k8s/base/secrets.example.yaml k8s/base/secrets.yaml      # edit the values; the file is git-ignored
 kubectl apply -f k8s/base/namespace.yaml
 kubectl apply -f k8s/base/secrets.yaml
@@ -30,9 +31,13 @@ The restart test from the proposal: `kubectl -n contentcollab delete pod postgre
 
 Validate without a cluster: `kubectl kustomize k8s/minikube` renders the objects; CI runs kubeconform on them (`ci.yml`, job `k8s`).
 
+## Cluster
+
+`scripts/cluster-up.sh` creates the DOKS cluster and installs what the `doks` overlay expects (Gateway API CRDs, NGINX Gateway Fabric, cert-manager with the Let's Encrypt issuer in `doks/cluster-issuer.yaml`), applies the Secret and the overlay, and prints the load balancer address for the DNS record. Needs `doctl`, `kubectl`, `helm` and `LETSENCRYPT_EMAIL`; it bills from the moment it runs. `scripts/cluster-down.sh` deletes it all after grading.
+
 ## Images
 
-CI (`.github/workflows/deploy.yml`) pushes `ghcr.io/nabeegh-khan/contentcollab-api:<sha>` and `:latest` on every merge to `main`. The base manifest points at `:latest`; the cluster is moved to a SHA by the same workflow, so the manifest's tag is never edited by hand.
+CI (`.github/workflows/deploy.yml`) pushes `ghcr.io/nabeegh-khan/contentcollab-api` and `contentcollab-worker`, tagged `<sha>` and `latest`, on every merge to `main`. The base manifest points at `:latest`. The same workflow has a rollout step that moves both Deployments to the commit SHA, but it has not run yet: no cluster credentials exist in the repository, and #76 replaces the credential check. Until then the cluster is moved to a SHA by hand (`kubectl set image`, as on 4 November), never by editing the manifest.
 <!-- PRACTICES:start -->
 
 ## Practices that apply here
