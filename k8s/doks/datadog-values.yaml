@@ -15,9 +15,9 @@ datadog:
   # Kubernetes state metrics: pod restarts, pending pods, HPA replica counts
   kubeStateMetricsCore:
     enabled: true
-  # DOKS kubelets use a self-signed certificate
-  kubelet:
-    tlsVerify: false
+  # kubelet.tlsVerify stays at the chart default (true). No DigitalOcean or
+  # Datadog source says DOKS needs it off; turn it off only if `agent status`
+  # in a datadog-agent pod shows an x509 error reaching the kubelet.
 # One agent per node; the small nodes need the agent kept light
 agents:
   containers:
