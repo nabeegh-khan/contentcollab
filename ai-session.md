@@ -222,3 +222,37 @@ Their own PostgreSQL holds 5432, so the test container never started; the reacha
 - Test first (failing in CI on 5931cef), module after; four cases covered (credentials accepted, refused, nothing listening, a server that never answers); 11 tests pass locally and in CI.
 - Six findings from the independent check (misleading message on connection refused, missing public record, the practice ID `NET-2` that is CON-7, an unmentioned red CI run, the shared Compose project, no timeout) were fixed, then its re-check found that the timeout left a connect pending in the pool; fixed with a probe client of its own and a fourth test, and re-checked clean before the merge (3c53210).
 - Replied to the teammate by editing the morning's comment, under the same-day rule.
+
+
+## Datadog install reviewed and hardened (#27, PR #61), 8 November 2026
+
+### Prompt
+
+PR #61 had no review three days after it left draft. Bring it up to date with main, run every CI check locally, review it, fix each real finding in its own commit, check whether Datadog still fits the architecture, and prepare the self-review note and the merge.
+
+### AI Response
+
+Datadog still fits: the proposal and the diagram name it, but D6 still said Prometheus and Grafana. The review found an unpinned chart, a swallowed `helm repo add` failure, no wait for the agent, a silent skip, the API key in a process argument, no check that the key and site are right, a scrape setting that did nothing, kubelet TLS verification turned off without a source, and a step order that hid the Gateway address. An independent check of the result added the chart's unused operator, discovery and APM containers, the memory arithmetic, a missing timeout, and that server-side apply with kubectl's default field manager still keeps the annotation holding the key.
+
+### What Your Team Did With It
+
+- Merged main into the branch and kept only the Datadog lines in the two conflicted files. Fixed each finding in its own commit (pinned chart 3.269.1, `--repo`, `--wait`, key through stdin into a server-side-applied Secret with its own field manager, `GET /api/v1/validate` on `DATADOG_SITE`, unused chart parts off, cluster-agent requests).
+- Tested the install step with stub `kubectl` and `helm` and real `curl`: skip, wrong key (Datadog 403), unknown site (HTTP 000), valid key never in a process argument. shellcheck clean; CI green.
+- Corrected D6 on main and recorded the memory arithmetic as a stated risk. The merge waits for the review window, which ends 9 November at 10:08am.
+
+## Gated deploy rebased and made compatible with the image pinning (#70, PR #76), 8 November 2026
+
+### Prompt
+
+PR #76 was stacked on #71, which was squash-merged, so it conflicted with main in seven files. Rebase only its own commit onto main, make its `deploy.yml` compatible with #83 so neither undoes the other, run the checks, review and fix it, rewrite the description and request review.
+
+### AI Response
+
+#76 had one commit of its own, on #71's first commit, so `git rebase --onto origin/main` left only `ci.yml` and `deploy.yml` changed. Proposed taking #83's rollout step as written and adding the checks before the build, short-lived doctl credentials, one rollout at a time and the smoke check. The review found practice IDs that do not exist (DEP-12, DEP-13), silent green runs when the token or `SMOKE_URL` is missing, undo loops that stop before the worker, no check that the pinned image reached the Deployment, a credential that can expire before the smoke rollback, and stale text about the old secret.
+
+### What Your Team Did With It
+
+- Rebased, then fixed each finding in its own commit; the second review pass found that an unreadable image ended the step, which a stub test case showed failing before its fix.
+- A stub test of the rollout and smoke scripts under `bash -e` passes nine cases (four failed before the fixes); #83's own deploy test passes 9 of 9 on the two branches combined; CI green.
+- Wrote the merge order (#83 first) and the exact conflict resolution into the description; review requested from a teammate, due 11 November.
+
