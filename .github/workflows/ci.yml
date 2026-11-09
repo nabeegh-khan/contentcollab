@@ -89,6 +89,16 @@ jobs:
             -schema-location default \
             -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
             k8s/doks/cluster-issuer.yaml
+      - name: API replicas spread across nodes
+        # Two replicas on two nodes are only highly available if the
+        # scheduler is told to spread them: its default spread skips nodes
+        # without a zone label, which DOKS nodes lack (ARCHITECTURE D5, #69).
+        # yq 4 is preinstalled on the runner.
+        run: |
+          for overlay in minikube doks; do
+            ok=$(yq 'select(.kind == "Deployment" and .metadata.name == "api") | (.spec.template.spec.topologySpreadConstraints // []) | map(select(.topologyKey == "kubernetes.io/hostname" and .maxSkew == 1 and .whenUnsatisfiable == "ScheduleAnyway" and .labelSelector.matchLabels.app == "api" and ((.matchLabelKeys // []) | contains(["pod-template-hash"])))) | length > 0' /tmp/$overlay.yaml)
+            [ "$ok" = "true" ] || { echo "::error::$overlay: api Deployment has no kubernetes.io/hostname spread constraint (maxSkew 1, ScheduleAnyway, app=api, pod-template-hash); got '$ok'"; exit 1; }
+          done
       - name: Every object in the app namespace
         # A namespace set in the base does not reach resources an overlay
         # adds; the Gateway once landed in `default` this way (BUILD_LOG.md,
