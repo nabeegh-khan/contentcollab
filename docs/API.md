@@ -1,6 +1,6 @@
 # API contract
 
-First draft, 31 October 2026, from `ARCHITECTURE.md` D2 to D5 and D10. Owned by the API and data slice after review (Issue #10). The frontend, the real-time layer and the additive slices build against this table; a change to a path, a body or a status code is a change here first, with the team told on the Issue.
+Reviewed by Milton on 9 November 2026 from `ARCHITECTURE.md` D2 to D5 and D10. Owned by the API and data slice after review (Issue #10). The frontend, the real-time layer and the additive slices build against this table; a change to a path, a body or a status code is a change here first, with the team told on the Issue.
 
 Base path `/api/v1`. JSON in and out, `Content-Type: application/json`, except file upload (`multipart/form-data`) and file download (the stored content type). Timestamps are ISO 8601 UTC. Ids are UUIDs.
 
@@ -37,6 +37,7 @@ Share      { id, documentId, userId | null, linkToken | null, role, expiresAt | 
 Comment    { id, versionId, authorId, parentId | null, body, anchor | null, resolved, createdAt, updatedAt }
 Anchor     { page: number, x: number, y: number }      (0 to 1, relative to the page; null for a general comment)
 Tag        { name, count }
+Cursor     { createdAt, id }                           (base64)
 ```
 
 `role` on a Document is the caller's role, so the client can hide controls it cannot use.
@@ -60,7 +61,7 @@ Passwords: bcrypt, minimum 8 characters. Tokens expire after 24 hours; no refres
 | GET | `/documents` | `?q=` title search, `?tag=` filter | `200` page of `Document` the caller can read |
 | POST | `/documents` | multipart: `file`, `title` (defaults to filename) | `201 Document` with version 1; `413`; `400` type not allowed |
 | GET | `/documents/:documentId` | | `200 Document` |
-| PATCH | `/documents/:documentId` | `{ title?, tags? }` | `200 Document` |
+| PATCH | `/documents/:documentId` | `{ title?, tags? }` | `200 Document` - `tags` replaces the tag list|
 | DELETE | `/documents/:documentId` | | `204`; owner only |
 
 Allowed upload types: PDF, PNG, JPEG, plus docx, xlsx, pptx, txt, md (stored and downloadable, not rendered).
@@ -95,7 +96,7 @@ A link share grants its role to anyone with the token until `expiresAt`. Writes 
 |---|---|---|---|
 | GET | `/documents/:documentId/versions/:versionId/comments` | `?resolved=` | `200` page of `Comment`, oldest first, threads flattened with `parentId` |
 | POST | `/documents/:documentId/versions/:versionId/comments` | `{ body, anchor?, parentId? }` | `201 Comment` |
-| PATCH | `/documents/:documentId/comments/:commentId` | `{ body?, resolved? }` | `200 Comment`; author or owner |
+| PATCH | `/documents/:documentId/comments/:commentId` | `{ body?, resolved? }` | `200 Comment`; author or owner - `resolved` moves to the thread root on on any comment |
 | DELETE | `/documents/:documentId/comments/:commentId` | | `204`; author or owner |
 
 `@displayName` in a body is a mention; the API resolves it to users who have a share on the document and emits a notification event.
@@ -130,9 +131,3 @@ Server to client, in the version room:
 | `mention` | `{ commentId, documentId, from }` (to the mentioned user only) |
 
 Every event is emitted after the database write commits, through the Redis adapter, so every API replica delivers it.
-
-## Open points for the API and data slice
-
-- Whether `PATCH /documents/:id` with `tags` replaces or merges the tag list (draft: replaces).
-- Whether `resolved` moves to the thread root only (draft: any comment, the client shows the root's value).
-- Cursor encoding (draft: base64 of `createdAt,id`).
