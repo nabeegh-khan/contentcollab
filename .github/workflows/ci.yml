@@ -135,8 +135,9 @@ jobs:
   # cache so a source-only change rebuilds in seconds (L4 p47-48).
   docker:
     runs-on: ubuntu-latest
+    timeout-minutes: 15 # a hung build or smoke loop fails fast instead of running for hours
     services:
-      redis: # so /health can report Redis up in the smoke run
+      redis: # the smoke run checks /health reports Redis ok
         image: redis:8
         ports: ["6379:6379"]
     steps:
@@ -152,26 +153,40 @@ jobs:
           cache-to: type=gha,mode=max # save every layer for the next run
       - name: Smoke the image
         # Start the container on the runner's network so it reaches the Redis
-        # service above on localhost, and confirm the process answers. With no
-        # Postgres /health reports 503 degraded, which is the correct answer
-        # here; any HTTP reply proves the image starts and serves.
+        # service above on localhost, and confirm the process answers with
+        # Redis ok. With no Postgres /health is 503 degraded, which is the
+        # correct status here, so the body is what is checked (TST-3).
         run: |
           docker run -d --name api --network host -e PORT=3000 -e REDIS_HOST=127.0.0.1 contentcollab-api:pr
-          for i in $(seq 1 20); do
-            code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:3000/health || true)
-            if [ "$code" = "200" ] || [ "$code" = "503" ]; then echo "answered $code"; exit 0; fi
+          for _ in $(seq 1 20); do
+            body=$(curl -s -m 3 http://localhost:3000/health || true)
+            case "$body" in *'"redis":"ok"'*) echo "answered: $body"; exit 0 ;; esac
             sleep 1
           done
-          echo "api did not answer on 3000"; docker logs api; exit 1
-      - name: Starts without Redis (#65)
-        # Points the image at a Redis that does not exist: the process must
-        # still listen and answer /health with 503, not crash or hang, so
-        # Kubernetes never restart-loops a pod over a dependency outage
+          echo "api did not report Redis ok on 3000 (last: $body)"; docker logs api; exit 1
+      - name: Starts without Redis, then picks it up (#65)
+        # Points the image at a Redis that does not exist yet: the process must
+        # still listen and say Redis is down within 1 s (the readiness probe's
+        # default timeout), not crash or hang, so Kubernetes never
+        # restart-loops a pod over a dependency outage. Then Redis starts on
+        # that port and the same process must report it ok, without a restart.
         run: |
           docker run -d --name api-noredis --network host -e PORT=3002 -e REDIS_HOST=127.0.0.1 -e REDIS_PORT=6399 contentcollab-api:pr
-          for i in $(seq 1 20); do
-            code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:3002/health || true)
-            if [ "$code" = "503" ]; then echo "listening without Redis, /health 503"; exit 0; fi
+          down=""
+          for _ in $(seq 1 20); do
+            body=$(curl -s -m 1 http://localhost:3002/health || true)
+            case "$body" in *'"redis":"down"'*) down=yes; echo "listening without Redis: $body"; break ;; esac
             sleep 1
           done
-          echo "api did not listen without Redis (last $code)"; docker logs api-noredis; exit 1
+          if [ -z "$down" ]; then echo "api did not report Redis down within 1 s (last: $body)"; docker logs api-noredis; exit 1; fi
+          docker run -d --name redis-late --network host redis:8 --port 6399
+          for _ in $(seq 1 30); do
+            body=$(curl -s -m 1 http://localhost:3002/health || true)
+            case "$body" in *'"redis":"ok"'*)
+              if [ "$(docker inspect -f '{{.State.Running}} {{.RestartCount}}' api-noredis)" = "true 0" ]; then
+                echo "same process picked Redis up: $body"; exit 0
+              fi ;;
+            esac
+            sleep 1
+          done
+          echo "api did not pick Redis up (last: $body)"; docker logs api-noredis; exit 1
