@@ -21,8 +21,9 @@ datadog:
     socketEnabled: false
   # Container logs, kept after the pod is gone (OBS-1, OBS-2), from the app's
   # namespace only: cert-manager, the gateway and kube-system logs stay off a
-  # third party. Inclusion wins over exclusion, so this reads "nothing, except
-  # contentcollab" (docs.datadoghq.com/containers/guide/container-discovery-management,
+  # third party. Inclusion generally wins over exclusion (a pod's own exclude
+  # annotation still wins), so this reads "nothing, except contentcollab"
+  # (docs.datadoghq.com/containers/guide/container-discovery-management,
   # checked 10 Nov 2026)
   logs:
     enabled: true

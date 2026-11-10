@@ -118,7 +118,8 @@ if [ -n "$DATADOG_API_KEY" ]; then
   [ "$code" = "200" ] || { echo "Datadog rejected DATADOG_API_KEY at api.$DATADOG_SITE (HTTP $code): check the key and DATADOG_SITE"; exit 1; }
   kubectl create namespace datadog --dry-run=client -o yaml | kubectl apply -f -
   # On a re-run the agents read the key from the Secret only when they start,
-  # and helm leaves them running when the values are unchanged
+  # and helm leaves them running when the values are unchanged; so every re-run
+  # restarts them (a short gap in agent data), whether or not the key changed
   installed=false
   helm status datadog-agent -n datadog >/dev/null 2>&1 && installed=true
   # Through stdin (printf is a shell builtin), so the key is never in a
