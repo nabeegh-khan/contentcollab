@@ -103,12 +103,24 @@ echo "For CI rollouts: set the repository secret DIGITALOCEAN_ACCESS_TOKEN; set 
 #    the app and the Gateway address never wait on it or fail with it. The key
 #    goes into a Secret; the chart reads it from there (SEC-1).
 if [ -n "$DATADOG_API_KEY" ]; then
+  # The key is sent to api.$DATADOG_SITE below, so the site must be one of
+  # Datadog's own (docs.datadoghq.com/getting_started/site, 10 Nov 2026); the
+  # key goes inside double quotes in YAML, so letters and digits only
+  case "$DATADOG_SITE" in
+    datadoghq.com|us3.datadoghq.com|us5.datadoghq.com|datadoghq.eu|ddog-gov.com|us2.ddog-gov.com|ap1.datadoghq.com|ap2.datadoghq.com|uk1.datadoghq.com) ;;
+    *) echo "DATADOG_SITE '$DATADOG_SITE' is not a Datadog site (datadoghq.com, datadoghq.eu, us3.datadoghq.com, ...)"; exit 1 ;;
+  esac
+  [[ "$DATADOG_API_KEY" =~ ^[A-Za-z0-9]+$ ]] || { echo "DATADOG_API_KEY has characters other than letters and digits: check what was pasted"; exit 1; }
   # A wrong key or site would otherwise install cleanly and send nothing.
   # 200 = valid, 403 = invalid (GET /api/v1/validate, Datadog API spec)
   code=$(printf 'DD-API-KEY: %s\n' "$DATADOG_API_KEY" | curl -s --max-time 15 -o /dev/null -w '%{http_code}' -H @- \
     "https://api.$DATADOG_SITE/api/v1/validate" || true)   # 000 when the site is unreachable
   [ "$code" = "200" ] || { echo "Datadog rejected DATADOG_API_KEY at api.$DATADOG_SITE (HTTP $code): check the key and DATADOG_SITE"; exit 1; }
   kubectl create namespace datadog --dry-run=client -o yaml | kubectl apply -f -
+  # On a re-run the agents read the key from the Secret only when they start,
+  # and helm leaves them running when the values are unchanged
+  installed=false
+  helm status datadog-agent -n datadog >/dev/null 2>&1 && installed=true
   # Through stdin (printf is a shell builtin), so the key is never in a
   # process argument list; works the same in Git Bash on Windows. Server-side
   # apply under its own field manager: with kubectl's default manager the
@@ -118,6 +130,11 @@ if [ -n "$DATADOG_API_KEY" ]; then
   helm upgrade --install datadog-agent datadog --repo https://helm.datadoghq.com \
     --version "$DATADOG_CHART_VERSION" -n datadog -f k8s/doks/datadog-values.yaml \
     --set datadog.site="$DATADOG_SITE" --wait --timeout 5m
+  if [ "$installed" = true ]; then
+    kubectl -n datadog rollout restart daemonset/datadog-agent deployment/datadog-agent-cluster-agent
+    kubectl -n datadog rollout status daemonset/datadog-agent --timeout=300s
+    kubectl -n datadog rollout status deployment/datadog-agent-cluster-agent --timeout=300s
+  fi
 else
   echo "DATADOG_API_KEY not set: Datadog agent not installed (#27)"
 fi
