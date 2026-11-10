@@ -22,9 +22,16 @@ datadog:
   logs:
     enabled: true
     containerCollectAll: true
-  # Kubernetes state metrics: pod restarts, pending pods, HPA replica counts (OBS-3)
+  # Kubernetes state metrics: pod restarts, pending pods, HPA replica counts (OBS-3).
+  # No Secret metrics: the chart default (true) gives the cluster agent list and
+  # watch on every Secret in the cluster, which can read their contents (SEC-1)
   kubeStateMetricsCore:
     enabled: true
+    collectSecretMetrics: false
+  # The orchestrator explorer (a live resource browser in Datadog, not used by
+  # #27) also gets list and watch on every Secret; off for the same reason
+  orchestratorExplorer:
+    enabled: false
   # kubelet.tlsVerify stays at the chart default (true). No DigitalOcean or
   # Datadog source says DOKS needs it off; turn it off only if `agent status`
   # in a datadog-agent pod shows an x509 error reaching the kubelet.
