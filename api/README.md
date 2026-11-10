@@ -13,10 +13,14 @@ api/
     services/        the work behind a route: storage client (Spaces), realtime (Socket.IO), queue (BullMQ)
     db/              Prisma schema or SQL, migrations, one shared client
     types.ts         raw input types and validated types, kept apart
-  tests/             Jest and Supertest, one file per resource, run serially against a reset test database
+    **/*.test.ts     Jest and Supertest tests next to the file they test, run serially against PostgreSQL and Redis
   Dockerfile
   package.json
 ```
+
+## Tests
+
+`npm test` runs Jest with Supertest against the Express app (`src/server.ts` exports it without listening) and a real PostgreSQL and Redis. CI starts both as service containers on every pull request (the `test` job in `.github/workflows/ci.yml`). Locally, from the repository root, `docker compose -f compose.yaml -f compose.test.yaml up -d db redis` starts the same two with their ports published on localhost and the test credentials; `jest.env.js` points `DB_*` and `REDIS_*` at them unless the variables are already set (if 5432 is taken on your machine, export `TEST_DB_PORT=55432` before both commands). If either service is down the suite stops at once with the service, host and port and that command (`src/lib/reachable.ts`); if a PostgreSQL answers on the port but refuses the test credentials (another server on 5432), it stops with the host, port, user and the `TEST_DB_PORT` remedy (`src/lib/dbReady.ts`). The override shares the Compose project with the development stack: `up -d db redis` recreates those two containers with the test settings (the development data on `db-data` is untouched), and a plain `docker compose up` afterwards puts them back. Each new route adds a `<route>.test.ts` beside it, starting from `src/routes/health.test.ts`.
 
 Rules that apply here are in `docs/PRACTICES.md` (API-*, DB-*, SEC-*, TST-*).
 

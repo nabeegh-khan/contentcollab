@@ -20,7 +20,7 @@ With more than one API pod, Socket.IO needs every request of one session to reac
 
 ## Cost on DigitalOcean
 
-Control plane free; Basic nodes from $12/month each; load balancer from $12/month; volumes from $10/month ([DigitalOcean](https://www.digitalocean.com/pricing/kubernetes)). Two nodes, one load balancer and one volume is about $46/month, rising to about $60 with snapshots, extra volume space or a third node during the autoscaling demo: $12 to $15 each for four people. The high-availability control plane ($40/month) is not needed.
+Rechecked 4 November against DigitalOcean's pricing pages: about US$54 a month for two US$18 nodes, one US$12 load balancer and US$5 of Spaces, with the control plane free ([Droplets](https://www.digitalocean.com/pricing/droplets), [Kubernetes](https://www.digitalocean.com/pricing/kubernetes), [Spaces](https://www.digitalocean.com/pricing/spaces-object-storage)). The 21 October estimate used the US$12 node size, which has one vCPU; the cluster runs two-vCPU nodes. The high-availability control plane (US$40 a month) is not needed.
 
 ## Persistence
 

@@ -1,0 +1,27 @@
+# Override for running the api tests from the host:
+#   docker compose -f compose.yaml -f compose.test.yaml up -d db redis
+# Publishes the two ports on localhost only and uses the same test credentials
+# as the CI service containers (ci.yml, job `test`), on a separate volume so
+# the development database in `db-data` is untouched. compose.yaml itself keeps
+# both ports unpublished (CON-7). The override shares the Compose project with the
+# development stack, so `up -d db redis` recreates those two containers with the
+# test settings; the development data on `db-data` is untouched and a plain
+# `docker compose up` afterwards puts them back.
+services:
+  db:
+    environment:
+      POSTGRES_USER: test
+      POSTGRES_PASSWORD: test
+      POSTGRES_DB: contentcollab_test
+    ports:
+      - "127.0.0.1:${TEST_DB_PORT:-5432}:5432" # TEST_DB_PORT when 5432 is taken on the laptop
+    volumes:
+      - test-db-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U test -d contentcollab_test"]
+  redis:
+    ports:
+      - "127.0.0.1:6379:6379"
+
+volumes:
+  test-db-data:
