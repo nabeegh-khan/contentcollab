@@ -256,3 +256,19 @@ PR #76 was stacked on #71, which was squash-merged, so it conflicted with main i
 - A stub test of the rollout and smoke scripts under `bash -e` passes nine cases (four failed before the fixes); #83's own deploy test passes 9 of 9 on the two branches combined; CI green.
 - Wrote the merge order (#83 first) and the exact conflict resolution into the description; review requested from a teammate, due 11 November.
 
+## Redis-down start reviewed: /health answers at once and the reconnect is tested (#65, PR #75), 10 November 2026
+
+### Prompt
+
+Our fix for #65 opens the port before connecting to Redis. We reviewed it against the diff, the issue and our practices, and checked each finding against the code and the node-redis 6.3.0 source before acting. We asked: with Redis down, what does the kubelet actually see from /health, does the CI step prove Redis was the cause, and does the same process recover when Redis returns?
+
+### AI Response
+
+Eight findings. The main one: with Redis down, a ping waits in the client's offline queue for its 5 s command timeout, so the readiness probe (1 s default) times out instead of reading the 503. Also: the CI step accepted any 503 although the job has no Postgres, so it only proved the port was open; no curl or job timeout; the reconnect was claimed but not tested; every retry was logged (about one line every 2 s); and the `.catch` message said "first connect failed" when, with the default retry strategy, it only fires once the client stops retrying for good.
+
+### What Your Team Did With It
+
+- Measured before changing anything: a ping to a closed port took 5009 ms; with a readiness guard, under 1 ms.
+- Wrote a Jest test first (fails with "Exceeded timeout of 5000 ms"), then made `pingRedis` return false at once while the client is not ready.
+- The CI step now reads the body within 1 s, then starts Redis on the API's port and requires `"redis":"ok"` from the same container with no restart. Run locally on a Docker network: passes on this branch, fails on the PR's previous head and on main.
+- Errors are logged once per outage with "connected again" when Redis is back; the reworded `.catch` says the client stopped retrying.
