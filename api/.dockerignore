@@ -13,3 +13,7 @@ npm-debug.log*
 .prettierrc
 eslint.config.js
 .vscode
+# Tests run in CI, not in the image
+src/**/*.test.ts
+jest.config.js
+jest.env.js

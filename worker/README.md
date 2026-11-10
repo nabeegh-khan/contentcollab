@@ -1,6 +1,10 @@
 # worker
 
-Background jobs that must never run inside an API request: bulk imports from an existing bucket or folder, thumbnails, the nightly backup trigger. Consumes a BullMQ queue on Redis; has the same database and Spaces access as the API and nothing else.
+Background jobs that must never run inside an API request. Consumes the `contentcollab` BullMQ queue on Redis; has the same database and Spaces access as the API and nothing else.
+
+Layout: `src/worker.ts` runs the `Worker`, maps job names to handlers and serves `/health` on `WORKER_PORT` (3001); `src/queue.ts` is the `Queue` the API uses to add jobs; `src/jobs/<name>.ts` is one handler per job type. Adding a job type is one file in `jobs/` and one line in the handler map. The first job, `ping`, echoes its message and proves the queue end to end.
+
+Run locally with `docker compose up --build`; `npm run dev` in this folder runs it against the Compose Redis with `REDIS_HOST=localhost`.
 
 <!-- PRACTICES:start -->
 
