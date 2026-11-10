@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 # DigitalOcean alert policies for the cluster nodes (OBS-3, #55): CPU, memory
-# and disk at 80 percent for five minutes, emailed to ALERT_EMAIL. Repeatable:
+# and disk at 80 percent for five minutes, emailed to ALERT_EMAIL, which must be
+# the account's email or a verified team member's (DigitalOcean rejects others
+# with "email is not verified"; Monitoring docs, checked 10 Nov 2026). Repeatable:
 # a policy with the same description, which names the cluster's tag, is left
 # alone. A rebuilt cluster has a new ID, so it gets its own policies; the old
 # cluster's policies stay until deleted (doctl monitoring alert delete).
 set -euo pipefail
-: "${ALERT_EMAIL:?set ALERT_EMAIL to the address that receives alerts}"
+: "${ALERT_EMAIL:?set ALERT_EMAIL to a verified email on the DigitalOcean team}"
 : "${CLUSTER_NAME:=contentcollab}"
 command -v doctl >/dev/null || { echo "missing: doctl"; exit 1; }
 
