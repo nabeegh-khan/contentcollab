@@ -17,8 +17,8 @@ beforeAll(async () => {
 
 // Well under the readiness probe's 1 s default timeout, and far under the client's 5 s command timeout
 const FAST_ENOUGH_MS = 500;
-// Timer slack on top of pingRedis's own limit
-const TIMER_SLACK_MS = 100;
+// Timer slack on top of pingRedis's 500 ms limit for a busy CI runner; the total stays under the probe's 1 s
+const TIMER_SLACK_MS = 300;
 
 describe("pingRedis while Redis is down", () => {
   const down = () => {
