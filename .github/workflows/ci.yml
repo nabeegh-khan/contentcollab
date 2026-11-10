@@ -103,7 +103,10 @@ jobs:
           done
       - name: Deploy path checks
         # Image pinning, rollback on a failed rollout and the named API port
-        # (tests/test_k8s_deploy.py). python3-yaml ships with the runner image.
+        # (tests/test_k8s_deploy.py). Uses the runner's python3 and its PyYAML,
+        # which the image readme does not list: it imported on ubuntu-26.04
+        # 20261101.186.1 (run 42533543112, 8 Nov 2026); if an image drops it,
+        # this step fails with ModuleNotFoundError rather than passing
         run: python3 -m unittest tests.test_k8s_deploy -v
       - name: Every object in the app namespace
         # A namespace set in the base does not reach resources an overlay
