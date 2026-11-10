@@ -93,7 +93,24 @@ A Node script using the built-in `fetch`: an open-loop request schedule at a fix
 
 - Checked locally against the API with PostgreSQL and Redis at 20 and 100 req/s (no errors, p95 10 and 22 ms); the replicas column shows "-" without cluster access, which is the intended fallback.
 - Changed: the step-length variable is `STEP_SECONDS`, not `SECONDS`, because `SECONDS` is a built-in bash variable.
-- Not yet run on DigitalOcean: that needs the cluster from #54, and the results table goes into `docs/loadtest/` for the presentation and the final report.
+- Run on DigitalOcean on 6 November (two runs in `docs/loadtest/`, made with earlier versions of the script, see `docs/loadtest/README.md`). Added since: a check that the HPA can read CPU before a scaling run, a node-memory guard, and per-request failure and scaling logs.
+
+## Review of the load test (#69, pull request #72), 10 November 2026
+
+### Prompt
+
+We reviewed our own load-test pull request against the diff, issue #69 and our practices, and checked each finding against the code before acting on it. We asked: where can this script report a clean result that is not true, and which columns can't support the conclusions we want to draw for the report?
+
+### AI Response
+
+Thirteen findings: a failed `kubectl rollout restart` was swallowed, so a rollout run could show 0 failed requests with no rollout; the rollout call blocked the request timer; "achieved req/s" was the rate requests were sent, not served; latency included failed requests; only 5xx counted as errors; bad environment variables produced NaN rows; p95 equalled the maximum for small samples; failures were timed when they ended; the Helm version check fell through to Helm 4 on any output; the CI job had no permissions or timeout; and the docs and the two committed CSVs no longer matched the script.
+
+### What Your Team Did With It
+
+- Checked each finding against the code and by running the script against a local stand-in server with no cluster before changing anything; all thirteen held.
+- Changed: the rollout runs asynchronously and is waited on with `kubectl rollout status`; a failed or unfinished rollout is written to a `rollout` column and the run exits 1. New columns `sent_per_s` and `ok_per_s`; latency from successes only; any 4xx is a failure; nearest-rank percentiles; variables validated. Tests for the new helpers were written first and failed before the change.
+- Kept: the two 6 November CSVs, labelled in `docs/loadtest/README.md` with the commit that produced them, instead of deleting them.
+- Not covered: the rollout's success path needs the cluster, so it runs with the final measurements.
 
 ## Deploy pipeline and lecture 8 fixes (#59, #65, #70, #74), 4 November 2026
 
