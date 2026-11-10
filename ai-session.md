@@ -264,11 +264,12 @@ Our fix for #65 opens the port before connecting to Redis. We reviewed it agains
 
 ### AI Response
 
-Eight findings. The main one: with Redis down, a ping waits in the client's offline queue for its 5 s command timeout, so the readiness probe (1 s default) times out instead of reading the 503. Also: the CI step accepted any 503 although the job has no Postgres, so it only proved the port was open; no curl or job timeout; the reconnect was claimed but not tested; every retry was logged (about one line every 2 s); and the `.catch` message said "first connect failed" when, with the default retry strategy, it only fires once the client stops retrying for good.
+Eight findings. The main one: with Redis down, a ping waits in the client's offline queue for its 5 s command timeout, so the readiness probe (1 s default) times out instead of reading the 503. The other seven: the CI step accepted any 503 although the job has no Postgres, so it only proved the port was open; no curl or job timeout; the reconnect was claimed but not tested; no unit test covered the ping while Redis is down; every retry was logged (about one line every 2 s); the `.catch` message said "first connect failed" when, with the default retry strategy, connect() keeps retrying and does not reject; and a CI comment said the Redis service was there for a check nothing made. A second, independent pass found one more: once a command is written to the socket it has no timeout, so a paused Redis could still hold /health past 1 s.
 
 ### What Your Team Did With It
 
 - Measured before changing anything: a ping to a closed port took 5009 ms; with a readiness guard, under 1 ms.
 - Wrote a Jest test first (fails with "Exceeded timeout of 5000 ms"), then made `pingRedis` return false at once while the client is not ready.
 - The CI step now reads the body within 1 s, then starts Redis on the API's port and requires `"redis":"ok"` from the same container with no restart. Run locally on a Docker network: passes on this branch, fails on the PR's previous head and on main.
-- Errors are logged once per outage with "connected again" when Redis is back; the reworded `.catch` says the client stopped retrying.
+- Errors are logged once per outage, with "connected" or "connected again" when Redis is back; the reworded `.catch` says when it can fire and what follows.
+- For the paused Redis: a second test first (a ping that never settles), then a 500 ms limit on the ping. Against a real Redis under `CLIENT PAUSE 3000`: false in 501 ms, true again after the pause.

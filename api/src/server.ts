@@ -30,14 +30,16 @@ if (isEntry) {
   // down when the pod starts, the process stays up: /health answers 503 at
   // once so readiness keeps traffic away, liveness (the socket) passes, and
   // the client keeps retrying until Redis is back, without a restart loop.
-  // With the default retry strategy connect() only rejects if the client
-  // stops retrying for good; nothing reconnects after that, so say so.
+  // With node-redis's default retry strategy connect() keeps retrying and
+  // does not reject; the catch is kept for a strategy that gives up. Nothing
+  // reconnects after that and liveness still passes, so the pod would stay
+  // unready until it is restarted by hand: the log says so.
   const connectInBackground = async () => {
     try {
       await connectRedis();
     } catch (err) {
       console.error(
-        "redis: stopped retrying, /health stays 503 until the pod restarts:",
+        "redis: client stopped retrying; /health reports Redis down until the API restarts:",
         (err as Error).message,
       );
     }
