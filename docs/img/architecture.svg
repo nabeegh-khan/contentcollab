@@ -19,8 +19,8 @@
 <rect x="390" y="380" width="210" height="90" rx="8" fill="#e8f3ea" stroke="#3f7d4e" stroke-width="2"/>
 <text x="495.0" y="414.0" text-anchor="middle" font-weight="600" font-size="21">web · frontend</text>
 <text x="495.0" y="440.0" text-anchor="middle" fill="#333" font-size="18">static React build, Nginx</text>
-<rect x="650" y="380" width="270" height="90" rx="8" fill="#e8f3ea" stroke="#3f7d4e" stroke-width="2"/>
-<text x="785.0" y="414.0" text-anchor="middle" font-weight="600" font-size="21">api · backend · 2 replicas</text>
+<rect x="620" y="380" width="330" height="90" rx="8" fill="#e8f3ea" stroke="#3f7d4e" stroke-width="2"/>
+<text x="785.0" y="414.0" text-anchor="middle" font-weight="600" font-size="18">api · backend · 2 to 5 replicas (HPA)</text>
 <text x="785.0" y="440.0" text-anchor="middle" fill="#333" font-size="18">JSON API, JWT auth, roles</text>
 <rect x="970" y="380" width="220" height="90" rx="8" fill="#e8f3ea" stroke="#3f7d4e" stroke-width="2"/>
 <text x="1080.0" y="414.0" text-anchor="middle" font-weight="600" font-size="21">worker · backend</text>
@@ -72,4 +72,4 @@
 <text x="1150" y="573" text-anchor="middle" font-size="17" fill="#333">metrics, logs</text>
 <text x="330" y="878" font-size="16" fill="#555">Each block in the cluster is one container image: built with Docker, run together locally with Docker Compose,</text>
 <text x="330" y="900" font-size="16" fill="#555">deployed as a Kubernetes Deployment (PostgreSQL as a StatefulSet).</text>
-<rect x="1037.2" y="111" width="165.6" height="24" rx="12" fill="#fff4e0" stroke="#b7791f" stroke-width="1.6"/><text x="1120" y="128" text-anchor="middle" font-size="14" font-weight="600" fill="#b7791f">Advanced feature 1</text><rect x="702.2" y="367" width="165.6" height="24" rx="12" fill="#fff4e0" stroke="#b7791f" stroke-width="1.6"/><text x="785" y="384" text-anchor="middle" font-size="14" font-weight="600" fill="#b7791f">Advanced feature 1</text><rect x="1352.2" y="407" width="165.6" height="24" rx="12" fill="#fff4e0" stroke="#b7791f" stroke-width="1.6"/><text x="1435" y="424" text-anchor="middle" font-size="14" font-weight="600" fill="#b7791f">Advanced feature 2</text></svg>
+<rect x="1077.2" y="111" width="85.6" height="24" rx="12" fill="#fff4e0" stroke="#b7791f" stroke-width="1.6"/><text x="1120.0" y="128" text-anchor="middle" font-size="14" font-weight="600" fill="#b7791f">Security</text><rect x="659.7" y="367" width="85.6" height="24" rx="12" fill="#fff4e0" stroke="#b7791f" stroke-width="1.6"/><text x="702.5" y="384" text-anchor="middle" font-size="14" font-weight="600" fill="#b7791f">Security</text><rect x="752.7" y="367" width="115.6" height="24" rx="12" fill="#fff4e0" stroke="#b7791f" stroke-width="1.6"/><text x="810.5" y="384" text-anchor="middle" font-size="14" font-weight="600" fill="#b7791f">Auto-scaling</text><rect x="1401.7" y="407" width="66.6" height="24" rx="12" fill="#fff4e0" stroke="#b7791f" stroke-width="1.6"/><text x="1435.0" y="424" text-anchor="middle" font-size="14" font-weight="600" fill="#b7791f">CI/CD</text><rect x="942.7" y="678" width="94.6" height="24" rx="12" fill="#fff4e0" stroke="#b7791f" stroke-width="1.6"/><text x="990.0" y="695" text-anchor="middle" font-size="14" font-weight="600" fill="#b7791f">Real-time</text></svg>
