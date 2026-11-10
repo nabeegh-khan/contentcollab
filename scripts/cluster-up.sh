@@ -94,4 +94,4 @@ else
   echo "Gateway address: $addr"
   echo "Next: A record contentcollab.app to $addr at the registrar. The certificate is issued on the first HTTPS request."
 fi
-echo "For CI rollouts: deploy.yml reads the repository secret KUBECONFIG (base64 of the kubeconfig) today; #76 replaces it with DIGITALOCEAN_ACCESS_TOKEN. Set the variable SMOKE_URL once DNS and TLS work"
+echo "For CI rollouts: set the repository secret DIGITALOCEAN_ACCESS_TOKEN; set the variable SMOKE_URL once DNS and TLS work"

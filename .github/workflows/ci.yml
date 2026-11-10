@@ -4,6 +4,8 @@ name: ci
 on:
   pull_request:
     branches: [main]
+  # deploy.yml calls these same checks on main before it builds anything
+  workflow_call:
 
 jobs:
   api:
@@ -89,6 +91,16 @@ jobs:
             -schema-location default \
             -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
             k8s/doks/cluster-issuer.yaml
+      - name: API replicas spread across nodes
+        # Two replicas on two nodes are only highly available if the
+        # scheduler is told to spread them: its default spread skips nodes
+        # without a zone label, which DOKS nodes lack (ARCHITECTURE D5, #69).
+        # yq 4 is preinstalled on the runner.
+        run: |
+          for overlay in minikube doks; do
+            ok=$(yq 'select(.kind == "Deployment" and .metadata.name == "api") | (.spec.template.spec.topologySpreadConstraints // []) | map(select(.topologyKey == "kubernetes.io/hostname" and .maxSkew == 1 and .whenUnsatisfiable == "ScheduleAnyway" and .labelSelector.matchLabels.app == "api" and ((.matchLabelKeys // []) | contains(["pod-template-hash"])))) | length > 0' /tmp/$overlay.yaml)
+            [ "$ok" = "true" ] || { echo "::error::$overlay: api Deployment has no kubernetes.io/hostname spread constraint (maxSkew 1, ScheduleAnyway, app=api, pod-template-hash); got '$ok'"; exit 1; }
+          done
       - name: Deploy path checks
         # Image pinning, rollback on a failed rollout and the named API port
         # (tests/test_k8s_deploy.py). python3-yaml ships with the runner image.
