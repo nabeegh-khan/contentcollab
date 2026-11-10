@@ -86,6 +86,8 @@ Entry format: what was done; decision and the option it beat; evidence; sources 
 | 100 | 92.2 | 60 | 87 | 0.00 | 0 | 2 |
 | 200 | 184.3 | 64 | 95 | 0.18 | 20 | 3 |
 
+Read with care (10 November): "achieved req/s" here is the rate requests were sent, not served, latency includes failed requests, and only 5xx counted as errors. The current script reports these differently; see `docs/loadtest/README.md` (added by PR #72).
+
 - **Read:** CPU first crossed the 70% target during the 200 req/s step. The HPA went to 3 replicas near the end of that step and to 5 after the run had ended, so 60 s steps are shorter than its reaction time. With five pods one node reached 89% memory: on two 2 GB nodes, memory, not CPU, is the limit. Three of the five pods shared a node because the spread rule (#78) is not merged yet. Achieved rates run about 8% under target at every step, which points to the client's timer rather than the server.
 - **Open:** the script does not record why the 20 requests failed (5xx or timeout); add that before the next run. Next runs use longer steps above 150 req/s and the rolling update under load.
 
@@ -99,6 +101,8 @@ Entry format: what was done; decision and the option it beat; evidence; sources 
 | 150 | 138.1 | 62 | 102 | 0.12 | 30 | UND_ERR_SOCKET:30 | 93 | 5 |
 | 200 | 184.2 | 63 | 95 | 0.00 | 0 | - | 92 | 5 |
 | 250 | 229.8 | 64 | 107 | 0.00 | 0 | - | 91 | 5 |
+
+Read with care (10 November): the same caveat as the first run applies to "achieved req/s", latency and errors; see `docs/loadtest/README.md`.
 
 - **Scaling:** the HPA went from 2 to 3 replicas at 17:08:58, to 4 at 17:09:13 and to 5 at 17:09:43, all within the first 85 s of the 150 req/s step. At 250 req/s CPU was still 78% of the target at five replicas, the HPA maximum, so five replicas is where this deployment stops scaling.
 - **Failures:** all 30 were `UND_ERR_SOCKET` (the connection was closed from the server side), and all came in the step where the HPA added three pods. There were none at 200 or 250 req/s once five pods were ready. The likely cause is connections closed while the set of API pods changed; the script does not timestamp failures, so this is not confirmed.
@@ -179,5 +183,17 @@ Entry format: what was done; decision and the option it beat; evidence; sources 
 
 ### Deploy path tests read the rollout step; the bring-up checks every image is pinned (#82, PR #83)
 
-- **Change:** the deploy workflow checks in `tests/test_k8s_deploy.py` searched all of `deploy.yml`, so text in the smoke step or another loop satisfied them; removing the undo, dropping `failed=1` or pinning in `k8s/minikube` left them green. They now read only the step "Roll the Deployments to this commit", and each of those three changes fails a check. The image check covers every pod template and init container. `cluster-up.sh` stops unless `IMAGE_TAG` is a full commit SHA and every app image in the render carries it. Practice IDs corrected to INF-9 and INF-10 (DEP-12, DEP-13 and NET-6 are not rows in PRACTICES.md).
-- **Evidence:** the three changed copies of `deploy.yml` each fail one check, the real file passes; a stub test of the pinning block fails 2 of 3 cases on the previous script (base tag `latest`, `IMAGE_TAG=v1&x`) and passes 3 of 3. PyYAML is on the runner: CI run 42533543112 ran the 9 checks OK on `ubuntu-26.04` image 20261101.186.1.
+- **Change:** the deploy workflow checks in `tests/test_k8s_deploy.py` searched all of `deploy.yml`, so text in the smoke step or another loop satisfied them; removing the undo, dropping `failed=1` or pinning in `k8s/minikube` left them green. They now read only the commands of the step "Roll the Deployments to this commit", comments removed: its `if` and no `continue-on-error`; one `cd` into `k8s/doks` and one apply of it after the pin loop over api and worker; a watch loop over both that undoes a failed rollout in the app namespace, marks the run failed and rejects a Deployment not on this commit's image; `exit $failed` as the last line. The image check covers every pod template and init container. `cluster-up.sh` stops unless `IMAGE_TAG` is a full commit SHA and every reference to a `contentcollab-*` image in the render, tagged, tagless or by digest, ends in it; its default now counts worker-only merges, as `deploy.yml` does. Practice IDs corrected to INF-9 and INF-10 (DEP-12, DEP-13 and NET-6 are not rows in PRACTICES.md).
+- **Evidence:** 22 changed copies of `deploy.yml` (undo removed, loop narrowed to api, `exit 0`, step disabled, apply to minikube with the doks line commented, and so on) each fail a check; 13 of them passed the first rework of the test. The real file passes. A stub test of the pinning block (fake git, kubectl, curl) fails 6 of 7 cases on the PR's original script (base tag `latest`, `IMAGE_TAG=v1&x`, tagless, digest and hyphenated `latest` images, a mixed render) and passes 7 of 7; shellcheck reports nothing. PyYAML is on the runner: CI run 42533543112 ran the 9 checks OK on `ubuntu-26.04` image 20261101.186.1.
+
+### Load test reports what the API served, and a rollout run fails if no rollout happened (#69, PR #72)
+
+- **Change:** a review of the load test found that `ROLLOUT=1` swallowed a failed `kubectl rollout restart`, so a run could show 0 failed requests with no rollout, and that "achieved req/s" was the send rate. The rollout now runs asynchronously and must finish (`kubectl rollout status`) before the step's load stops, or the run stops and exits 1. Columns `sent_per_s` and `ok_per_s` replace `achieved`; latency comes from successes only; any 4xx counts as a failure; variables are validated; `metrics-server.sh` accepts only Helm 3 or 4. Column meanings and the two 6 November runs are described in `docs/loadtest/README.md`.
+- **Evidence:** tests written first failed, then passed (27 of 27); runs against a local stand-in server with no cluster: a wrong path shows 100% `http 404`, a bad `TIMEOUT_MS` exits 1, `ROLLOUT=1` records `restart failed` and exits 1; CI green.
+- **Not verified:** the rollout's success and timeout paths need the cluster; they run with the final measurements.
+
+### API answers /health at once while Redis is down or stalled, and picks Redis up without a restart (#65, PR #75)
+
+- **Change:** with Redis down, the health check's ping waited in the client's offline queue for its 5 s command timeout (measured 5009 ms), so the readiness probe, which waits 1 s by default ([probe fields](https://kubernetes.io/docs/reference/kubernetes-api/workload-resources/pod-v1/), checked 10 November 2026), timed out instead of reading the 503. A command already written to the socket has no timeout in node-redis 6.3.0, so a paused Redis held the check for 3071 ms. The ping now returns false at once when the client is not connected and gives up after 500 ms otherwise. Redis errors are logged once per outage instead of every 2 s.
+- **Evidence:** Jest tests written first failed (5 s timeout), then passed (14 of 14); against a real Redis under `CLIENT PAUSE 3000` the check answered false in 501 ms. The CI smoke step now reads the body within 1 s, then starts Redis on the API's port and requires `"redis":"ok"` from the same container with no restart; run locally, it passes on the branch and fails on the PR's previous head and on `main`.
+- **Not changed:** the PostgreSQL ping has no timeout either; it belongs with the database code.
