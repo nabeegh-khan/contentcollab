@@ -37,8 +37,10 @@ Share      { id, documentId, userId | null, linkToken | null, role, expiresAt | 
 Comment    { id, versionId, authorId, parentId | null, body, anchor | null, resolved, createdAt, updatedAt }
 Anchor     { page: number, x: number, y: number }      (0 to 1, relative to the page; null for a general comment)
 Tag        { name, count }
-Cursor     { createdAt, id }                           (base64)
 ```
+
+<!--  Cursor     { createdAt, id }                           (base64, sort key, direction) -->
+
 
 `role` on a Document is the caller's role, so the client can hide controls it cannot use.
 
@@ -61,7 +63,7 @@ Passwords: bcrypt, minimum 8 characters. Tokens expire after 24 hours; no refres
 | GET | `/documents` | `?q=` title search, `?tag=` filter | `200` page of `Document` the caller can read |
 | POST | `/documents` | multipart: `file`, `title` (defaults to filename) | `201 Document` with version 1; `413`; `400` type not allowed |
 | GET | `/documents/:documentId` | | `200 Document` |
-| PATCH | `/documents/:documentId` | `{ title?, tags? }` | `200 Document` - `tags` replaces the tag list|
+| PATCH | `/documents/:documentId` | `{ title?, tags? }` | `200 Document` - `tags` replaces the tag list, replace is a single transaction and omitting `tags` would leave them unchanged |
 | DELETE | `/documents/:documentId` | | `204`; owner only |
 
 Allowed upload types: PDF, PNG, JPEG, plus docx, xlsx, pptx, txt, md (stored and downloadable, not rendered).
@@ -96,7 +98,7 @@ A link share grants its role to anyone with the token until `expiresAt`. Writes 
 |---|---|---|---|
 | GET | `/documents/:documentId/versions/:versionId/comments` | `?resolved=` | `200` page of `Comment`, oldest first, threads flattened with `parentId` |
 | POST | `/documents/:documentId/versions/:versionId/comments` | `{ body, anchor?, parentId? }` | `201 Comment` |
-| PATCH | `/documents/:documentId/comments/:commentId` | `{ body?, resolved? }` | `200 Comment`; author or owner - `resolved` moves to the thread root on on any comment |
+| PATCH | `/documents/:documentId/comments/:commentId` | `{ body?, resolved? }` | `200 Comment`; PATCH returns root value, `comment:updated` carries the `Comment`, author resolves own thread |
 | DELETE | `/documents/:documentId/comments/:commentId` | | `204`; author or owner |
 
 `@displayName` in a body is a mention; the API resolves it to users who have a share on the document and emits a notification event.
