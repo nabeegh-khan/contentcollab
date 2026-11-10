@@ -1,7 +1,68 @@
-// Pure helpers for loadtest.mjs: why a request failed, a per-step failure summary, and the node-memory guard (#69).
+// Pure helpers for loadtest.mjs: settings, why a request failed, per-step summaries, and the node-memory guard (#69).
+
+/** A positive finite number, or undefined. */
+const positive = (text) => {
+  const n = Number(text);
+  return String(text).trim() !== "" && Number.isFinite(n) && n > 0 ? n : undefined;
+};
 
 /**
- * Why a request failed, or null if it did not. A response below 500 is not a failure.
+ * The run's settings from the environment, or the first bad variable by name.
+ * A bad value stops the run instead of producing NaN rows or sending nothing.
+ * @returns {{config?: object, error?: string}}
+ */
+export function readConfig(env) {
+  const steps = (env.STEPS ?? "10,25,50,100,200").split(",").map(positive);
+  if (steps.some((s) => s === undefined)) return { error: `STEPS must be positive numbers separated by commas, got "${env.STEPS}"` };
+  const named = [
+    ["stepSeconds", "STEP_SECONDS", 60],
+    ["timeoutMs", "TIMEOUT_MS", 5000],
+    ["alignWindowS", "ALIGN_WINDOW_S", 30],
+    ["maxNodeMemoryPct", "MAX_NODE_MEMORY_PCT", 95],
+  ];
+  const config = { steps };
+  for (const [key, name, fallback] of named) {
+    const value = positive(env[name] ?? fallback);
+    if (value === undefined) return { error: `${name} must be a positive number, got "${env[name]}"` };
+    config[key] = value;
+  }
+  if (config.maxNodeMemoryPct > 100) {
+    return { error: `MAX_NODE_MEMORY_PCT must be a number from 1 to 100, got "${env.MAX_NODE_MEMORY_PCT}"` };
+  }
+  return { config };
+}
+
+/** Nearest-rank percentile of an ascending array; 0 when empty. */
+export function percentile(sorted, p) {
+  if (!sorted.length) return 0;
+  const rank = Math.ceil((p / 100) * sorted.length);
+  return sorted[Math.min(sorted.length - 1, Math.max(0, rank - 1))];
+}
+
+/**
+ * One step's row. sentPerS is the offered load the client kept up; okPerS counts only
+ * successful responses, which is what the server actually served. Latency percentiles
+ * come from successes only, so instant refusals and timeouts do not move them.
+ */
+export function summarizeStep({ target, sendSeconds, okLatencies, ok, fail, byReason }) {
+  const total = ok + fail;
+  const perS = (n) => (sendSeconds > 0 ? n / sendSeconds : 0).toFixed(1);
+  const sorted = [...okLatencies].sort((a, b) => a - b);
+  return {
+    target,
+    sentPerS: perS(total),
+    okPerS: perS(ok),
+    p50: percentile(sorted, 50).toFixed(0),
+    p95: percentile(sorted, 95).toFixed(0),
+    errors: total ? ((100 * fail) / total).toFixed(2) : "0.00",
+    failed: fail,
+    failures: summarizeFailures(byReason),
+  };
+}
+
+/**
+ * Why a request failed, or null if it did not. Any 4xx or 5xx is a failure: under
+ * load a 408 or 429 is a refused request, and a 404 means TARGET_PATH is wrong.
  * @param {{status: number}|null} res the fetch response, if one arrived
  * @param {unknown} [err] what fetch threw, if it threw
  */
@@ -11,7 +72,7 @@ export function failureReason(res, err) {
     const code = [err?.cause?.code, err?.code].find((c) => typeof c === "string"); // DOMException.code is a number
     return clean(code ?? (err?.cause?.message || undefined) ?? (err instanceof Error ? err.name : "error"));
   }
-  return res && res.status >= 500 ? `http ${res.status}` : null;
+  return res && res.status >= 400 ? `http ${res.status}` : null;
 }
 
 /** A reason is written into a CSV cell: no commas, quotes or newlines, at most 60 characters. */
