@@ -17,6 +17,8 @@ beforeAll(async () => {
 
 // Well under the readiness probe's 1 s default timeout, and far under the client's 5 s command timeout
 const FAST_ENOUGH_MS = 500;
+// Timer slack on top of pingRedis's own limit
+const TIMER_SLACK_MS = 100;
 
 describe("pingRedis while Redis is down", () => {
   const down = () => {
@@ -51,8 +53,19 @@ describe("pingRedis while Redis is down", () => {
   });
 });
 
+describe("pingRedis while Redis is connected but not answering", () => {
+  it("answers false within the limit instead of waiting on a written command, which has no timeout", async () => {
+    // A connected client whose ping never comes back, as with a paused or partitioned Redis
+    const stalled = { isReady: true, ping: () => new Promise<string>(() => {}) };
+    const started = Date.now();
+    const result = await pingRedis(stalled);
+    expect(result).toBe(false);
+    expect(Date.now() - started).toBeLessThan(FAST_ENOUGH_MS + TIMER_SLACK_MS);
+  });
+});
+
 describe("logStateChanges", () => {
-  it("logs the first error of an outage, not every retry, and logs when Redis is back", () => {
+  it("logs the first error of an outage, not every retry, and when Redis is back", () => {
     const client = new EventEmitter();
     const lines: string[] = [];
     logStateChanges(client, (line) => lines.push(line));
@@ -62,11 +75,14 @@ describe("logStateChanges", () => {
     client.emit("error", new Error("connect ECONNREFUSED 127.0.0.1:6379"));
     client.emit("ready");
     client.emit("error", new Error("Socket closed unexpectedly"));
+    client.emit("error", new Error("Socket closed unexpectedly"));
+    client.emit("ready");
 
     expect(lines).toEqual([
       "redis: connect ECONNREFUSED 127.0.0.1:6379 (retrying; further errors not logged until Redis is back)",
-      "redis: connected again",
+      "redis: connected", // Redis was down at start: this is the first connection, not a reconnection
       "redis: Socket closed unexpectedly (retrying; further errors not logged until Redis is back)",
+      "redis: connected again",
     ]);
   });
 });
