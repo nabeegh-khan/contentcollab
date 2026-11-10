@@ -49,9 +49,14 @@ test("the step summary separates sent from completed and takes latency from succ
   assert.equal(s.failures, "timeout:16");
 });
 
-test("a step with nothing sent reports zeros, not NaN", () => {
+test("a step with nothing sent reports zero rates and no latency, not NaN", () => {
   const s = summarizeStep({ target: 5, sendSeconds: 0, okLatencies: [], ok: 0, fail: 0, byReason: {} });
-  assert.deepEqual([s.sentPerS, s.okPerS, s.p50, s.p95, s.errors], ["0.0", "0.0", "0", "0", "0.00"]);
+  assert.deepEqual([s.sentPerS, s.okPerS, s.p50, s.p95, s.errors], ["0.0", "0.0", "-", "-", "0.00"]);
+});
+
+test("a step where every request failed shows no latency rather than 0 ms", () => {
+  const s = summarizeStep({ target: 5, sendSeconds: 2, okLatencies: [], ok: 0, fail: 10, byReason: { "http 404": 10 } });
+  assert.deepEqual([s.p50, s.p95, s.errors], ["-", "-", "100.00"]);
 });
 
 test("the defaults are read when no variable is set", () => {
@@ -72,7 +77,15 @@ test("a bad number stops the run with the variable's name instead of writing a N
   assert.match(readConfig({ TIMEOUT_MS: "-1" }).error, /TIMEOUT_MS/);
   assert.match(readConfig({ ALIGN_WINDOW_S: "x" }).error, /ALIGN_WINDOW_S/);
   assert.match(readConfig({ MAX_NODE_MEMORY_PCT: "101" }).error, /MAX_NODE_MEMORY_PCT/);
+  assert.match(readConfig({ MAX_NODE_MEMORY_PCT: "0.5" }).error, /from 1 to 100/);
   assert.deepEqual(readConfig({ STEPS: " 20, 40 " }).config.steps, [20, 40]);
+});
+
+test("TIMEOUT_MS must be a whole number AbortSignal.timeout accepts, or every request would fail unsent", () => {
+  assert.match(readConfig({ TIMEOUT_MS: "1500.5" }).error, /TIMEOUT_MS/);
+  assert.match(readConfig({ TIMEOUT_MS: "9999999999999" }).error, /TIMEOUT_MS/);
+  assert.equal(readConfig({ TIMEOUT_MS: "4294967295" }).config.timeoutMs, 4294967295);
+  assert.doesNotThrow(() => AbortSignal.timeout(readConfig({ TIMEOUT_MS: "4294967295" }).config.timeoutMs));
 });
 
 test("an AbortSignal.timeout abort is a timeout", () => {
