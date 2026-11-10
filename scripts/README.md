@@ -5,9 +5,9 @@ Repeatable operations as scripts, so nothing important lives in dashboard clicks
 | Script | What it does | Needs |
 |---|---|---|
 | `cluster-up.sh` | Creates the DOKS cluster, installs the Gateway controller, cert-manager and (optionally) the Datadog agent, applies the Secret and the doks overlay | `doctl`, `kubectl`, `helm`, `LETSENCRYPT_EMAIL`; `DATADOG_API_KEY` optional |
-| `cluster-down.sh` | Deletes the cluster, its load balancer and volumes after grading | `doctl` |
-| `alerts.sh` | DigitalOcean alert policies on the nodes: CPU, memory, disk above 80% for five minutes | `doctl`, `ALERT_EMAIL` |
-| `smoke.sh` | The curl checks run before every demo and after every rollout: `/health` with both dependencies ok, `/metrics` present, unknown route is a 404 | `BASE` (default `http://localhost:3000`) |
+| `cluster-down.sh` | Deletes the cluster, its load balancer and volumes after grading | `doctl` (authenticated with `doctl auth init`) |
+| `alerts.sh` | DigitalOcean alert policies on the nodes: CPU, memory, disk above 80% for five minutes, one set per cluster (a rebuilt cluster gets new ones; delete the old with `doctl monitoring alert delete`) | `doctl` (authenticated), the cluster up, `ALERT_EMAIL` |
+| `smoke.sh` | The curl checks run before every demo: `/health` with both dependencies ok, `/metrics` present (through a port-forward only; the Gateway does not route it), an unknown `/api` route is the API's 404. After each rollout `deploy.yml` checks `/health` itself | `BASE` (default `http://localhost:3000`); `METRICS_BASE` when `BASE` is the deployed URL |
 | `sync-practices.py` | Copies the applicable rows of `docs/PRACTICES.md` into each folder README | Python |
 | `meeting-actions.py` | Turns a meeting's Actions table into GitHub Issues | GitHub CLI |
 
