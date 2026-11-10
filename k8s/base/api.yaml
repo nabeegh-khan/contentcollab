@@ -9,7 +9,7 @@ spec:
     app: api
   ports:
     - port: 3000
-      targetPort: http # the container port's name, so 3000 is written once (NET-6)
+      targetPort: http # the container port's name, so 3000 is written once (INF-10)
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -55,11 +55,11 @@ spec:
           # `unpinned` is not a real tag: the overlay (minikube: local build) or
           # CI on merge (doks: `kustomize edit set image` to the commit SHA)
           # replaces it, so an unpinned apply fails to pull instead of
-          # running whatever `latest` was (INF-5, DEP-12)
+          # running whatever `latest` was (INF-5, INF-9)
           image: ghcr.io/nabeegh-khan/contentcollab-api:unpinned
           ports:
             # Named once; the Service and both probes refer to it by name
-            # (NET-6). Must equal PORT in configmap.yaml (L8 p92)
+            # (INF-10). Must equal PORT in configmap.yaml (L8 p92)
             - name: http
               containerPort: 3000
           envFrom:
