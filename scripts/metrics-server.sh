@@ -18,10 +18,13 @@ command -v helm >/dev/null || { echo "helm is required" >&2; exit 1; }
 command -v node >/dev/null || { echo "node is required (hpa-ready.mjs)" >&2; exit 1; }
 kubectl cluster-info >/dev/null || { echo "kubectl is not pointed at a cluster" >&2; exit 1; }
 
-# Helm 4 renamed --atomic to --rollback-on-failure; Helm 3 only knows --atomic
-case "$(helm version --short)" in
+# Helm 4 renamed --atomic to --rollback-on-failure; Helm 3 only knows --atomic.
+# Read the version first: a failure inside a `case` word does not trip set -e.
+helm_version=$(helm version --short)
+case "$helm_version" in
   v3.*) rollback=(--atomic --wait) ;;
-  *) rollback=(--rollback-on-failure --wait) ;;
+  v4.*) rollback=(--rollback-on-failure --wait) ;;
+  *) echo "unsupported helm version: $helm_version (need v3 or v4)" >&2; exit 1 ;;
 esac
 
 helm repo add metrics-server https://kubernetes-sigs.github.io/metrics-server --force-update >/dev/null

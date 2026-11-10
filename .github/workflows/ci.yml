@@ -132,6 +132,9 @@ jobs:
   # dependencies), e.g. the HPA readiness check the load test relies on (#69)
   scripts:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read # reads the repo, writes nothing
+    timeout-minutes: 5 # the suite takes under a second; a hang fails fast
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
