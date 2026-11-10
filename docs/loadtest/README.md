@@ -2,7 +2,7 @@
 
 Output of `scripts/loadtest.mjs` (#69): one `<timestamp>.csv` per run, with `<timestamp>-failures.csv` and `<timestamp>-scaling.csv` beside it. A `-rollout` suffix marks a run with `ROLLOUT=1`.
 
-Columns written by the current script: `target`, `sent_per_s` (the rate requests went out), `ok_per_s` (successful responses per second, which is what the API served), `p50_ms` and `p95_ms` (successful requests only), `error_pct` and `failed` (any 4xx or 5xx response, timeout or network error), `failure_reasons`, `rollout` (`complete`, or why the rollout did not finish), `peak_node_memory_pct`, `ready_replicas` (ready API pods at the end of the step) and `stopped`.
+Columns written by the current script: `target`, `sent_per_s` (the rate requests went out), `ok_per_s` (successful responses per second, which is what the API served; both rates are counted over the step's send window), `p50_ms` and `p95_ms` (successful requests only; `-` when none succeeded), `error_pct` and `failed` (any 4xx or 5xx response, timeout or network error), `failure_reasons`, `rollout` (`complete` when the rollout finished before the step's load stopped, or why it did not), `peak_node_memory_pct`, `ready_replicas` (ready API pods at the end of the step) and `stopped`. The script exits 1 when a rollout did not complete or the memory guard stopped the run.
 
 ## Runs recorded before the columns changed
 

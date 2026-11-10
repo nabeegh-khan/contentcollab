@@ -1,5 +1,7 @@
 // Pure helpers for loadtest.mjs: settings, why a request failed, per-step summaries, and the node-memory guard (#69).
 
+const MAX_TIMEOUT_MS = 4294967295;
+
 /** A positive finite number, or undefined. */
 const positive = (text) => {
   const n = Number(text);
@@ -26,8 +28,12 @@ export function readConfig(env) {
     if (value === undefined) return { error: `${name} must be a positive number, got "${env[name]}"` };
     config[key] = value;
   }
-  if (config.maxNodeMemoryPct > 100) {
+  if (config.maxNodeMemoryPct < 1 || config.maxNodeMemoryPct > 100) {
     return { error: `MAX_NODE_MEMORY_PCT must be a number from 1 to 100, got "${env.MAX_NODE_MEMORY_PCT}"` };
+  }
+  // AbortSignal.timeout takes a whole number of ms up to 2^32 - 1; anything else throws for every request
+  if (!Number.isInteger(config.timeoutMs) || config.timeoutMs > MAX_TIMEOUT_MS) {
+    return { error: `TIMEOUT_MS must be a whole number of ms from 1 to ${MAX_TIMEOUT_MS}, got "${env.TIMEOUT_MS}"` };
   }
   return { config };
 }
@@ -42,18 +48,20 @@ export function percentile(sorted, p) {
 /**
  * One step's row. sentPerS is the offered load the client kept up; okPerS counts only
  * successful responses, which is what the server actually served. Latency percentiles
- * come from successes only, so instant refusals and timeouts do not move them.
+ * come from successes only, so instant refusals and timeouts do not move them; with no
+ * success they are "-", not 0 ms. Both rates are counted over the send window.
  */
 export function summarizeStep({ target, sendSeconds, okLatencies, ok, fail, byReason }) {
   const total = ok + fail;
   const perS = (n) => (sendSeconds > 0 ? n / sendSeconds : 0).toFixed(1);
   const sorted = [...okLatencies].sort((a, b) => a - b);
+  const ms = (p) => (sorted.length ? percentile(sorted, p).toFixed(0) : "-");
   return {
     target,
     sentPerS: perS(total),
     okPerS: perS(ok),
-    p50: percentile(sorted, 50).toFixed(0),
-    p95: percentile(sorted, 95).toFixed(0),
+    p50: ms(50),
+    p95: ms(95),
     errors: total ? ((100 * fail) / total).toFixed(2) : "0.00",
     failed: fail,
     failures: summarizeFailures(byReason),

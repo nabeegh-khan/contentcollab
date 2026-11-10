@@ -181,10 +181,11 @@ function rescaleEvents(since) {
 
 /**
  * Restarts deployment/api without blocking the request timer, then waits for the
- * rollout to finish within `seconds`. Resolves to "complete", "incomplete: ..."
- * or "restart failed: ...", never throws.
+ * rollout to finish before `deadline` (ms), the end of the step, so it finishes
+ * while load is still being sent. Resolves to "complete", "incomplete: ..." or
+ * "restart failed: ...", never throws.
  */
-async function rolloutRestart(seconds) {
+async function rolloutRestart(deadline) {
   // kubectl prints its own summary last, after any client-go log lines; one CSV-safe line, at most 120 characters
   const reason = (err) =>
     String(err.stderr || err.message)
@@ -192,14 +193,16 @@ async function rolloutRestart(seconds) {
       .split(/\r?\n/)
       .pop()
       .replace(/[,"\\]/g, " ")
-      .slice(0, 120);
+      .slice(0, 120)
+      .trim();
   try {
     await run("kubectl", ["-n", NS, "rollout", "restart", "deployment/api"], { timeout: 15000 });
   } catch (err) {
     return `restart failed: ${reason(err)}`;
   }
+  const timeout = Math.floor((deadline - Date.now()) / 1000);
+  if (timeout < 1) return "incomplete: no time left in the step after the restart";
   try {
-    const timeout = Math.max(1, Math.floor(seconds));
     await run("kubectl", ["-n", NS, "rollout", "status", "deployment/api", `--timeout=${timeout}s`], {
       timeout: (timeout + 10) * 1000,
     });
@@ -217,6 +220,7 @@ async function step(rate, seconds, midway) {
   const tickMs = 100;
   let sent = 0; // requests due so far follow elapsed time, so timer drift does not lower the rate
   const started = Date.now();
+  let lastSendAt = started;
   let midwayResult = null; // the rollout's promise, started once halfway
   let lastPoll = 0;
   while (Date.now() - started < seconds * 1000 && !memory.over) {
@@ -229,13 +233,14 @@ async function step(rate, seconds, midway) {
       const p = one(okLatencies, counts, rate).finally(() => inflight.delete(p));
       inflight.add(p);
       sent++;
+      lastSendAt = Date.now();
     }
     if (midway && !midwayResult && Date.now() - started >= (seconds * 1000) / 2) {
-      midwayResult = midway(seconds / 2); // async: requests keep going out while kubectl runs
+      midwayResult = midway(started + seconds * 1000); // async: requests keep going out while kubectl runs
     }
     await new Promise((r) => setTimeout(r, tickMs));
   }
-  const sendSeconds = (Date.now() - started) / 1000; // before waiting for in-flight requests
+  const sendSeconds = (lastSendAt - started) / 1000; // up to the last send, not the sleep after it
   await Promise.all(inflight);
   let rollout = "";
   if (midwayResult) rollout = await midwayResult;
@@ -275,6 +280,7 @@ for (const rate of STEPS) {
     console.error(`STOPPED: ${memory.over.node} at ${memory.over.memoryPct}% memory (limit ${MAX_NODE_MEMORY_PCT}%)`);
     break;
   }
+  if (r.rollout && r.rollout !== "complete") break; // later steps would only add load to a failed test
 }
 
 clearInterval(sampler);
@@ -349,3 +355,5 @@ if (badRollout) {
   console.error(`rollout ${badRollout.rollout}: the failed-request count does not cover a rolling update`);
   process.exit(1);
 }
+// A run stopped by the memory guard has not covered every step
+if (memory.over) process.exit(1);
