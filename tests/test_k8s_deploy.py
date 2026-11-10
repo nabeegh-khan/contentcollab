@@ -20,10 +20,30 @@ DEPLOY = Path(os.environ.get("DEPLOY_WORKFLOW", ROOT / ".github" / "workflows" /
 ROLLOUT_STEP = "Roll the Deployments to this commit"
 
 
-def rollout_script():
-    """The shell of the rollout step only, so text in other steps cannot satisfy a check."""
+def rollout_step():
+    """The rollout step only, so text in other steps cannot satisfy a check."""
     steps = yaml.safe_load(DEPLOY)["jobs"]["rollout"]["steps"]
-    return next(s["run"] for s in steps if s.get("name") == ROLLOUT_STEP)
+    return next(s for s in steps if s.get("name") == ROLLOUT_STEP)
+
+
+def shell_lines(run):
+    """The step's shell, one stripped line each, comments removed, so a
+    commented-out command cannot satisfy a check."""
+    lines = (re.sub(r"(^|\s)#.*$", "", line).strip() for line in run.splitlines())
+    return [line for line in lines if line]
+
+
+def loops(lines):
+    """(word list, body lines, index after `done`) of each `for svc in ...; do ... done`."""
+    found, i = [], 0
+    while i < len(lines):
+        m = re.fullmatch(r"for svc in (.+); do", lines[i])
+        if m:
+            end = lines.index("done", i)
+            found.append((m.group(1), lines[i + 1:end], end + 1))
+            i = end
+        i += 1
+    return found
 
 
 def render(overlay):
@@ -75,21 +95,27 @@ class ImagePinning(unittest.TestCase):
                 tag = c["image"].rpartition(":")[2] if ":" in c["image"].rpartition("/")[2] else ""
                 self.assertNotIn(tag, ("", "latest"), f"{overlay}: {c['name']} image {c['image']}")
 
+    def test_rollout_step_runs_whenever_the_cluster_exists(self):
+        step = rollout_step()
+        self.assertEqual(step.get("if"), "steps.cluster.outputs.present == 'true'")
+        self.assertNotIn("continue-on-error", step, "a failed rollout must fail the job")
+
     def test_deploy_pins_the_sha_in_doks_before_apply(self):
-        run = rollout_script()
-        positions = {s: run.find(s) for s in ("cd k8s/doks", "kustomize edit set image", "kubectl apply -k k8s/doks")}
-        for text, pos in positions.items():
-            self.assertNotEqual(pos, -1, f"rollout step never runs `{text}`")
-        self.assertLess(positions["cd k8s/doks"], positions["kustomize edit set image"],
-                        "the SHA must be set in the doks overlay")
-        self.assertLess(positions["kustomize edit set image"], positions["kubectl apply -k k8s/doks"],
+        lines = shell_lines(rollout_step()["run"])
+        # The only directory changes and the only apply: into doks, back, apply doks once
+        self.assertEqual([l for l in lines if l.startswith("cd ")], ["cd k8s/doks", "cd ../.."])
+        self.assertEqual([l for l in lines if "kubectl apply" in l], ["kubectl apply -k k8s/doks"])
+        pins = [(words, body, after) for words, body, after in loops(lines)
+                if any("kustomize edit set image" in b for b in body)]
+        self.assertEqual(len(pins), 1, "one pin loop")
+        words, body, after = pins[0]
+        self.assertEqual(words, "api worker", "both images must be pinned")
+        self.assertEqual(body, ["kustomize edit set image "
+                                "$REGISTRY/contentcollab-$svc=$REGISTRY/contentcollab-$svc:${{ github.sha }}"])
+        start = after - len(body) - 2  # index of the `for` line
+        self.assertLess(lines.index("cd k8s/doks"), start, "the SHA must be set in the doks overlay")
+        self.assertLess(after, lines.index("kubectl apply -k k8s/doks"),
                         "the SHA must be set before `apply -k` (one rollout)")
-        self.assertRegex(
-            run,
-            r"for svc in api worker; do\s+kustomize edit set image "
-            r"\S*contentcollab-\$svc=\S*contentcollab-\$svc:\$\{\{ github\.sha \}\}\s",
-            "both images must be pinned to this commit",
-        )
 
     def test_deploy_has_no_second_rollout_through_set_image(self):
         self.assertNotRegex(DEPLOY, r"kubectl[^\n]* set image", "second rollout after apply")
@@ -97,21 +123,32 @@ class ImagePinning(unittest.TestCase):
 
 class RollbackOnFailedRollout(unittest.TestCase):
     def setUp(self):
-        self.script = rollout_script()
-        # What runs when `rollout status` fails: the `|| { ... }` right after
-        # it, inside the loop over both Deployments
-        self.on_failure = re.search(
-            r"for svc in api worker; do.*?rollout status deployment/\$svc --timeout=180s\s*\\?\s*\|\|\s*\{(.*?)\}\s*\n\s*done",
-            self.script, re.S)
+        self.lines = shell_lines(rollout_step()["run"])
+        watch = [(words, body, after) for words, body, after in loops(self.lines)
+                 if any("rollout status" in b for b in body)]
+        self.assertEqual(len(watch), 1, "one loop that watches the rollouts")
+        self.words, body, self.after = watch[0]
+        self.body = "\n".join(body)
+
+    def test_both_deployments_are_watched(self):
+        self.assertEqual(self.words, "api worker")
+        # A Deployment not running this commit's image fails the run
+        self.assertRegex(self.body, r"\*:\$\{\{ github\.sha \}\}\) ;;\n\*\) echo [^\n]*; failed=1; continue ;;")
 
     def test_each_deployment_is_undone_when_its_rollout_fails(self):
-        self.assertIsNotNone(self.on_failure, "`rollout status deployment/$svc ... || { ... }` over api and worker missing")
-        self.assertIn("rollout undo deployment/$svc", self.on_failure.group(1))
+        # The command that runs when `rollout status` fails is the undo itself,
+        # in the app namespace, followed by marking the run failed
+        self.assertRegex(
+            self.body,
+            r"kubectl -n contentcollab rollout status deployment/\$svc --timeout=180s \\\n"
+            r"\|\| \{ kubectl -n contentcollab rollout undo deployment/\$svc \\\n"
+            r"\|\| echo [^\n]*; failed=1; \}",
+        )
 
     def test_job_still_fails_after_the_undo(self):
-        self.assertIsNotNone(self.on_failure, "`rollout status ... || { ... }` missing")
-        self.assertIn("failed=1", self.on_failure.group(1), "a failed rollout must mark the run failed")
-        self.assertTrue(self.script.rstrip().endswith("exit $failed"), "undo must not turn a failed deploy green")
+        self.assertEqual(self.lines[self.after:], ["exit $failed"], "undo must not turn a failed deploy green")
+        self.assertEqual([l for l in self.lines if re.match(r"failed=0\b", l)], ["failed=0"])
+        self.assertLess(self.lines.index("failed=0"), self.after - 1)
 
 
 class NamedApiPort(unittest.TestCase):
