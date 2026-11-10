@@ -206,7 +206,8 @@ async function rolloutRestart(deadline) {
     await run("kubectl", ["-n", NS, "rollout", "status", "deployment/api", `--timeout=${timeout}s`], {
       timeout: (timeout + 10) * 1000,
     });
-    return "complete";
+    // kubectl's own clock starts after its process does, so check against the step's end
+    return Date.now() <= deadline ? "complete" : "incomplete: finished after the step's load stopped";
   } catch (err) {
     return `incomplete: ${reason(err)}`;
   }
@@ -245,6 +246,8 @@ async function step(rate, seconds, midway) {
   let rollout = "";
   if (midwayResult) rollout = await midwayResult;
   else if (midway) rollout = "not started (step stopped early)";
+  // The memory guard ended the load early, so the rollout ran (partly) without it
+  if (midwayResult && memory.over) rollout = "incomplete: the memory guard stopped the load during the rollout";
   return {
     ...summarizeStep({ target: rate, sendSeconds, okLatencies, ...counts }),
     rollout,
