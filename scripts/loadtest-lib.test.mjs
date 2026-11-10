@@ -1,13 +1,78 @@
 // Tests for loadtest-lib.mjs: failure reasons per request and the node-memory guard for the load test (#69).
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { failureReason, summarizeFailures, parseTopNodes, overMemory, scalingChanges, alignFailures } from "./loadtest-lib.mjs";
+import {
+  failureReason,
+  summarizeFailures,
+  parseTopNodes,
+  overMemory,
+  scalingChanges,
+  alignFailures,
+  percentile,
+  readConfig,
+  summarizeStep,
+} from "./loadtest-lib.mjs";
 
-test("a 5xx response is failed with its status; anything below 500 is not a failure", () => {
+test("a 4xx or 5xx response is failed with its status; 2xx and 3xx are not failures", () => {
   assert.equal(failureReason({ status: 503 }), "http 503");
   assert.equal(failureReason({ status: 500 }), "http 500");
+  assert.equal(failureReason({ status: 429 }), "http 429"); // rate limited under load
+  assert.equal(failureReason({ status: 408 }), "http 408");
+  assert.equal(failureReason({ status: 404 }), "http 404"); // a mistyped TARGET_PATH must not read as 0% errors
   assert.equal(failureReason({ status: 200 }), null);
-  assert.equal(failureReason({ status: 404 }), null);
+  assert.equal(failureReason({ status: 304 }), null);
+});
+
+test("percentiles use the nearest rank, so p95 of 20 samples is the 19th, not the maximum", () => {
+  const twenty = Array.from({ length: 20 }, (_, i) => i + 1);
+  assert.equal(percentile(twenty, 95), 19);
+  assert.equal(percentile(twenty, 50), 10);
+  assert.equal(percentile([7], 95), 7);
+  assert.equal(percentile([], 95), 0);
+});
+
+test("the step summary separates sent from completed and takes latency from successes only", () => {
+  const s = summarizeStep({
+    target: 10,
+    sendSeconds: 2,
+    okLatencies: [10, 20, 30, 40],
+    ok: 4,
+    fail: 16,
+    byReason: { timeout: 16 },
+  });
+  assert.equal(s.sentPerS, "10.0"); // 20 requests sent in 2 s
+  assert.equal(s.okPerS, "2.0"); // only 4 completed: the server's throughput, not the client's
+  assert.equal(s.p50, "20");
+  assert.equal(s.p95, "40");
+  assert.equal(s.errors, "80.00");
+  assert.equal(s.failed, 16);
+  assert.equal(s.failures, "timeout:16");
+});
+
+test("a step with nothing sent reports zeros, not NaN", () => {
+  const s = summarizeStep({ target: 5, sendSeconds: 0, okLatencies: [], ok: 0, fail: 0, byReason: {} });
+  assert.deepEqual([s.sentPerS, s.okPerS, s.p50, s.p95, s.errors], ["0.0", "0.0", "0", "0", "0.00"]);
+});
+
+test("the defaults are read when no variable is set", () => {
+  const { config, error } = readConfig({});
+  assert.equal(error, undefined);
+  assert.deepEqual(config.steps, [10, 25, 50, 100, 200]);
+  assert.equal(config.stepSeconds, 60);
+  assert.equal(config.timeoutMs, 5000);
+  assert.equal(config.maxNodeMemoryPct, 95);
+  assert.equal(config.alignWindowS, 30);
+});
+
+test("a bad number stops the run with the variable's name instead of writing a NaN row", () => {
+  assert.match(readConfig({ STEPS: "abc" }).error, /STEPS/);
+  assert.match(readConfig({ STEPS: "10,,20" }).error, /STEPS/);
+  assert.match(readConfig({ STEPS: "0" }).error, /STEPS/);
+  assert.match(readConfig({ STEP_SECONDS: "abc" }).error, /STEP_SECONDS/);
+  assert.match(readConfig({ TIMEOUT_MS: "-1" }).error, /TIMEOUT_MS/);
+  assert.match(readConfig({ ALIGN_WINDOW_S: "x" }).error, /ALIGN_WINDOW_S/);
+  assert.match(readConfig({ MAX_NODE_MEMORY_PCT: "101" }).error, /MAX_NODE_MEMORY_PCT/);
+  assert.deepEqual(readConfig({ STEPS: " 20, 40 " }).config.steps, [20, 40]);
 });
 
 test("an AbortSignal.timeout abort is a timeout", () => {
