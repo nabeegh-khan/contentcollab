@@ -11,17 +11,24 @@ datadog:
   # Off what the project does not use, so two small nodes carry only the node
   # agent and the cluster agent (chart 3.269.1 defaults: an operator Deployment
   # with 8 CRDs, a system-probe container for service discovery, and a
-  # trace-agent for APM; `helm template` with these values renders none of them)
+  # trace-agent for APM; `helm template` with these values renders none of them;
+  # one CRD, datadoginstrumentations.datadoghq.com, comes from a subchart)
   operator:
     enabled: false
   discovery:
     enabled: false
   apm:
     socketEnabled: false
-  # Container logs from every pod, kept after the pod is gone (OBS-1, OBS-2)
+  # Container logs, kept after the pod is gone (OBS-1, OBS-2), from the app's
+  # namespace only: cert-manager, the gateway and kube-system logs stay off a
+  # third party. Inclusion wins over exclusion, so this reads "nothing, except
+  # contentcollab" (docs.datadoghq.com/containers/guide/container-discovery-management,
+  # checked 10 Nov 2026)
   logs:
     enabled: true
     containerCollectAll: true
+  containerExcludeLogs: "kube_namespace:.*"
+  containerIncludeLogs: "kube_namespace:^contentcollab$"
   # Kubernetes state metrics: pod restarts, pending pods, HPA replica counts (OBS-3).
   # No Secret metrics: the chart default (true) gives the cluster agent list and
   # watch on every Secret in the cluster, which can read their contents (SEC-1)
