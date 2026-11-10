@@ -67,7 +67,7 @@ sed "s|LETSENCRYPT_EMAIL|$LETSENCRYPT_EMAIL|" k8s/doks/cluster-issuer.yaml | kub
 #     L8 p67, p73). IMAGE_TAG defaults to the newest commit on main that
 #     deploy.yml builds for; the registry is checked before anything applies.
 git fetch -q origin main
-: "${IMAGE_TAG:=$(git log -1 --format=%H origin/main -- api k8s .github/workflows/deploy.yml)}"
+: "${IMAGE_TAG:=$(git log -1 --format=%H origin/main -- api worker k8s .github/workflows/deploy.yml)}"   # the paths deploy.yml runs on
 # deploy.yml tags images with the full commit SHA; anything else (empty, a
 # branch name, characters sed would read) stops here
 [[ "$IMAGE_TAG" =~ ^[0-9a-f]{40}$ ]] || { echo "IMAGE_TAG '$IMAGE_TAG' is not a full commit SHA"; exit 1; }
