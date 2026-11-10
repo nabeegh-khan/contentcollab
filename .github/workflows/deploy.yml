@@ -110,12 +110,19 @@ jobs:
           # undo is reported and the next Deployment is still checked.
           failed=0
           for svc in api worker; do
-            # A renamed image would leave set image matching nothing and the
-            # old image running with every check green
+            # A renamed image would leave set image matching nothing, so the
+            # apply sets the base placeholder `unpinned`, which cannot be
+            # pulled: that rollout never finishes (the old pods keep serving)
+            # and is undone here. Any other image is reported
+            # without an undo, since no new revision may exist to undo
             image=$(kubectl -n contentcollab get deployment/$svc -o jsonpath='{.spec.template.spec.containers[0].image}') \
               || image="(unreadable)"   # a bare failing assignment would end the step under bash -e
             case "$image" in
               *:${{ github.sha }}) ;;
+              *:unpinned) echo "::error::deployment/$svc was applied with the placeholder tag: undoing"
+                kubectl -n contentcollab rollout undo deployment/$svc \
+                  || echo "::error::undo of deployment/$svc failed: the cluster may run mixed versions"
+                failed=1; continue ;;
               *) echo "::error::deployment/$svc runs $image, not this commit"; failed=1; continue ;;
             esac
             kubectl -n contentcollab rollout status deployment/$svc --timeout=180s \

@@ -20,16 +20,27 @@ DEPLOY = Path(os.environ.get("DEPLOY_WORKFLOW", ROOT / ".github" / "workflows" /
 ROLLOUT_STEP = "Roll the Deployments to this commit"
 
 
+SMOKE_STEP = "Smoke check, roll back on failure"
+
+
+def jobs():
+    return yaml.safe_load(DEPLOY)["jobs"]
+
+
+def step(name):
+    """One step of the rollout job, so text in other steps cannot satisfy a check."""
+    return next(s for s in jobs()["rollout"]["steps"] if s.get("name") == name)
+
+
 def rollout_step():
-    """The rollout step only, so text in other steps cannot satisfy a check."""
-    steps = yaml.safe_load(DEPLOY)["jobs"]["rollout"]["steps"]
-    return next(s for s in steps if s.get("name") == ROLLOUT_STEP)
+    return step(ROLLOUT_STEP)
 
 
 def shell_lines(run):
-    """The step's shell, one stripped line each, comments removed, so a
-    commented-out command cannot satisfy a check."""
-    lines = (re.sub(r"(^|\s)#.*$", "", line).strip() for line in run.splitlines())
+    """The step's shell, one line each: comments removed, so a commented-out
+    command cannot satisfy a check; double quotes dropped and spaces collapsed,
+    so quoting a variable does not break one."""
+    lines = (" ".join(re.sub(r"(^|\s)#.*$", "", line).replace('"', "").split()) for line in run.splitlines())
     return [line for line in lines if line]
 
 
@@ -95,6 +106,13 @@ class ImagePinning(unittest.TestCase):
                 tag = c["image"].rpartition(":")[2] if ":" in c["image"].rpartition("/")[2] else ""
                 self.assertNotIn(tag, ("", "latest"), f"{overlay}: {c['name']} image {c['image']}")
 
+    def test_rollout_follows_the_checks_and_the_build(self):
+        self.assertEqual(jobs()["build"].get("needs"), "checks")
+        self.assertEqual(jobs()["rollout"].get("needs"), "build")
+        self.assertNotIn("if", jobs()["rollout"], "the rollout job must not be skipped")
+        # A cancelled run would stop between the apply and the undo
+        self.assertIs(jobs()["rollout"]["concurrency"]["cancel-in-progress"], False)
+
     def test_rollout_step_runs_whenever_the_cluster_exists(self):
         step = rollout_step()
         self.assertEqual(step.get("if"), "steps.cluster.outputs.present == 'true'")
@@ -133,7 +151,7 @@ class RollbackOnFailedRollout(unittest.TestCase):
     def test_both_deployments_are_watched(self):
         self.assertEqual(self.words, "api worker")
         # A Deployment not running this commit's image fails the run
-        self.assertRegex(self.body, r"\*:\$\{\{ github\.sha \}\}\) ;;\n\*\) echo [^\n]*; failed=1; continue ;;")
+        self.assertRegex(self.body, r"\*:\$\{\{ github\.sha \}\}\) ;;\n(?:[^\n]*\n)*?\*\) echo [^\n]*; failed=1; continue ;;\nesac")
 
     def test_each_deployment_is_undone_when_its_rollout_fails(self):
         # The command that runs when `rollout status` fails is the undo itself,
@@ -144,6 +162,19 @@ class RollbackOnFailedRollout(unittest.TestCase):
             r"\|\| \{ kubectl -n contentcollab rollout undo deployment/\$svc \\\n"
             r"\|\| echo [^\n]*; failed=1; \}",
         )
+
+    def test_a_deployment_left_on_the_placeholder_is_undone(self):
+        # A pin that matched nothing applies `unpinned`, which cannot be
+        # pulled: that new revision is undone and the run fails
+        self.assertRegex(
+            self.body,
+            r"\*:unpinned\) echo [^\n]*\n"
+            r"kubectl -n contentcollab rollout undo deployment/\$svc \\\n"
+            r"\|\| echo [^\n]*\nfailed=1; continue ;;",
+        )
+
+    def test_smoke_failure_fails_the_run(self):
+        self.assertEqual(shell_lines(step(SMOKE_STEP)["run"])[-1], "exit 1")
 
     def test_job_still_fails_after_the_undo(self):
         self.assertEqual(self.lines[self.after:], ["exit $failed"], "undo must not turn a failed deploy green")
