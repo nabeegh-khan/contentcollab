@@ -9,22 +9,23 @@ export const redis = createClient({ url });
  * Logged, not thrown: a dropped Redis connection should show in the logs and
  * in /health, not take the API process down. The client retries about every
  * 2 s while Redis is down, so only the first error of an outage is logged,
- * and "connected again" once it is back.
+ * then "connected" (Redis was down at start) or "connected again" once it is back.
  */
 export function logStateChanges(
   client: Pick<EventEmitter, "on">,
   log: (line: string) => void = console.error,
 ) {
   let down = false;
+  let connectedBefore = false;
   client.on("error", (err: Error) => {
     if (down) return;
     down = true;
     log(`redis: ${err.message} (retrying; further errors not logged until Redis is back)`);
   });
   client.on("ready", () => {
-    if (!down) return;
+    if (down) log(connectedBefore ? "redis: connected again" : "redis: connected");
     down = false;
-    log("redis: connected again");
+    connectedBefore = true;
   });
 }
 
@@ -36,18 +37,33 @@ export async function connectRedis(): Promise<void> {
   }
 }
 
+// Half the readiness probe's 1 s default timeout, leaving room for the Postgres check
+const PING_LIMIT_MS = 500;
+
 /**
- * True when Redis answers PONG. While the client is not connected, false at
- * once: a ping would otherwise wait in the offline queue for the 5 s command
- * timeout, longer than the readiness probe waits for /health.
+ * True when Redis answers PONG within PING_LIMIT_MS. While the client is not
+ * connected, false at once: a ping would otherwise wait in the offline queue
+ * for the 5 s command timeout. Once written to the socket a command has no
+ * timeout at all, so a stalled Redis is cut off by the limit here.
  */
 export async function pingRedis(
   client: Pick<typeof redis, "isReady" | "ping"> = redis,
 ): Promise<boolean> {
   if (!client.isReady) return false;
+  let timer: NodeJS.Timeout | undefined;
+  const limit = new Promise<false>((resolve) => {
+    timer = setTimeout(() => resolve(false), PING_LIMIT_MS);
+  });
+  const ping = async () => {
+    try {
+      return (await client.ping()) === "PONG";
+    } catch {
+      return false;
+    }
+  };
   try {
-    return (await client.ping()) === "PONG";
-  } catch {
-    return false;
+    return await Promise.race([ping(), limit]);
+  } finally {
+    clearTimeout(timer);
   }
 }
