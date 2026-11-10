@@ -11,7 +11,10 @@ export const redis = createClient({ url });
  * 2 s while Redis is down, so only the first error of an outage is logged,
  * and "connected again" once it is back.
  */
-export function logStateChanges(client: Pick<EventEmitter, "on">, log: (line: string) => void = console.error) {
+export function logStateChanges(
+  client: Pick<EventEmitter, "on">,
+  log: (line: string) => void = console.error,
+) {
   let down = false;
   client.on("error", (err: Error) => {
     if (down) return;
@@ -33,7 +36,15 @@ export async function connectRedis(): Promise<void> {
   }
 }
 
-export async function pingRedis(client: Pick<typeof redis, "isReady" | "ping"> = redis): Promise<boolean> {
+/**
+ * True when Redis answers PONG. While the client is not connected, false at
+ * once: a ping would otherwise wait in the offline queue for the 5 s command
+ * timeout, longer than the readiness probe waits for /health.
+ */
+export async function pingRedis(
+  client: Pick<typeof redis, "isReady" | "ping"> = redis,
+): Promise<boolean> {
+  if (!client.isReady) return false;
   try {
     return (await client.ping()) === "PONG";
   } catch {

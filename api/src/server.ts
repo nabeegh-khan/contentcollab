@@ -27,10 +27,22 @@ if (isEntry) {
   const server = app.listen(port, () => console.log(`api listening on ${port}`));
 
   // Listen first, then connect to Redis in the background (#65). If Redis is
-  // down when the pod starts, the process stays up: /health answers 503 so
-  // readiness keeps traffic away, liveness (the socket) passes, and the
-  // client's reconnect brings Redis back without a restart loop.
-  connectRedis().catch((err: Error) => console.error("redis: first connect failed:", err.message));
+  // down when the pod starts, the process stays up: /health answers 503 at
+  // once so readiness keeps traffic away, liveness (the socket) passes, and
+  // the client keeps retrying until Redis is back, without a restart loop.
+  // With the default retry strategy connect() only rejects if the client
+  // stops retrying for good; nothing reconnects after that, so say so.
+  const connectInBackground = async () => {
+    try {
+      await connectRedis();
+    } catch (err) {
+      console.error(
+        "redis: stopped retrying, /health stays 503 until the pod restarts:",
+        (err as Error).message,
+      );
+    }
+  };
+  void connectInBackground();
 
   // On SIGTERM (Compose stop, Kubernetes rolling update) stop taking new
   // connections, let in-flight requests finish, then close the pool.
