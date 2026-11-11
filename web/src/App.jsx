@@ -1,16 +1,14 @@
+import { useEffect, useState } from 'react';
+
 function App() {
-  const api_up_down = useState('http://localhost:3000/api/health'); // https://react.dev/reference/react/useEffect, https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API/Using_Fetch
-
-  if (api_up_down.ok) {
-    return "API up";
-  }
-  else {
-    return "API down";
-  }
-}
-
+  const [status, setStatus] = useState('loading');
+  
   useEffect(() => {
-    const result = api_up_down.ok;
-  };
+    let ignore = false;
+    fetch('/health')
+      .then((res) => { if (!ignore) setStatus(res.ok ? 'up' : 'down'); })
+      .catch(() => { if (!ignore) setStatus('down'); });
+    return () => { ignore = true; };
+  }, []);
 
 export default App
