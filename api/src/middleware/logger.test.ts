@@ -11,6 +11,9 @@ import {
 import { captureStdout } from "../lib/logCapture.js";
 import { errorHandler } from "./errorHandler.js";
 import { requestLogger } from "./logger.js";
+// The error-rate check of the demo (ARCHITECTURE D18) reads these lines: a renamed field must fail here
+// @ts-expect-error a plain .mjs script with no type declarations
+import { parseRequestLines } from "../../../scripts/error-rate.mjs";
 
 // A small app with the same middleware order as server.ts, so these tests need
 // neither PostgreSQL nor Redis.
@@ -46,6 +49,7 @@ const TOO_LONG_ID = "a".repeat(MAX_ID_LENGTH + 1);
 
 let out: ReturnType<typeof captureStdout>;
 beforeEach(() => {
+  delete process.env.LOG_LEVEL;
   out = captureStdout();
 });
 afterEach(() => {
@@ -98,6 +102,24 @@ describe("request log line", () => {
     ["s3cr3t-bearer", "cookie-value-123", "hunter2", "Bearer"].forEach((secret) =>
       expect(text).not.toContain(secret),
     );
+    // Not vacuous: the request was logged
+    expect(out.lines().some((l) => l.msg === "request")).toBe(true);
+  });
+
+  it("writes no aborted line for a request that finished", async () => {
+    await request(buildApp()).get("/items/1").expect(HTTP_OK);
+    // The close event follows finish by a tick
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(out.lines().filter((l) => l.msg === "request aborted")).toEqual([]);
+  });
+
+  it("is read by the error-rate check as the same route and status", async () => {
+    await request(buildApp()).get("/items/42").expect(HTTP_OK);
+    await request(buildApp()).get("/boom");
+    expect(parseRequestLines(out.raw())).toEqual([
+      { route: "/items/:id", status: HTTP_OK },
+      { route: "/boom", status: HTTP_INTERNAL_ERROR },
+    ]);
   });
 });
 

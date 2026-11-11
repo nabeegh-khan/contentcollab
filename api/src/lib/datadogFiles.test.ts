@@ -1,6 +1,13 @@
 import { describe, expect, it } from "@jest/globals";
 import { readFileSync } from "node:fs";
+import { HTTP_INTERNAL_ERROR } from "./httpStatus.js";
 import { registry } from "./metrics.js";
+import { statusClass } from "./routeLabel.js";
+
+// A log attribute in a Datadog search or column: "@http.route" gives "http.route".
+// Matches "@http.status_code" and "@duration_ms"; stops at ":" or a quote.
+// Try it: https://regex101.com/?regex=%40(%5Ba-z_%5D%2B(%3F%3A%5C.%5Ba-z_%5D%2B)*)
+const LOG_ATTRIBUTE = /@([a-z_]+(?:\.[a-z_]+)*)/g;
 
 // The Datadog files are imported by hand, so nothing else checks them. These
 // tests keep them parseable and tied to what /metrics really exports: a metric
@@ -123,5 +130,18 @@ describe("dashboard.json", () => {
       dashboard.widgets.find((w) => w.definition.title?.includes(text))?.definition;
     expect(titled("last 5 minutes")?.time?.live_span).toBe("5m");
     expect(titled("last hour")?.time?.live_span).toBe("1h");
+  });
+
+  it("names only log attributes a request line carries, and the 5xx tag statusClass gives", () => {
+    const line = {
+      http: { request_id: "r", method: "GET", route: "/x", status_code: HTTP_INTERNAL_ERROR },
+      duration_ms: 1,
+    };
+    const written = new Set([...Object.keys(line.http).map((key) => `http.${key}`), "duration_ms"]);
+    const text = read("dashboard.json") + read("monitor-error-rate.json");
+    const used = [...text.matchAll(LOG_ATTRIBUTE)].map(([, name]) => name!);
+    expect(used.length).toBeGreaterThan(0);
+    used.forEach((name) => expect(written).toContain(name));
+    expect(text).toContain(`status_class:${statusClass(HTTP_INTERNAL_ERROR)}`);
   });
 });

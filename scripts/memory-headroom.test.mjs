@@ -262,3 +262,24 @@ test("a failing kubectl call exits 2, also the context lookup after the numbers"
 test("no kubectl on the PATH exits 2", () => {
   assert.equal(runScript({}).status, 2);
 });
+
+test("no API pods is refused: the extra pods would be counted at 0 MiB each", () => {
+  const none = { items: pods.items.filter((p) => p.metadata.labels?.app !== "api") };
+  assert.throws(() => headroom({ nodes, pods: none, topNodes, topApi, hpa }), /no API pods/);
+});
+
+test("API pods are counted only in the API's namespace, as kubectl top reads them", () => {
+  const elsewhere = pod("api-other", "a", "128Mi", { app: "api" });
+  elsewhere.metadata.namespace = "someone-else";
+  const more = { items: [...pods.items, elsewhere] };
+  assert.equal(headroom({ nodes, pods: more, topNodes, topApi, hpa, namespace: "x" }).atMax.extraPods, 3);
+});
+
+test("a size in hex or with an exponent is refused", () => {
+  // Without kubectl the run exits 2 anyway: the reason must be the setting
+  for (const value of ["0x300", "7e2"]) {
+    const r = runScript({ AGENT_MI: value });
+    assert.equal(r.status, 2);
+    assert.match(r.stderr, /AGENT_MI/);
+  }
+});

@@ -98,8 +98,39 @@ describe("logStateChanges default writer", () => {
       const [line, ...rest] = out.lines();
       expect(rest).toHaveLength(0);
       expect(line?.component).toBe("redis");
-      expect(line?.level).toBe("warn");
+      expect(line?.level).toBe("error");
       expect(line?.msg).toContain("redis: connect ECONNREFUSED");
+      expect(line?.error?.kind).toBe("Error");
+    } finally {
+      out.restore();
+    }
+  });
+});
+
+describe("logStateChanges, second review of #55", () => {
+  it("names the error code when the message is empty, as Node's AggregateError for localhost is", () => {
+    const client = new EventEmitter();
+    const lines: string[] = [];
+    logStateChanges(client, (line) => lines.push(line));
+    client.emit("error", Object.assign(new AggregateError([], ""), { code: "ECONNREFUSED" }));
+    expect(lines).toEqual([
+      "redis: ECONNREFUSED (retrying; further errors not logged until Redis is back)",
+    ]);
+  });
+
+  it("the default writer logs the outage at error with its code, and the reconnection at info", () => {
+    const out = captureStdout();
+    try {
+      const client = new EventEmitter();
+      logStateChanges(client);
+      const refused = Object.assign(new Error("connect ECONNREFUSED"), { code: "ECONNREFUSED" });
+      client.emit("error", refused);
+      client.emit("ready");
+      const [down, up] = out.lines();
+      expect(down?.level).toBe("error");
+      expect(down?.error).toEqual(expect.objectContaining({ kind: "Error", code: "ECONNREFUSED" }));
+      expect(up?.level).toBe("info");
+      expect(up?.msg).toBe("redis: connected");
     } finally {
       out.restore();
     }

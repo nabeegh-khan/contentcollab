@@ -253,3 +253,9 @@ test("files under scripts/ are stored with LF line endings, so a diff shows only
     .map((row) => row.split("\t")[1]);
   assert.deepEqual(crlf, []);
 });
+
+test("only plain decimal settings are read: hex or exponents are refused", () => {
+  assert.equal(run(lines(line("/a", 200)), { THRESHOLD: "0x0" }).status, 2);
+  assert.equal(run(lines(line("/a", 200)), { MIN_REQUESTS: "1e1" }).status, 2);
+  assert.equal(run(lines(line("/a", 200)), { THRESHOLD: "0.05", MIN_REQUESTS: "10" }).status, 0);
+});

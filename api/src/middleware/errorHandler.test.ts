@@ -3,11 +3,19 @@ import express, { type Request, type Response } from "express";
 import request from "supertest";
 import {
   HTTP_BAD_REQUEST,
+  HTTP_CONFLICT,
+  HTTP_FORBIDDEN,
   HTTP_INTERNAL_ERROR,
+  HTTP_NOT_FOUND,
   HTTP_PAYLOAD_TOO_LARGE,
+  HTTP_TOO_MANY_REQUESTS,
+  HTTP_UNAUTHORIZED,
   HTTP_UNAVAILABLE,
   HTTP_UNPROCESSABLE,
 } from "../lib/httpStatus.js";
+
+// Not in httpStatus.ts: no route answers it; it checks the fallback code
+const HTTP_IM_A_TEAPOT = 418;
 import { captureStdout } from "../lib/logCapture.js";
 import { registry } from "../lib/metrics.js";
 import app from "../server.js";
@@ -42,7 +50,7 @@ describe("errorHandler", () => {
   it("answers a thrown error with a fixed 500 body and no detail", async () => {
     const res = await request(failingApp(new Error("kaboom: secret detail"))).get("/fail");
     expect(res.status).toBe(HTTP_INTERNAL_ERROR);
-    expect(res.body).toEqual({ error: "Internal Server Error" });
+    expect(res.body).toEqual({ error: "Internal Server Error", code: "INTERNAL" });
     expect(res.text).not.toContain("kaboom");
     expect(res.text).not.toContain("at ");
   });
@@ -59,10 +67,13 @@ describe("errorHandler", () => {
   });
 
   it("answers an error that carries a 4xx status with that status, not a 500", async () => {
-    const clientError = Object.assign(new Error("bad input"), { status: HTTP_UNPROCESSABLE });
+    const clientError = Object.assign(new Error("bad input"), {
+      status: HTTP_UNPROCESSABLE,
+      expose: true,
+    });
     const res = await request(failingApp(clientError)).get("/fail");
     expect(res.status).toBe(HTTP_UNPROCESSABLE);
-    expect(res.body).toEqual({ error: "Unprocessable Entity" });
+    expect(res.body).toEqual({ error: "Unprocessable Entity", code: "VALIDATION" });
     expect(out.lines().find((l) => l.msg === "request failed")?.level).toBe("warn");
   });
 });
@@ -74,7 +85,7 @@ describe("the real app", () => {
       .set("Content-Type", "application/json")
       .send("{not json");
     expect(res.status).toBe(HTTP_BAD_REQUEST);
-    expect(res.body).toEqual({ error: "Bad Request" });
+    expect(res.body).toEqual({ error: "Bad Request", code: "VALIDATION" });
     expect(res.headers["x-request-id"]).toBeDefined();
 
     const requestLine = out.lines().find((l) => l.msg === "request");
@@ -91,7 +102,7 @@ describe("the real app", () => {
       .set("Content-Type", "application/json")
       .send(JSON.stringify({ filler: "x".repeat(OVER_THE_LIMIT_BYTES) }));
     expect(res.status).toBe(HTTP_PAYLOAD_TOO_LARGE);
-    expect(res.body).toEqual({ error: "Payload Too Large" });
+    expect(res.body).toEqual({ error: "Payload Too Large", code: "TOO_LARGE" });
   });
 
   it("does not log any part of a rejected request body", async () => {
@@ -113,20 +124,48 @@ describe("the real app", () => {
 });
 
 describe("errorHandler edge cases", () => {
+  it("answers with the code docs/API.md lists for each status", async () => {
+    const cases: [number, string][] = [
+      [HTTP_BAD_REQUEST, "VALIDATION"],
+      [HTTP_UNAUTHORIZED, "UNAUTHORIZED"],
+      [HTTP_FORBIDDEN, "FORBIDDEN"],
+      [HTTP_NOT_FOUND, "NOT_FOUND"],
+      [HTTP_CONFLICT, "CONFLICT"],
+      [HTTP_PAYLOAD_TOO_LARGE, "TOO_LARGE"],
+      [HTTP_TOO_MANY_REQUESTS, "RATE_LIMITED"],
+      [HTTP_IM_A_TEAPOT, "IM_A_TEAPOT"],
+    ];
+    for (const [status, code] of cases) {
+      const err = Object.assign(new Error("x"), { status, expose: true });
+      const res = await request(failingApp(err)).get("/fail");
+      expect([res.status, res.body.code]).toEqual([status, code]);
+    }
+  });
+
   it("keeps a 500 for an error whose status is a server error", async () => {
     const serverError = Object.assign(new Error("upstream down"), { status: HTTP_UNAVAILABLE });
     const res = await request(failingApp(serverError)).get("/fail");
     expect(res.status).toBe(HTTP_INTERNAL_ERROR);
-    expect(res.body).toEqual({ error: "Internal Server Error" });
+    expect(res.body).toEqual({ error: "Internal Server Error", code: "INTERNAL" });
     expect(out.lines().find((l) => l.msg === "request failed")?.level).toBe("error");
   });
 
-  it("hands the error to Express and logs nothing when the response has already started", () => {
+  it("logs a failure after the response has started and closes the connection itself", () => {
     const err = new Error("late");
     const passed: unknown[] = [];
-    const res = { headersSent: true } as unknown as Response;
-    errorHandler(err, {} as Request, res, (e?: unknown) => passed.push(e));
-    expect(passed).toEqual([err]);
-    expect(out.raw()).toBe("");
+    let destroyed = false;
+    const res = {
+      headersSent: true,
+      getHeader: () => "rid-1",
+      destroy: () => {
+        destroyed = true;
+      },
+    } as unknown as Response;
+    errorHandler(err, { method: "GET" } as Request, res, (e?: unknown) => passed.push(e));
+    expect(passed).toEqual([]);
+    expect(destroyed).toBe(true);
+    const line = out.lines().find((l) => l.msg === "request failed");
+    expect(line?.level).toBe("error");
+    expect(line?.http?.request_id).toBe("rid-1");
   });
 });

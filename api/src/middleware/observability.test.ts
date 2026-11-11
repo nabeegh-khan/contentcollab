@@ -20,10 +20,14 @@ import { requestMetrics } from "./metrics.js";
 // Route labels, durations and aborted requests, through the same middleware
 // order as server.ts.
 const SLOW_MS = 60;
-const ABORT_AFTER_MS = 20;
+// Timers can fire a little early on a busy machine
+const TIMER_SLACK_MS = 20;
 const MAX_SLOW_REQUEST_MS = 5000;
-// Long enough for the slow handler to finish after the client has gone
-const SETTLE_MS = 150;
+
+// The aborted-request test waits on these events, not on fixed delays, so a
+// busy CI runner cannot make it flaky: the client gives up once the handler
+// has the request, and the test reads the log once the server saw the close.
+const slowEvents = { entered: () => {}, closed: () => {} };
 // "/rx/*" and the "/a1" and "/a2" pair: two routes, so two labels
 const EXPECTED_ROUTE_LABELS = 2;
 
@@ -46,7 +50,12 @@ function buildApp() {
   app.get(RX_ROUTE, (req, res) => res.json({ ok: true }));
   app.get(["/a1", "/a2"], (req, res) => res.json({ ok: true }));
   app.get("/slow", (req, res) => {
-    setTimeout(() => res.json({ ok: true }), SLOW_MS);
+    // Registered after the logger's own close listener, so the log line is written first
+    res.on("close", () => slowEvents.closed());
+    slowEvents.entered();
+    setTimeout(() => {
+      if (!res.destroyed) res.json({ ok: true });
+    }, SLOW_MS);
   });
   app.use((req, res) => res.status(HTTP_NOT_FOUND).json({ error: "Not Found" }));
   app.use(errorHandler);
@@ -114,7 +123,7 @@ describe("duration_ms", () => {
   it("is in milliseconds: a handler that takes 60 ms logs about 60", async () => {
     await request(buildApp()).get("/slow").expect(HTTP_OK);
     const line = out.lines().find((l) => l.msg === "request");
-    expect(line?.duration_ms).toBeGreaterThanOrEqual(SLOW_MS - ABORT_AFTER_MS);
+    expect(line?.duration_ms).toBeGreaterThanOrEqual(SLOW_MS - TIMER_SLACK_MS);
     expect(line?.duration_ms).toBeLessThan(MAX_SLOW_REQUEST_MS);
   });
 });
@@ -124,21 +133,27 @@ describe("a request the client abandons", () => {
     const server = buildApp().listen(0);
     try {
       const { port } = server.address() as AddressInfo;
-      await new Promise<void>((resolve) => {
-        const req = httpRequest({ port, path: "/slow", host: "127.0.0.1" });
-        req.on("error", () => resolve());
-        req.end();
-        setTimeout(() => req.destroy(), ABORT_AFTER_MS);
+      const serverSawClose = new Promise<void>((resolve) => {
+        slowEvents.closed = resolve;
       });
-      await new Promise((resolve) => setTimeout(resolve, SETTLE_MS));
+      const req = httpRequest({ port, path: "/slow", host: "127.0.0.1" });
+      req.on("error", () => {});
+      slowEvents.entered = () => req.destroy();
+      req.end();
+      await serverSawClose;
     } finally {
-      server.close();
+      slowEvents.entered = () => {};
+      slowEvents.closed = () => {};
+      await new Promise((resolve) => server.close(resolve));
     }
     const line = out.lines().find((l) => l.msg === "request aborted");
     expect(line?.level).toBe("warn");
     expect(line?.http?.route).toBe("/slow");
     expect(line?.http?.request_id).toBeDefined();
     expect(out.lines().some((l) => l.msg === "request")).toBe(false);
+    // Decided, not accidental: a request the client gave up on has no status, so the
+    // request counters skip it; the log line above is where it shows (D16)
+    expect(await samples("http_requests_total")).toEqual([]);
   });
 });
 
