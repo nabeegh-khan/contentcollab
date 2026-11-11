@@ -9,7 +9,6 @@ import { requireAuth } from "./requireAuth.js";
 import { requireRole } from "./requireRole.js";
 import { errorHandler } from "./errorHandler.js";
 
-
 const testSecret = "role-test-secret-that-is-not-used-outside-tests";
 const previousSecret = process.env.JWT_SECRET;
 const userIds: string[] = [];

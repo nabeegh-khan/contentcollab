@@ -15,12 +15,9 @@ export function requireRole(...allowedRoles: DocumentRole[]): RequestHandler {
     }
 
     if (typeof documentId !== "string") {
-      throw new HttpError(
-        400,
-        "VALIDATION",
-        "Invalid Document ID",
-        [{ field: "documentId", message: "required" }]
-      );
+      throw new HttpError(400, "VALIDATION", "Invalid Document ID", [
+        { field: "documentId", message: "required" },
+      ]);
     }
 
     const result = await pool.query<{ role: DocumentRole }>(
