@@ -1,10 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it } from "@jest/globals";
-import express from "express";
+import express, { type Request, type Response } from "express";
 import request from "supertest";
 import {
   HTTP_BAD_REQUEST,
   HTTP_INTERNAL_ERROR,
   HTTP_PAYLOAD_TOO_LARGE,
+  HTTP_UNAVAILABLE,
   HTTP_UNPROCESSABLE,
 } from "../lib/httpStatus.js";
 import { captureStdout } from "../lib/logCapture.js";
@@ -15,6 +16,8 @@ import { requestLogger } from "./logger.js";
 
 // A little over the 1 MB JSON body limit in server.ts
 const OVER_THE_LIMIT_BYTES = 1_100_000;
+// The two malformed bodies the body-leak test sends
+const REJECTED_BODIES = 2;
 
 let out: ReturnType<typeof captureStdout>;
 beforeEach(() => {
@@ -89,5 +92,41 @@ describe("the real app", () => {
       .send(JSON.stringify({ filler: "x".repeat(OVER_THE_LIMIT_BYTES) }));
     expect(res.status).toBe(HTTP_PAYLOAD_TOO_LARGE);
     expect(res.body).toEqual({ error: "Payload Too Large" });
+  });
+
+  it("does not log any part of a rejected request body", async () => {
+    const marker = "BODY-MARKER-9f3a";
+    await request(app).post("/no-such-route").set("Content-Type", "application/json").send(marker);
+    await request(app)
+      .post("/no-such-route")
+      .set("Content-Type", "application/json")
+      .send(`[1,2,${marker}]`);
+    expect(out.raw()).not.toContain(marker);
+    const failed = out.lines().filter((l) => l.msg === "request failed");
+    expect(failed).toHaveLength(REJECTED_BODIES);
+    failed.forEach((line) => {
+      expect(line.error?.kind).toBe("SyntaxError");
+      expect(line.error?.message).toBeUndefined();
+      expect(line.error?.stack).toBeUndefined();
+    });
+  });
+});
+
+describe("errorHandler edge cases", () => {
+  it("keeps a 500 for an error whose status is a server error", async () => {
+    const serverError = Object.assign(new Error("upstream down"), { status: HTTP_UNAVAILABLE });
+    const res = await request(failingApp(serverError)).get("/fail");
+    expect(res.status).toBe(HTTP_INTERNAL_ERROR);
+    expect(res.body).toEqual({ error: "Internal Server Error" });
+    expect(out.lines().find((l) => l.msg === "request failed")?.level).toBe("error");
+  });
+
+  it("hands the error to Express and logs nothing when the response has already started", () => {
+    const err = new Error("late");
+    const passed: unknown[] = [];
+    const res = { headersSent: true } as unknown as Response;
+    errorHandler(err, {} as Request, res, (e?: unknown) => passed.push(e));
+    expect(passed).toEqual([err]);
+    expect(out.raw()).toBe("");
   });
 });

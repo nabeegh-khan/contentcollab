@@ -17,7 +17,9 @@ type Monitor = {
   tags: string[];
   options: { thresholds: { critical: number; warning?: number } };
 };
-type Widget = { definition: { type: string; title?: string } };
+type Widget = {
+  definition: { type: string; title?: string; query?: string; time?: { live_span?: string } };
+};
 type Dashboard = { title: string; layout_type: string; widgets: Widget[] };
 
 // The thresholds in ARCHITECTURE (failure table): alert above 2%, warn above 1%
@@ -71,8 +73,13 @@ describe("monitor-error-rate.json", () => {
     expect(monitor.options.thresholds.warning).toBe(WARNING_SHARE);
   });
 
-  it("names the route in the message", () => {
-    expect(monitor.message).toContain("{{route.name}}");
+  it("names the route in the message and gives a log query Datadog can run", () => {
+    // The route value contains ":" so it is quoted in the log search; a status
+    // range is the documented way to match 5xx (no wildcard on numbers)
+    expect(monitor.message).toContain('@http.route:"{{route.name}}"');
+    expect(monitor.message).toContain("@http.status_code:[500 TO 599]");
+    expect(monitor.message).not.toContain("5*");
+    expect(monitor.message).not.toContain("{{threshold}}");
   });
 });
 
@@ -103,5 +110,18 @@ describe("dashboard.json", () => {
   it("has a widget for the error rate and one for the request log", () => {
     expect(JSON.stringify(dashboard)).toContain("status_class:5xx");
     expect(dashboard.widgets.some((w) => w.definition.type === "log_stream")).toBe(true);
+  });
+
+  it("searches the request log by the attribute the API writes", () => {
+    const stream = dashboard.widgets.find((w) => w.definition.type === "log_stream")?.definition;
+    expect(stream?.query).toContain("kube_namespace:contentcollab");
+    expect(stream?.query).toContain("@http.request_id:*");
+  });
+
+  it("sets the time frame its titles name", () => {
+    const titled = (text: string) =>
+      dashboard.widgets.find((w) => w.definition.title?.includes(text))?.definition;
+    expect(titled("last 5 minutes")?.time?.live_span).toBe("5m");
+    expect(titled("last hour")?.time?.live_span).toBe("1h");
   });
 });
