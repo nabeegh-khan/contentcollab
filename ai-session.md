@@ -468,4 +468,4 @@ Proposed printing the context, the nodes and the node autoscaler's bounds read f
 
 - Kept a percentage out: 10% of a 4 GB node is less than the load generator may use.
 - Four review rounds found real gaps (a full node let through when another had no metrics, an ignored override, a stale design note, an octal surge value); each got a test that failed first. After our verification rule changed to two full passes plus one delta check, the extra rounds were stopped there.
-- Recorded the public-URL failures as an open question rather than claiming the drain fixed them, and noted that the scale-out happened before the watch started.
+- Recorded the public-URL failures as an open question rather than claiming the drain fixed them, and noted that the scale-out to five came from the rollout script's own load, before the stepped test started. A review of the write-up corrected the burst spacing and two statements about what the watch file showed, and the HPA's events were saved as evidence.

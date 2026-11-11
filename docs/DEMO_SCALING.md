@@ -46,7 +46,7 @@ Terminal C, the nodes, since the node autoscaler may add one during the load:
 kubectl get nodes -w | while IFS= read -r l; do echo "$(date -u +%T) $l"; done | tee docs/evidence/$(date -u +%F)-nodes-watch.txt
 ```
 
-What to look for: in terminal A, `TARGETS` climbs past `70%` during the 150 req/s step and `REPLICAS` rises from 2 toward 5, in one or more steps as the HPA re-evaluates (every 15 seconds; it may add several pods at once). The load test prints a table with the replicas at the end of each step and writes `docs/loadtest/<time>.csv`, `-failures.csv` and `-scaling.csv` (HPA desired, pods created and ready every 2 seconds). On the previous cluster, on 6 November, the HPA went from 2 to 3, 4 and 5 replicas within 85 seconds of the 150 req/s step (BUILD_LOG.md, second load test).
+Start this section with the HPA at 2 replicas (`kubectl -n contentcollab get hpa api`): section 2's load can scale it out, and it takes about 5 minutes to come back. On 11 November it was already at 5 when this section started, so the scale-out was not seen here (see the measured results). What to look for: in terminal A, `TARGETS` climbs past `70%` during the 150 req/s step and `REPLICAS` rises from 2 toward 5, in one or more steps as the HPA re-evaluates (every 15 seconds; it may add several pods at once). The load test prints a table with the replicas at the end of each step and writes `docs/loadtest/<time>.csv`, `-failures.csv` and `-scaling.csv` (HPA desired, pods created and ready every 2 seconds). On the previous cluster, on 6 November, the HPA went from 2 to 3, 4 and 5 replicas within 85 seconds of the 150 req/s step (BUILD_LOG.md, second load test).
 
 Scaling back down is slow on purpose: the HPA uses the highest recommendation of the last 5 minutes. Leave terminal A running for about 7 minutes after the load ends and `REPLICAS` returns to 2. For the live demo, show the saved watch file for this part instead of waiting.
 
@@ -95,7 +95,7 @@ kubectl -n contentcollab patch deployment api --type=strategic --patch-file k8s/
 kubectl -n contentcollab rollout status deployment/api
 ```
 
-To see what the hook changes, run section 2 once before this patch and once after.
+To see what the hook changes, run section 3 (through the public URL) once before this patch and once after: on 11 November section 2, inside the cluster, dropped nothing with or without it.
 
 ## If something goes wrong
 
@@ -108,24 +108,26 @@ To see what the hook changes, run section 2 once before this patch and once afte
 
 ## Measured on the rebuilt cluster (11 November 2026)
 
-First live run, nyc3, one `s-2vcpu-4gb` node (autoscaling 1 to 2), api image `08b479e`. Raw output in `docs/evidence/2026-11-11-*`.
+First live run, nyc3, one `s-2vcpu-4gb` node (autoscaling 1 to 2), api image `08b479e`. Raw output in `docs/evidence/2026-11-11-*`; scaling times come from the HPA's events, saved in `2026-11-11-hpa-events.txt` (the watch file prints each change up to 15 s later, at its next sample).
 
 | Run | Path | Replicas | Requests | Failed | Notes |
 |---|---|---|---|---|---|
-| Restart, before the drain (no `preStop`) | k6 Job inside the cluster, `/metrics` | 2 (HPA went to 5 during the run) | 4,437 | 0 | rollout 24 s, p95 30 ms, 64 iterations dropped |
-| Restart, with the drain | same | 2 | 4,501 | 0 | rollout 23 s, p95 9 ms |
-| Undo, with the drain | same | 4 (left over from the previous run) | 4,501 | 0 | rollout 45 s, p95 11 ms |
+| Restart, before the drain (no `preStop`) | k6 Job inside the cluster, `/metrics` | 2 at the start; the HPA went to 5 during the run | 4,437 | 0 | rollout 24 s, p95 30 ms, 64 iterations dropped |
+| Restart, with the drain | same | 2 at the start; the HPA went to 4 during the run | 4,501 | 0 | rollout 23 s, p95 9 ms |
+| Undo, with the drain | same | 4 | 4,501 | 0 | rollout 45 s, p95 11 ms |
 | Control, no rollout | laptop through the Gateway, `/health`, 50 req/s for 120 s | 4 | about 6,000 | 0 | p50 60 ms, p95 96 ms |
-| Restart halfway, with the drain | same | 4 | about 6,000 | 28 (0.47%) | all `UND_ERR_SOCKET`, in 4 bursts 9 to 12 s apart, one per old pod replaced |
+| Restart halfway, with the drain | same | 4 | about 6,000 | 28 (0.47%) | all `UND_ERR_SOCKET`, in four bursts 8 to 12 s apart while the four old pods were replaced |
 
-- **Scale-out:** the HPA went from 2 to 4 at 21:49:24Z and to 5 at 21:49:39Z, during the first restart run (k6 load plus new pods starting), so the stepped load test that followed (50 then 150 req/s, 150 s each) ran at 5 replicas from the start: 0 failures, p95 113 ms at both steps, HPA CPU 28 to 37% at 50 req/s and 51 to 66% at 150 req/s. The watch file therefore shows the scale-back, not the scale-out; the HPA's own events give the scale-out times.
-- **Scale-back:** the load ended at 21:55:25Z; the HPA went 5 to 3 at 22:00:25Z and to 2 at 22:00:40Z, the 5-minute window to the second.
-- **Nodes:** one node throughout. Five API pods fitted beside everything else (peak 67% node memory during the stepped load); the cluster autoscaler reported no scale-up, so the second node was never added.
-- **The drain:** inside the cluster both restarts dropped nothing, with and without the hook, so this run does not show the hook's effect on the Service path. Through the Gateway, a restart with the hook still lost 28 requests, while the control lost none: the drops happen between the client and the pods while old pods leave. Where exactly (the Gateway's connections to the old pods, or its connections to the client) is not established.
+- **Scale-out:** the k6 load inside the cluster scaled the HPA during both restart runs: 2 to 4 at 21:49:24Z and to 5 at 21:49:39Z in the first, 2 to 3 at 22:03:10Z and to 4 at 22:03:25Z in the second (the second is also in the watch file). So the stepped load test (50 then 150 req/s, 150 s each, 21:50:22 to 21:55:25) ran at 5 replicas from the start: 0 failures, p95 113 ms at both steps, HPA CPU 28 to 36% at 50 req/s and 51 to 66% at 150 req/s, never past the 70% target.
+- **Scale-back:** 5 to 3 at 22:00:25Z and to 2 at 22:00:40Z, 5 minutes after the last high CPU samples (66% at 21:55:25, 40% at 21:55:40), as the HPA's 5-minute downscale window says.
+- **Nodes:** one node throughout. Five API pods fitted beside everything else (peak 67% node memory during the stepped load; 69% with four pods and a surge pod during the public rollout run). The cluster autoscaler reported no scale-up (`2026-11-11-cluster-autoscaler-status.yaml`), so the second node was never added.
+- **The drain:** inside the cluster both restarts dropped nothing, with and without the hook, so this run does not show the hook's effect on that path. Through the public URL a restart with the hook lost 28 requests where the control lost none. The two paths also differ in endpoint, replica count, client and route, so where the drops happen is not established.
 - The drain was added to the live Deployment with `kubectl patch` (revision 5); it stays until the next `kubectl apply` of the manifests or until the pull request merges. `kubectl rollout undo` warned that the `last-applied-configuration` annotation is not updated by a rollback.
 
 ## Not yet verified
 
-- A scale-out from 2 to 5 recorded in the watch file (it happened before the watch started), and the cluster autoscaler adding the second node.
-- Why requests fail through the Gateway during a rollout, and what removes those failures.
+- A scale-out from 2 to 5 under the stepped load alone (section 1 started at 5 replicas), and the cluster autoscaler adding the second node.
+- A restart through the public URL without the drain, so the drain's effect on that path is not measured; why requests fail there during a rollout, and what removes those failures.
+- A clean before-and-after inside the cluster: the run before the drain changed replica count during its load and dropped 64 k6 iterations.
 - The undo at two replicas (it ran at four).
+- The public-URL latencies include the distance from the laptop to nyc3.
