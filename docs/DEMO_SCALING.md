@@ -129,6 +129,6 @@ First live run, nyc3, one `s-2vcpu-4gb` node (autoscaling 1 to 2), api image `08
 - A scale-out from 2 to 5 under the stepped load alone (section 1 started at 5 replicas), and the cluster autoscaler adding the second node.
 - A restart through the public URL without the drain, so the drain's effect on that path is not measured; why requests fail there during a rollout, and what removes those failures.
 - A clean before-and-after inside the cluster: in both restart runs the HPA scaled out after the rollout finished, while the k6 load was still on (to 5 in the first, to 4 in the second); what separates them is the 64 iterations k6 could not send before the drain (4,437 of 4,501) and p95 30 ms against 9 ms.
-- Memory during the rollout runs: the check sizes the room for k6 and one surge pod (768 MiB; the first run started with 773 free), but the k6 load itself scaled the HPA by up to three more API pods, which the check does not size for. It fitted (67% at the next measured peak), but no memory figure was taken during those runs.
+- Memory during the rollout runs: the check sizes the room for k6 and one surge pod (768 MiB; the first run started with 773 free), but the k6 load itself scaled the HPA by up to three more API pods, which the check does not size for. It fitted (67% in the stepped load after the first run, 66% in the load test after the second), but no memory figure was taken during those runs.
 - The undo at two replicas (it ran at four).
 - The public-URL latencies include the distance from the laptop to nyc3.
