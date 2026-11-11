@@ -9,6 +9,8 @@ k8s/
                secrets.example.yaml (the shape of the one Secret; real values are never committed)
   minikube/    overlay: one api replica, image built inside minikube, NodePort
   doks/        overlay: DigitalOcean block-storage class for the database, Gateway and HTTPRoute for traffic
+  observability/  its own kustomization, namespace `observability`: Prometheus, kube-state-metrics, Grafana
+               and its dashboard (ARCHITECTURE D19); applied by scripts/observability-up.sh, not by an overlay
 ```
 
 `web` gets its Deployment when that container exists; the backup CronJob lands with the backup slice.
