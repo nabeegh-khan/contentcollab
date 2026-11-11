@@ -8,7 +8,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -84,8 +84,10 @@ test("each container sets memory and CPU requests and a memory limit (OBS-5)", (
   }
 });
 
-test("memory requests match the D19 budget for part a: 320 MiB at most", () => {
-  const budget = { prometheus: 192, "kube-state-metrics": 32, grafana: 96 };
+// Grafana measured 259 MiB in use, peak 264 MiB, once started at a 512 MiB limit
+// (11 Nov 2026); at 192 MiB it was OOMKilled. Its official minimum is 512 MB.
+test("memory requests match the D19 budget for part a: 480 MiB at most", () => {
+  const budget = { prometheus: 192, "kube-state-metrics": 32, grafana: 256 };
   let total = 0;
   for (const [name, mi] of Object.entries(budget)) {
     const d = find("Deployment", name);
@@ -93,7 +95,7 @@ test("memory requests match the D19 budget for part a: 320 MiB at most", () => {
     assert.ok(sum <= mi, `${name} requests ${sum} MiB, budget ${mi}`);
     total += sum;
   }
-  assert.ok(total <= 320, `part a requests ${total} MiB`);
+  assert.ok(total <= 480, `part a requests ${total} MiB`);
 });
 
 test("one replica each, and containers run as non-root without privilege escalation", () => {
@@ -130,9 +132,11 @@ test("Prometheus may read nodes' metrics, but not proxy to them or read Secrets"
   }
 });
 
-test("kube-state-metrics watches only HPAs, Deployments and nodes, in the app namespace", () => {
+test("kube-state-metrics watches only HPAs (app namespace) and nodes", () => {
   const c = find("Deployment", "kube-state-metrics").spec.template.spec.containers[0];
-  assert.ok(c.args.includes("--resources=horizontalpodautoscalers,deployments,nodes"), "--resources");
+  assert.ok(c.args.includes("--resources=horizontalpodautoscalers,nodes"), "--resources");
+  const kinds = find("ClusterRole", "kube-state-metrics").rules.flatMap((r) => r.resources);
+  assert.deepEqual(kinds.sort(), ["horizontalpodautoscalers", "nodes"]);
   assert.ok(c.args.includes("--namespaces=contentcollab"), "--namespaces");
 });
 
@@ -143,7 +147,18 @@ test("Grafana takes its admin password from a Secret and phones nowhere", () => 
   assert.equal(env.GF_AUTH_ANONYMOUS_ENABLED?.value, "false");
   assert.equal(env.GF_ANALYTICS_REPORTING_ENABLED?.value, "false");
   assert.equal(env.GF_ANALYTICS_CHECK_FOR_UPDATES?.value, "false");
+  // Grafana 13 otherwise downloads its preinstalled plugins from grafana.com at every start
+  assert.equal(env.GF_PLUGINS_PREINSTALL_DISABLED?.value, "true");
   assert.equal(find("Secret", "grafana-admin"), undefined, "the password Secret is created by the install script, not committed");
+});
+
+test("Grafana has room to start: 512 MiB limit, a startup probe that outlasts its first start", () => {
+  const c = find("Deployment", "grafana").spec.template.spec.containers.find((x) => x.name === "grafana");
+  assert.ok(mebibytes(c.resources.limits.memory) >= 512, `limit ${c.resources.limits.memory}`);
+  const sp = c.startupProbe;
+  assert.ok(sp?.httpGet?.path === "/api/health", "startupProbe on /api/health");
+  // About 60 s to first start at 1 CPU; allow five minutes
+  assert.ok((sp.periodSeconds ?? 10) * (sp.failureThreshold ?? 3) >= 300, "startupProbe allows 300 s");
 });
 
 test("Grafana's Prometheus data source points at the Prometheus Service", () => {
@@ -166,6 +181,8 @@ test("the Prometheus config scrapes the api, the kubelet and kube-state-metrics"
   assert.match(text, /metrics_path: \/metrics\/resource/);
   assert.match(text, /metrics_path: \/metrics\/cadvisor/);
   assert.doesNotMatch(text, /insecure_skip_verify: true/, "kubelet TLS stays verified");
+  // EndpointSlices also list not-ready and terminating pods; only ready ones are scraped
+  assert.match(text, /__meta_kubernetes_endpointslice_endpoint_conditions_ready\][\s\S]*?regex: "?true"?/);
 });
 
 // The dashboard is plain JSON, read straight from the repository
@@ -188,12 +205,30 @@ test("each panel queries the series its title names", () => {
   // http_errors_total has a route label both before and after PR #102
   assert.match(exprsOf(panel(/5xx/i)), /http_errors_total/);
   assert.match(exprsOf(panel(/5xx/i)), /by \(route\)/);
+  // prom-client has no series for a labelled counter until it first counts, so
+  // with no errors the share must be 0, not "No data"
+  assert.match(exprsOf(panel(/5xx/i)), /\bor\b 0 \*/);
+  // The scrape of /metrics and the readiness probe on /health are not traffic
+  assert.match(exprsOf(panel(/request rate/i)), /route!~"\/metrics\|\/health"/);
   assert.match(exprsOf(panel(/p95/i)), /histogram_quantile\(0\.95,.*http_request_duration_seconds_bucket/s);
   assert.match(exprsOf(panel(/p95/i)), /\ble\b/);
   assert.match(exprsOf(panel(/replicas/i)), /kube_horizontalpodautoscaler_status_current_replicas/);
   assert.match(exprsOf(panel(/replicas/i)), /kube_horizontalpodautoscaler_status_desired_replicas/);
   assert.match(exprsOf(panel(/node memory/i)), /node_memory_working_set_bytes/);
   assert.match(exprsOf(panel(/node memory/i)), /kube_node_status_allocatable/);
+});
+
+// The label contract between prometheus.yml and the queries is tested by
+// promtool against synthetic series (prometheus/dashboard.test.yml, run in CI);
+// this keeps that file's expressions identical to the dashboard's.
+test("every dashboard query is covered by the promtool expression tests", () => {
+  const file = join(here, "prometheus", "dashboard.test.yml");
+  assert.ok(existsSync(file), "prometheus/dashboard.test.yml missing");
+  const yamlText = readFileSync(file, "utf8");
+  const tested = JSON.parse(execFileSync("yq", ["-o=json", "-I=0", "[.tests[].promql_expr_test[].expr]"], { input: yamlText, encoding: "utf8" }));
+  for (const p of dashboard.panels) {
+    for (const t of p.targets) assert.ok(tested.includes(t.expr), `untested query in "${p.title}": ${t.expr}`);
+  }
 });
 
 test("the dashboard is provisioned from the same file", () => {
