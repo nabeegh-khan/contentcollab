@@ -7,6 +7,8 @@ import { requireDatabase } from "../lib/dbReady.js";
 import { requireServices } from "../lib/reachable.js";
 import { requireAuth } from "./requireAuth.js";
 import { requireRole } from "./requireRole.js";
+import { errorHandler } from "./errorHandler.js";
+
 
 const testSecret = "role-test-secret-that-is-not-used-outside-tests";
 const previousSecret = process.env.JWT_SECRET;
@@ -17,6 +19,8 @@ const app = express();
 app.get("/documents/:documentId/owner-only", requireAuth, requireRole("owner"), (_req, res) =>
   res.status(200).json({ role: res.locals.documentShareRole }),
 );
+
+app.use(errorHandler);
 
 async function createUser(): Promise<string> {
   const result = await pool.query<{ id: string }>(
