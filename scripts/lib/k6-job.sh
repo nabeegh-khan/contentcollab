@@ -127,14 +127,16 @@ node_shape() {
     END { if (n) print n " (" list ")"; else print "unreadable" }'
 }
 
-# The node with the least free memory (allocatable minus kubectl top's usage):
-# "name MiB". Prints nothing when any node's usage or allocatable cannot be
-# read (metrics not ready, <unknown>, a unit it does not know), so the check
-# is reported as not done rather than passed on a guess
-node_least_free() {
+# Free memory per node (allocatable minus kubectl top's usage), one line each:
+# "ok name MiB", or "unknown name" when that node's usage or allocatable cannot
+# be read (metrics not ready, <unknown>, missing from kubectl top, a unit it
+# does not know). An unreadable node is never counted as empty, and it does
+# not stop the other nodes being checked. Prints nothing if the nodes cannot
+# be listed at all
+node_free_report() {
   local raw top
   raw=$(nodes_raw 2>/dev/null) || return 0
-  top=$(kubectl top nodes --no-headers 2>/dev/null) || return 0
+  top=$(kubectl top nodes --no-headers 2>/dev/null) || top=""
   printf '%s\n--\n%s\n' "$raw" "$top" | awk "$MIB_AWK"'
     $0 == "--" { part = 2; next }
     part != 2 && NF >= 3 { alloc[$1] = mib($3); names[++n] = $1; next }
@@ -142,12 +144,15 @@ node_least_free() {
     END {
       for (i = 1; i <= n; i++) {
         k = names[i]
-        if (alloc[k] < 0 || !(k in used) || used[k] < 0) exit
-        free = alloc[k] - used[k]
-        if (best == "" || free < least) { least = free; best = k }
+        if (alloc[k] < 0 || !(k in used) || used[k] < 0) print "unknown " k
+        else print "ok " k " " (alloc[k] - used[k])
       }
-      if (n) print best " " least
     }'
+}
+
+# A memory quantity from kubectl in whole MiB, or nothing if unreadable
+quantity_mib() {
+  printf '%s\n' "$1" | awk "$MIB_AWK"' { m = mib($1); if (m >= 0) print m }'
 }
 
 # Node autoscaling bounds from the cluster autoscaler's status ConfigMap
