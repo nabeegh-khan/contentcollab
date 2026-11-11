@@ -1,0 +1,66 @@
+# Datadog agent on the cluster (#27): container logs, Kubernetes metrics and
+# the API's /metrics, into the dashboards used in the presentation.
+# Installed by scripts/cluster-up.sh step 6, which checks the key, creates the
+# namespace and the Secret, then runs helm with the chart version pinned there.
+# The API key never enters the repo: scripts/cluster-up.sh creates the
+# `datadog-secret` Secret from DATADOG_API_KEY in the environment (SEC-1).
+datadog:
+  apiKeyExistingSecret: datadog-secret
+  clusterName: contentcollab
+  # site: set by scripts/cluster-up.sh from DATADOG_SITE (default datadoghq.com)
+  # Off what the project does not use, so two small nodes carry only the node
+  # agent and the cluster agent (chart 3.269.1 defaults: an operator Deployment
+  # with 8 CRDs, a system-probe container for service discovery, and a
+  # trace-agent for APM; `helm template` with these values renders none of them;
+  # one CRD, datadoginstrumentations.datadoghq.com, comes from a subchart)
+  operator:
+    enabled: false
+  discovery:
+    enabled: false
+  apm:
+    socketEnabled: false
+  # Container logs, kept after the pod is gone (OBS-1, OBS-2), from the app's
+  # namespace only: cert-manager, the gateway and kube-system logs stay off a
+  # third party. Inclusion generally wins over exclusion (a pod's own exclude
+  # annotation still wins), so this reads "nothing, except contentcollab"
+  # (docs.datadoghq.com/containers/guide/container-discovery-management,
+  # checked 10 Nov 2026)
+  logs:
+    enabled: true
+    containerCollectAll: true
+  containerExcludeLogs: "kube_namespace:.*"
+  containerIncludeLogs: "kube_namespace:^contentcollab$"
+  # Kubernetes state metrics: pod restarts, pending pods, HPA replica counts (OBS-3).
+  # No Secret metrics: the chart default (true) gives the cluster agent list and
+  # watch on every Secret in the cluster, which can read their contents (SEC-1)
+  kubeStateMetricsCore:
+    enabled: true
+    collectSecretMetrics: false
+  # The orchestrator explorer (a live resource browser in Datadog, not used by
+  # #27) also gets list and watch on every Secret; off for the same reason
+  orchestratorExplorer:
+    enabled: false
+  # kubelet.tlsVerify stays at the chart default (true). No DigitalOcean or
+  # Datadog source says DOKS needs it off; turn it off only if `agent status`
+  # in a datadog-agent pod shows an x509 error reaching the kubelet.
+# The cluster agent runs the Kubernetes state check; sized as the chart's own
+# commented example for clusterAgent.resources (OBS-5)
+clusterAgent:
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+# One agent per node; the small nodes need the agent kept light (OBS-5)
+agents:
+  containers:
+    agent:
+      resources:
+        requests:
+          cpu: 100m
+          memory: 256Mi
+        limits:
+          cpu: 300m
+          memory: 512Mi
