@@ -116,7 +116,9 @@ MIB_AWK='function mib(s, up,  n, u, f, v) {
   n = s; sub(/[A-Za-z]+$/, "", n); u = substr(s, length(n) + 1)
   f = u == "Ki" ? 1024 : u == "Mi" ? 1048576 : u == "Gi" ? 1073741824 : u == "Ti" ? 1099511627776 : \
       u == "k" ? 1000 : u == "M" ? 1000000 : u == "G" ? 1000000000 : u == "T" ? 1000000000000 : 1
-  v = n * f / 1048576; return (up && v > int(v)) ? int(v) + 1 : int(v)
+  v = n * f / 1048576
+  if (v >= 1000000000) return -1   # past 1 PiB: not a real figure, and awk would print an exponent
+  return (up && v > int(v)) ? int(v) + 1 : int(v)
 }'
 
 # "2 (a s-2vcpu-4gb 3002 MiB allocatable, b ...)"; "unreadable" if kubectl fails
