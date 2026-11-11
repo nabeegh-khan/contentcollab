@@ -12,7 +12,8 @@
 //
 // Exit 0 with the report; 2 when kubectl fails, a node has no `kubectl top` reading (metrics-server has not
 // scraped it yet: wait a minute after a rebuild), no API pod is found in NAMESPACE, a memory quantity cannot be
-// read, AGENT_MI / CLUSTER_AGENT_MI is not a plain number of MiB, or CLUSTER_AGENT_MI is given without AGENT_MI.
+// read, AGENT_MI / CLUSTER_AGENT_MI is not a plain number of MiB, CLUSTER_AGENT_MI is given without AGENT_MI, or the script fails
+// (kubectl output that is not JSON, say).
 // A pod's request is counted as the scheduler counts it: the larger of its biggest init container and the sum of
 // its containers, plus the pod's overhead (the rule before native sidecars, which add an init container's request
 // instead; none in this repository's manifests, system pods not checked). Cordoned or NotReady nodes still count as capacity.
@@ -118,7 +119,7 @@ export function headroom({ nodes, pods, topNodes, topApi, hpa, agentMi, clusterA
   // No reading for the API pods: their request stands in for their use, and the result says so
   const apiUseMeasured = apiUse.length > 0;
   const perPodUse = apiUseMeasured ? sum(apiUse) / apiUse.length : perPodRequest;
-  // A Pending API pod has no node yet, so its request is in no node row: count only placed pods as already there
+  // An API pod not yet scheduled (no nodeName) has its request in no node row: count only placed pods as already there
   const placed = apiPods.filter((p) => p.spec.nodeName).length;
   const extraPods = Math.max(0, (hpa?.spec?.maxReplicas ?? placed) - placed);
   const atMax = {

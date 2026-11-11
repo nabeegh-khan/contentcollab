@@ -34,6 +34,8 @@ const DEFAULT_THRESHOLD = 0.02;
 const DEFAULT_MIN_REQUESTS = 10;
 const PERCENT = 100;
 const SHARE_DECIMALS = 2;
+// Significant digits of the printed threshold: 0.07 prints 7%, 0.00001 prints 0.001%
+const THRESHOLD_DIGITS = 6;
 const PROBE_ROUTES = new Set(["/health", "/metrics"]);
 const UNMATCHED = "unmatched";
 
@@ -143,7 +145,7 @@ function main() {
     );
   }
   console.log(
-    `threshold ${Number((threshold * PERCENT).toFixed(SHARE_DECIMALS))}% with at least ${minRequests} requests; ` +
+    `threshold ${Number((threshold * PERCENT).toPrecision(THRESHOLD_DIGITS))}% with at least ${minRequests} requests; ` +
       `${requests.length} requests read, ${aborted.length} aborted; a failing probe (/health, /metrics) alerts at any count`,
   );
   if (unreadable > 0) {

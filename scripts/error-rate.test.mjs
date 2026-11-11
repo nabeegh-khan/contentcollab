@@ -264,3 +264,8 @@ test("the threshold is printed as people write it, not with float noise", () => 
   const r = run(lines(...repeat(20, line("/a", 200))), { THRESHOLD: "0.07" });
   assert.match(r.stdout, /threshold 7% with at least 10 requests/);
 });
+
+test("a very small threshold is printed as itself, not rounded to 0%", () => {
+  const r = run(lines(...repeat(20, line("/a", 200))), { THRESHOLD: "0.00001" });
+  assert.match(r.stdout, /threshold 0\.001% with at least/);
+});
