@@ -387,3 +387,20 @@ Three shell scripts with stub-driven tests (17), workflow changes that skip whil
 
 - Added a test that pins the workflow wiring and killed all of those changes, moved yq output to a file, widened the placeholder check, and re-ran everything.
 - Showed the checks red then green on a runner with a throwaway branch (closed afterwards), and wrote the limits into the PR and the build log: skips that never expire, no check that `down 0` empties the history, a build-only web job.
+
+## A rolling update that drains its pods, and a check that counts failed requests (#69, PR #103), 11 November 2026
+
+### Prompt
+
+Issue #69: prove that the API scales under load and that a rolling update drops no requests. Check the current Kubernetes documentation for the autoscaler, rolling updates, disruption budgets and pod shutdown, record the decision in ARCHITECTURE.md first, then add what is missing, a script that restarts the API under load and counts failed requests, and prove it on a cluster. The local cluster run was stopped for lack of memory, so the proof moves to the DOKS cluster after the rebuild.
+
+### AI Response
+
+The autoscaler, the disruption budget, `maxUnavailable: 0` and the readiness probe were already in the base manifest. The gap is shutdown: the endpoint removal runs alongside SIGTERM, and the API refuses new connections on SIGTERM. Proposed a 10-second `preStop` sleep (the built-in sleep handler, stable since Kubernetes 1.34) as a kustomize component, and a script that runs k6 inside the cluster. A local run showed `/health` fails under load with no rollout, so the script targets `/metrics`.
+
+### What Your Team Did With It
+
+- Wrote the decision into ARCHITECTURE D14 before the code, and corrected it when the plan changed (no local run) and when a review showed two of its claims were wrong: the 25% defaults already come to 0 and 1 for two replicas, and the memory risk was understated.
+- Pushed each batch of tests before the code that satisfies it, so CI showed them failing: 4, 5 and then 6 cases. One case passed on the runner for the wrong reason (it matched bash's wording of an error) and was rewritten to check behaviour.
+- An independent review found three ways the script could report a pass by mistake; each got a failing test first, then a fix.
+- Did not run anything on the cluster: it does not exist yet. The demo page says so and lists what is unverified, and the pull request stays a draft until the numbers are in.

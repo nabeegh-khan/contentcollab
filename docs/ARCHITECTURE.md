@@ -25,7 +25,7 @@ flowchart TB
   LLM["Language-model API"]
   MAIL["Email service"]
   CI["GitHub Actions · tests, image build · GHCR"]
-  M["DO alerts, Datadog · /metrics, logs"]
+  M["DO alerts and Insights · /metrics, JSON logs"]
   U -- "HTTPS, WebSocket" --> GW
   GW --> W
   GW --> A
@@ -75,12 +75,20 @@ Certificate: Let's Encrypt can issue the certificate only once `contentcollab.ap
 
 Sources, checked 11 November 2026: [NGINX Gateway Fabric Helm install](https://docs.nginx.com/nginx-gateway-fabric/install/helm/) and [releases](https://github.com/nginx/nginx-gateway-fabric/releases); [cert-manager supported releases](https://cert-manager.io/docs/releases/), [upgrading](https://cert-manager.io/docs/installation/upgrade/), [Gateway API usage](https://cert-manager.io/docs/usage/gateway/), [releases](https://github.com/cert-manager/cert-manager/releases) and `pkg/apis/config/controller/v1alpha1/types.go` at v1.20.5 and v1.21.3; [DigitalOcean: connect to a cluster](https://docs.digitalocean.com/products/kubernetes/how-to/connect-to-cluster/) and [push-to-deploy with GitHub Actions](https://docs.digitalocean.com/products/kubernetes/how-to/deploy-using-github-actions/); `doctl kubernetes options versions` (doctl 2.1.0); [kubectl wait](https://kubernetes.io/docs/reference/kubectl/generated/kubectl_wait/).
 
+**Rebuild of 11 November (decided by Nabeegh that day).** The cluster of 4 November had the high-availability control plane on (DigitalOcean's default from 1.36, US$40 a month, cannot be switched off), so it was deleted with `--dangerous` (the database had no tables) and created again with `--ha=false`. Three things differ from the plan above:
+
+- **Region nyc3, not tor1.** `doctl kubernetes cluster create` in tor1 returned 422 "region has insufficient capacity" for s-2vcpu-2gb (9 tries, 8 request ids recorded: e24f50a3, 7e24bd24, b50ac8fc, c34dbfd1, e8282ed8, d1a0451c, cbecbb7b, c11850fa), s-2vcpu-2gb-intel (d4d98429) and s-2vcpu-4gb (20a80596). nyc3 accepted the first request. The Spaces bucket stays in tor1, so file traffic crosses regions; INF-6 ("deploy near users", Toronto) is no longer met for the cluster.
+- **Nodes s-2vcpu-4gb, autoscaling 1 to 2, created with count 1.** One 4 GB node holds what two 2 GB nodes held (allocatable per node 1900m CPU and 2.93 GiB; with the app running, requests were 1172m and 1750 MiB on one node and 512m and 582 MiB on the other). The autoscaler added the second node during bring-up because system pods were pending. With one node there is no node-level high availability; the second node is there when load or pending pods need it.
+- **Kubernetes 1.37.0-do.3, not 1.36.** `--ha=false` decides HA, not the version. DOKS 1.37 installs and protects its own Gateway API CRDs (admission policy `doks-gateway-api-crd-protection`), so `cluster-up.sh` failed at step 2 until every `gateway.networking.k8s.io` CRD was annotated `doks.digitalocean.com/install-policy=external`, the opt-out in DigitalOcean's [Gateway API guide](https://docs.digitalocean.com/products/kubernetes/how-to/use-gateway-api/) (checked 11 November). After that `main`'s script ran unchanged: NGINX Gateway Fabric 2.8.0, cert-manager v1.19.2 (the older pins; cert-manager 1.19 on 1.37 is not checked), load balancer 138.197.57.149. The alternative, DOKS's managed Cilium gateway (GatewayClass `cilium`, already installed), would drop the NGINX pods but changes `gateway.yaml` and is left open.
+
+Cost after the rebuild: about US$1.59 a day with one node and US$2.56 with two (s-2vcpu-4gb at US$0.03571 an hour from `doctl compute size list`; load balancer and volume at the rates in COST_PLAN section 1, assumed the same in nyc3 until the next invoice shows them; 13% tax), against US$3.69 before.
+
 ### D14. Scaling and rolling updates that drop no requests (decided 11 November, #69)
 
 What the API already has, in `k8s/base/api.yaml`: an `autoscaling/v2` HorizontalPodAutoscaler (2 to 5 pods, 70% average CPU); a PodDisruptionBudget (`minAvailable: 1`); a rolling update with `maxUnavailable: 0` and `maxSurge: 1`; a readiness probe on `/health`; and a 30-second grace period. What each piece does, from the Kubernetes docs:
 
 - **HPA.** Utilization is measured against the container's CPU request (100m here), so the API scales out when its pods average 70m. The desired count is `ceil(current replicas × current / target)`. The controller checks every 15 seconds and does nothing within 10% of the target. It scales down only to the highest recommendation of the last 5 minutes. On DOKS it needs metrics-server, which `scripts/metrics-server.sh` installs (D5).
-- **Rolling update.** `maxUnavailable: 0` keeps every old pod until a new one is ready, and `maxSurge: 1` adds one pod at a time. Both default to 25%, which with two replicas would let a rollout run on one.
+- **Rolling update.** `maxUnavailable: 0` keeps every old pod until a new one is ready, and `maxSurge: 1` adds one pod at a time. Both default to 25%, but maxUnavailable rounds down and maxSurge rounds up, so with two replicas the defaults already come to 0 and 1, the same as ours. The explicit 0 matters once the HPA scales out: at five replicas the default allows one pod to be unavailable.
 - **PDB.** It limits voluntary disruptions that go through the Eviction API, such as `kubectl drain` and node upgrades. Deployments "are not limited by PDBs when doing rolling upgrades", so the rollout's guarantee comes from `maxUnavailable`, not from the PDB.
 
 The gap is shutdown. When a pod is deleted, the kubelet starts stopping it "at the same time as" the control plane removes it from the Service's EndpointSlices. On SIGTERM the API calls `server.close()` and refuses new connections, while kube-proxy and the Gateway may still send it traffic for a moment, so requests can fail even with `maxUnavailable: 0`.
@@ -95,11 +103,12 @@ Options it beat:
 
 The web front end gets the same HPA, PDB and hook when its Deployment exists (#47); today there is no `web` Deployment to scale.
 
-**Proof:** shown on a local single-node k3s cluster in Docker before DOKS.
-- Under a steady k6 load through the Service, `scripts/rollout-no-drop.sh` runs `kubectl rollout restart` and fails on any non-2xx response or connection error.
-- It runs first against the old settings (`maxUnavailable: 1`, no hook), which drop requests, then against the new ones.
-- `scripts/hpa-scale.sh` ramps the load and records `kubectl get hpa -w` as the API scales out.
-- Results are in BUILD_LOG.md; the DOKS demo steps are in `docs/DEMO_SCALING.md`.
+**Proof:** on the DOKS cluster itself, not locally (a local k3s run was stopped for lack of memory, and none of its results are kept). Nothing in this paragraph has been run on DOKS yet; the results go to `docs/evidence/` and BUILD_LOG.md after the run.
+- **Rollout.** `scripts/rollout-no-drop.sh` runs a steady k6 load from a Job inside the cluster, through the API Service, runs `kubectl rollout restart` (or `ACTION=undo`) halfway, and fails on any non-2xx response or connection error. The before-run is the cluster as deployed from `main`, which has `maxUnavailable: 0` and no hook; the after-run applies the hook.
+- **Target.** The load goes to `/metrics`, not `/health`. `/health` returns 503 whenever the Postgres or Redis check misses, and the Redis ping gives up after 500 ms, so under load it can fail with no rollout at all: a local run saw 1 of 4,501 requests fail that way. Through the Gateway, which routes only `/api`, `/socket.io` and `/health`, the public-URL run with `scripts/loadtest.mjs` (`ROLLOUT=1`) therefore needs a control run with no rollout, and the rollout's count is read against it.
+- **Scaling.** `scripts/loadtest.mjs` steps the request rate against the public URL while `kubectl get hpa api -w` is recorded, then the load stops and the watch continues until the HPA is back at its minimum (the 5-minute scale-down window).
+- **Memory.** The two nodes sat at 77 and 83% memory with two API pods (`kubectl top nodes` on the cluster before the rebuild, 11 November). With five API pods the second load test on 6 November peaked at 93, 92 and 91% (BUILD_LOG.md, before the spread rule of #78 was merged). `rollout-no-drop.sh` refuses to start above 90% and `loadtest.mjs` stops above 95%, so the rollout runs are made at two replicas, with the HPA idle, and five pods may not fit beside a load generator; the runs report that rather than hiding it.
+- The DOKS demo steps are in `docs/DEMO_SCALING.md`.
 
 Sources, checked 11 November 2026: [Horizontal Pod Autoscaling](https://kubernetes.io/docs/concepts/workloads/autoscaling/horizontal-pod-autoscale/); [Deployments: max unavailable, max surge](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/); [Disruptions](https://kubernetes.io/docs/concepts/workloads/pods/disruptions/); [Pod lifecycle: termination](https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle/); [Container lifecycle hooks](https://kubernetes.io/docs/concepts/containers/container-lifecycle-hooks/); [feature gates](https://kubernetes.io/docs/reference/command-line-tools-reference/feature-gates/) (PodLifecycleSleepAction stable from 1.34). DOKS metrics-server: the DigitalOcean HPA guide as cited in `scripts/metrics-server.sh` (checked 6 November), and read-only `helm list` on the cluster (11 November: metrics-server chart 3.14.0, app 0.9.0, installed).
 
@@ -128,6 +137,44 @@ Datadog files, committed to be imported by hand, never applied with an API key f
 **Option it beat: pino and pino-http.** They provide request-ID generation (`genReqId`), per-request levels (`customLogLevel`), serializers and redaction ([pino-http README](https://github.com/pinojs/pino-http), checked 11 November 2026), and they would be the choice for a larger service. Here they add two dependencies, and so changes to `api/package.json` and the lockfile, which the open schema and storage pull requests also change; the log has a fixed set of fields and never touches headers or bodies, so there is nothing to redact; and pino's defaults (numeric levels, `time` in milliseconds) would still need formatters to fit Datadog. The cost of the choice is about sixty lines of our own code and no transports; the key names are fixed, so replacing the writer with pino later changes no dashboard or monitor.
 
 **Limits.** Latency is shown as an average (`.sum` divided by `.count`): a p95 needs the histogram buckets submitted as distributions, which is a change to the check's annotation in `k8s/base/api.yaml`, not part of this change. The route label has two more limits: a router mounted on a path with a parameter would put the parameter's value in the label, so routers are mounted on literal paths and parameters stay in the route; and a route that calls `next()` and falls through to the 404 handler keeps its own label. A request the client abandons before the response is complete is written as one `request aborted` line (level `warn`) and is not counted in the metrics. The agent is not installed on the cluster yet (#27), so the metric names, the tags and the log parsing are checked against the documentation and by tests on the API, not against a running Datadog.
+
+### D18. Monitoring that fits two 2 GB nodes: provider metrics and alerts, `/metrics`, JSON logs; no agent in the cluster (decided 11 November, #55)
+
+Supersedes the agent part of D17 and D6. D17's reasoning (one stack, no extra cost, Datadog over Prometheus and Grafana) stands; what changes is that the Datadog agent is not installed, because it does not fit.
+
+**What the course requires.** The handout lists monitoring as required for all projects, not as an advanced feature: "Integrate monitoring using provider tools (e.g., DigitalOcean metrics/alerts for CPU, memory, disk ...)" and "Set up basic alerts or dashboards for key metrics" ([project handout](https://www.eecg.utoronto.ca/~cying/courses/ece1779-cloud/project/handout/), read 11 November 2026). The provider tools alone meet it.
+
+**What the cluster has left.** Measured on the running cluster on 11 November 2026 at 18:37 UTC (two s-2vcpu-2gb nodes, 1,464.6 MiB allocatable each, 2,929 MiB in all; `kubectl describe nodes`, `kubectl top`). The rebuild without the high-availability control plane (COST_PLAN) keeps the same node size and the same pods, so these numbers are expected to carry over; they are re-measured with `scripts/memory-headroom.mjs` once the rebuilt cluster is up.
+
+| | Node A | Node B | Both |
+|---|---|---|---|
+| Memory requested by pods | 974 MiB (66%) | 1,166 MiB (79%) | 2,140 MiB |
+| Unrequested | 490.6 MiB | 298.6 MiB | 789 MiB |
+| In use now | 1,217 MiB (83%) | 1,126 MiB (76%) | 2,343 MiB |
+| Not in use now | 247.6 MiB | 338.6 MiB | 586 MiB |
+
+The autoscaler is allowed five API pods (128 MiB requested each, about 138 MiB in use each). Three more pods take 384 MiB of requests and about 414 MiB of real memory, so with the API at its maximum **405 MiB are unrequested and about 172 MiB are not in use**. On 6 November a node reached 93% memory with five pods and the load test stops at 95% (LOG), so that margin is real. Cilium alone uses about 410 MiB on each node and cannot be reduced here.
+
+**Options.**
+
+| | Requests | Fits with the API at five pods? |
+|---|---|---|
+| (c) Datadog agent and cluster agent (D6) | 768 MiB | No: 405 MiB unrequested, and by placement it fails today: an agent of 256 MiB on each node leaves 234.6 and 42.6 MiB, so the 256 MiB cluster agent fits on neither (`AGENT_MI=256 CLUSTER_AGENT_MI=256 node scripts/memory-headroom.mjs`). A third node (about US$0.73 a day with tax, COST_PLAN) would be needed. Halving the requests to 384 MiB leaves 21 MiB of requests and none of the real memory. Datadog's Kubernetes example for GKE Autopilot gives the Agent container a 256 MiB request, and it warns that Autopilot's default limit of 100 MiB may lead it to be killed for memory, depending on the environment ([Kubernetes distributions](https://docs.datadoghq.com/containers/kubernetes/distributions/), read 11 November 2026), so going lower is outside what the vendor shows. |
+| (b) One Prometheus pod with short retention, and Grafana | about 192 to 384 MiB (an estimate: Prometheus 128 to 256 MiB, Grafana 64 to 128 MiB; the official pages give no memory figure per series, only the retention flags `--storage.tsdb.retention.time` and `--storage.tsdb.retention.size`, [Storage](https://prometheus.io/docs/prometheus/latest/storage/), read 11 November 2026) | Not with room to spare. The requests fit 405 MiB only at the low end, and the 172 MiB of real memory left at five API pods is less than either pod would use. `/metrics` has 153 series, so the data is small; the baseline of the two processes is the cost. |
+| (a) DigitalOcean metrics and alerts, `/metrics` shown live, JSON logs through `kubectl logs`, no agent | 0 | Yes |
+
+**Decision: (a).** It meets the handout, costs nothing, and leaves the memory to the HPA.
+
+- **Provider dashboards:** the cluster's Insights tab shows CPU usage, load average, memory, disk and disk I/O for the cluster, the node pool and each node, from the DigitalOcean metrics agent that every DOKS cluster runs ([basic metrics](https://docs.digitalocean.com/products/kubernetes/how-to/monitor-basic/), read 11 November 2026). Its memory graph leaves out reclaimable memory, so it reads lower than `kubectl top` ([autoscaling guide](https://docs.digitalocean.com/products/kubernetes/how-to/set-up-autoscaling/), read 11 November 2026).
+- **Provider alerts:** policies for CPU, memory and disk above 80% for five minutes, assigned by the cluster's tag (worker nodes are recycled, so the docs recommend tags), created by `scripts/alerts.sh` (#62). Resource alerts are free ([manage resource alerts](https://docs.digitalocean.com/products/monitoring/how-to/manage-resource-alerts/), [features](https://docs.digitalocean.com/products/monitoring/details/features/), read 11 November 2026).
+- **Application metrics:** `/metrics` (D16: `method`, `route` and `status_class` labels, 153 series) read live through a port-forward; the Gateway never routes it.
+- **Logs:** the JSON request log (D16) through `kubectl logs`, with the request ID followed from the browser's `X-Request-Id` header to its line.
+- **Error rate per endpoint:** `scripts/error-rate.mjs` reads the request log and prints the 5xx share per route over the window, exiting 1 above 2% (the threshold in the failure table), with a minimum request count so one failure on a quiet route does not alert. Stopping Redis makes it fail within the window. This is the "monitor firing" of the demo; it is run by hand, not by an agent.
+- **Kept, not installed:** the Datadog dashboard and monitor files (`k8s/doks/datadog/`, validated against Datadog's schemas), the agent values (`k8s/doks/datadog-values.yaml`) and the optional install step in `scripts/cluster-up.sh` (skipped without `DATADOG_API_KEY`). They are used only if a third node is ever added; nothing in the demo depends on them.
+
+**What is given up.** No history beyond the provider's retention and the pods' own logs (a pod's log is gone with the pod); no alert on the application's error rate that sends a message; no p95 latency graph. The first is accepted for a project that runs for weeks, the second is covered by running the error-rate check by hand in the demo, and the third was already out of reach (D16). If the rubric credits an alert on an application metric, the next step is not an agent: `scripts/error-rate.mjs` can run in a CronJob that mails or posts to a webhook, a small pod that exists only while it runs; that is not built and its memory is not measured.
+
+**Not claimed.** That the rebuilt cluster has the same headroom (the rebuild had not started on 11 November; it is re-measured after it); that stopping Redis turns the error-rate check red on the cluster (checked against the code and a local run, not yet run there); that Insights shows what `kubectl top` shows; any Datadog result, since the agent was never installed.
 
 ### D0. Service model
 
@@ -183,6 +230,8 @@ Stretch goals, presented as completed only if they are:
 6. **External services** (Eyrika): email on share and on @-mention through a transactional email API.
 
 ### D6. Monitoring
+
+**The Datadog agent described here is not installed: see D18.**
 
 DigitalOcean droplet and cluster metrics with alert policies (CPU, memory, disk at 80%) are mandatory and free. The API exposes `/metrics` with `prom-client` (request count, latency histogram, error count, and the Node.js process defaults; upload bytes and connected sockets are not exported yet). Datadog collects those metrics, the container logs of the `contentcollab` namespace (not cert-manager, the gateway or kube-system, decided 10 November) and the Kubernetes state (restarts, pending pods, autoscaler replicas) through its agent, and holds the dashboard (#27, decided 8 November; the proposal's monitoring row already named it). It beat Prometheus and Grafana in the cluster, the handout's optional route: the account came with the GitHub Student Developer Pack (24 October minutes), logs outlive the pod that wrote them, and the two small nodes carry one agent each plus one cluster agent, instead of a metrics store and a dashboard server. The chart's operator, service discovery and APM containers are switched off. The cost is a vendor account, an API key kept outside the repository, and 400m CPU and 768 MiB of memory requested (agent 100m and 256 MiB on each node, cluster agent 200m and 256 MiB), against 2 GiB allocatable to pods on the two nodes (BUILD_LOG.md, 8 November). `scripts/cluster-up.sh` installs the agent last, from the chart pinned there, after checking the key against the account's Datadog site. The API pods are scraped by an autodiscovery annotation in `k8s/base/api.yaml`. The presentation shows one alert firing and one dashboard.
 
@@ -241,6 +290,8 @@ In: upload, versions, revert, share by user or link, roles, comments, annotation
 - PDF annotation in the browser: pdf.js with our own overlay, or pins anchored to page number and coordinates only.
 
 ### D17. Monitoring stack reconsidered: Datadog stays, Prometheus and Grafana not added (decided 11 November, #100)
+
+**Superseded in part by D18 (11 November):** the Datadog agent is not installed because it does not fit on the two nodes; the reasoning below for keeping one stack and for Datadog over Prometheus and Grafana stands.
 
 **Question.** At the 11 November design review we asked whether to replace Datadog (D6) with Prometheus and Grafana in the cluster, to have one metrics stack, zero extra cost and Prometheus visible in the demo.
 
