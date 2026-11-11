@@ -1,13 +1,3 @@
-FROM node:24 AS build
-
-COPY --from=build /web/dist /usr/share/nginx/html
-
-WORKDIR /web
-
-RUN npm ci
-
-RUN npm run build
-
-COPY dist/ /usr/share/nginx/html
-
+FROM busybox:1.37
+COPY index.html /www/index.html
 EXPOSE 3000

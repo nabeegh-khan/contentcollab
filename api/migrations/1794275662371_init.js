@@ -188,6 +188,7 @@ export const down = (pgm) => {
         DROP TABLE IF EXISTS shares;
         DROP TABLE IF EXISTS document_versions;
         DROP TABLE IF EXISTS documents;
+        DROP TABLE IF EXISTS tags;
         DROP TABLE IF EXISTS users;
     `)
 };

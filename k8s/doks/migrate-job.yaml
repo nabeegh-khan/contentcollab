@@ -3,9 +3,9 @@ apiVersion: batch/v1
 kind: Job
 metadata:
   name: db-migrate-__IMAGE_TAG__
-  namespace: contentcollab
+  namespace: default
 spec:
-  backoffLimit: "three"
+  backoffLimit: 3
   ttlSecondsAfterFinished: 86400
   template:
     spec:
