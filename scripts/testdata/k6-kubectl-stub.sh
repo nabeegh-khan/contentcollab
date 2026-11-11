@@ -16,6 +16,7 @@ case "$args" in
   *"limits.memory"*) printf '%s' "${STUB_API_LIMIT-256Mi}" ;;   # the api container's memory limit
   *"maxSurge"*) printf '%s' "${STUB_SURGE-1}" ;;
   *" get nodes "*)   # name, instance type, allocatable memory; STUB_NODES=1 for one node
+    [ "${STUB_NO_NODES:-0}" = 0 ] || { echo 'Error from server (Forbidden): nodes is forbidden' >&2; exit 1; }
     printf 'node-a %s %s\n' "${STUB_TYPE:-s-2vcpu-4gb}" "${STUB_ALLOC:-3074892Ki}"
     [ "${STUB_NODES:-2}" = 1 ] || printf 'node-b %s %s\n' "${STUB_TYPE:-s-2vcpu-4gb}" "${STUB_ALLOC_B:-3074892Ki}" ;;
   *" cluster-autoscaler-status "*)

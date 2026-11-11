@@ -248,6 +248,40 @@ test('the api memory limit is rounded up and read from the container named api',
   assert.ok(r.calls.some((c) => /containers\[\?\(@\.name=="api"\)\]\.resources\.limits\.memory/.test(c)), r.calls.join('\n'));
 });
 
+// Fourth review round
+
+test('nodes that cannot be listed at all: refuses unless ALLOW_UNCHECKED_MEMORY=1', () => {
+  const r = rollout({ STUB_NO_NODES: '1' });
+  assert.equal(r.code, 1, r.out);
+  assert.match(r.out, /no node's memory could be read/);
+  assert.ok(!r.calls.some((c) => /apply|rollout restart/.test(c)), r.calls.join('\n'));
+  const ok = rollout({ STUB_NO_NODES: '1', ALLOW_UNCHECKED_MEMORY: '1' });
+  assert.equal(ok.code, 0, ok.out);
+});
+
+test('decimal and Ti units are read at their own factor', () => {
+  // 256M = 244.1 MiB, rounded up to 245; 512 + 245 = 757
+  const m = rollout({ STUB_API_LIMIT: '256M' });
+  assert.equal(m.code, 0, m.out);
+  assert.match(m.out, /\(needs 757\)/);
+  const ti = rollout({ STUB_NODES: '1', STUB_ALLOC: '1Ti' });
+  assert.match(ti.out, /node-a s-2vcpu-4gb 1048576 MiB allocatable/);
+});
+
+test('a maxSurge with a leading zero is read as decimal, not octal', () => {
+  // 08 is not an octal number; as decimal it is 8 pods: 512 + 8 x 256 = 2560
+  const r = rollout({ STUB_SURGE: '08', MIN_NODE_FREE_MIB: '' });
+  assert.match(r.out, /needs 2560|MIN_NODE_FREE_MIB=2560/);
+  assert.doesNotMatch(r.out, /value too great for base/);
+});
+
+test('an api memory limit too large to be real is refused with the script\'s own message', () => {
+  const r = rollout({ STUB_API_LIMIT: '999999Ti' });
+  assert.equal(r.code, 1, r.out);
+  assert.match(r.out, /cannot size the surge/);
+  assert.ok(!r.calls.some((c) => /apply|rollout restart/.test(c)), r.calls.join('\n'));
+});
+
 test('no node readable at all: refuses unless ALLOW_UNCHECKED_MEMORY=1', () => {
   const env = { STUB_NODES: '1', STUB_USED: '<unknown>' };
   const r = rollout(env);
