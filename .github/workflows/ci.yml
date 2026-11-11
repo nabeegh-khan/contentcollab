@@ -141,6 +141,8 @@ jobs:
         run: |
           sa=$(mktemp -d)
           touch "$sa/token" "$sa/ca.crt"
+          # mktemp -d is 0700; the image runs as nobody and must read these
+          chmod 755 "$sa" && chmod 644 "$sa/token" "$sa/ca.crt"
           docker run --rm \
             -v "$PWD/k8s/observability/prometheus:/cfg:ro" \
             -v "$sa:/var/run/secrets/kubernetes.io/serviceaccount:ro" \
