@@ -435,3 +435,21 @@ The first pass found about thirty items. The most serious were silent all-clears
 - Brought the error bodies in line with our own API contract (`code`), made both scripts exit 2 instead of reporting all clear on bad input, and ran the real server with Redis paused to see the alert fire.
 - Corrected D16, D18, RESEARCH and the demo page where they had gone stale after the cluster rebuild. Left the architecture diagram and the submitted proposal's Datadog line unchanged.
 - Rejected one suggestion: counting aborted requests as failures. They get their own column instead, because a closed browser tab is not a server error.
+
+## The bring-up script follows the rebuilt cluster (#54, PR #94), 11 November 2026
+
+### Prompt
+
+The bring-up script on #94 creates the cluster without `--ha`. Make it create without the paid high-availability control plane and with node autoscaling. Then make it match the rebuilt cluster: its node pool and version, the region and context read from the cluster (nyc3), and the Gateway API CRD opt-out that DOKS 1.37 needed. Write the tests first, record the decision in D13 with sources, and re-check the CI/CD evidence page against the Actions API.
+
+### AI Response
+
+Checked DigitalOcean's doctl reference, its high-availability how-to, its pricing page and its Gateway API guide. Omitting `--ha` turns HA on for 1.36.0 and later, at US$40 a month, and it cannot be turned off. The opt-out for DOKS-managed Gateway API CRDs is the annotation `doks.digitalocean.com/install-policy=external` on each CRD. Proposed `--ha=false`, autoscaling bounds checked before any call, the rebuild's defaults, the context taken from the cluster's own region, and the annotation step before the CRD apply, each with tests. Every run, duration and count on the CI/CD evidence page matched the API.
+
+### What Your Team Did With It
+
+- Committed each batch of tests before its fix: 2 of 30 failed, then 6 of 36. All pass now.
+- Did not set the node pool defaults until the rebuild recorded its actual values, then copied them from that record.
+- An independent review found a test that could not fail on one of its claims, a missing default test and a misleading sentence in D13. All three were fixed before the push.
+- A second review of the final change found an untested warning, a stale paragraph in D13 and two inaccurate sentences in the build log, one of them saying a lint tool was unavailable when it was not. All four were fixed before the push.
+- Noted the deploy path-filter gap on #70 instead of editing `deploy.yml`, because another open pull request changes that file.
