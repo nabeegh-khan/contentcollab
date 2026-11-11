@@ -5,7 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -40,7 +40,9 @@ function rollout(env = {}) {
     });
     assert.notEqual(r.status, 99, r.stdout);
     const calls = readFileSync(join(dir, 'calls.log'), 'utf8').split('\n').filter(Boolean);
-    return { code: r.status, out: `${r.stdout}${r.stderr}`, calls };
+    const appliedPath = join(dir, 'applied.yaml');
+    const applied = existsSync(appliedPath) ? readFileSync(appliedPath, 'utf8') : '';
+    return { code: r.status, out: `${r.stdout}${r.stderr}`, calls, applied };
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -84,4 +86,48 @@ test('bad settings stop the run before any change', () => {
     assert.equal(r.code, 1, JSON.stringify(env));
     assert.ok(!r.calls.some((c) => /rollout restart/.test(c)), JSON.stringify(env));
   }
+});
+
+// DOKS rework (#69): the default target, the undo action, a revision that is
+// not a number, and nodes too full to add a load generator
+
+test('default target is the API Service /metrics: no dependency checks in the way', () => {
+  const r = rollout({});
+  assert.equal(r.code, 0, r.out);
+  assert.match(r.applied, /value: "http:\/\/api\.contentcollab\.svc\.cluster\.local:3000\/metrics"/);
+});
+
+test('ACTION=undo rolls back under load and still needs a new revision', () => {
+  const r = rollout({ ACTION: 'undo' });
+  assert.equal(r.code, 0, r.out);
+  assert.ok(r.calls.some((c) => /rollout undo deployment\/api/.test(c)));
+  assert.ok(!r.calls.some((c) => /rollout restart/.test(c)));
+  const same = rollout({ ACTION: 'undo', STUB_REV_OLD: '5', STUB_REV_NEW: '5' });
+  assert.equal(same.code, 1, same.out);
+  assert.match(same.out, /no new revision/);
+});
+
+test('an unknown ACTION stops the run before any change', () => {
+  const r = rollout({ ACTION: 'delete' });
+  assert.equal(r.code, 1, r.out);
+  assert.match(r.out, /ACTION/);
+  assert.ok(!r.calls.some((c) => /rollout|apply/.test(c)));
+});
+
+test('a revision that is not a number stops with a message, not a shell error', () => {
+  const r = rollout({ STUB_REV_OLD: 'none', STUB_REV_NEW: 'none' });
+  assert.equal(r.code, 1, r.out);
+  assert.match(r.out, /revision/);
+  assert.doesNotMatch(r.out, /integer expression expected/);
+});
+
+test('nodes above the memory limit: refuses before starting the load or the restart', () => {
+  for (const env of [{ STUB_NODE_MEM: '93' }, { STUB_NODE_MEM_B: '93' }]) {
+    const r = rollout(env);
+    assert.equal(r.code, 1, JSON.stringify(env));
+    assert.match(r.out, /memory/, JSON.stringify(env));
+    assert.ok(!r.calls.some((c) => /rollout restart|apply/.test(c)), JSON.stringify(env));
+  }
+  const ok = rollout({ STUB_NODE_MEM: '85', MAX_NODE_MEMORY_PCT: '90' });
+  assert.equal(ok.code, 0, ok.out);
 });

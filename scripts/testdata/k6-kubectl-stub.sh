@@ -14,7 +14,9 @@ case "$args" in
     if [ "$(bump rev)" = 1 ]; then printf '%s' "${STUB_REV_OLD:-3}"; else printf '%s' "${STUB_REV_NEW:-4}"; fi ;;
   *" get deployment api "*) echo 'strategy: {"maxSurge":1,"maxUnavailable":0}  preStop: {"sleep":{"seconds":10}}' ;;
   *" create configmap "*) printf 'apiVersion: v1\nkind: ConfigMap\n' ;;
-  *" apply "*) cat >/dev/null ;;
+  *" apply "*) cat >> "$STUB_DIR/applied.yaml" ;;
+  *" top nodes"*)
+    printf 'node-a 200m 10%% 1200Mi %s%%\nnode-b 200m 10%% 1100Mi %s%%\n' "${STUB_NODE_MEM:-60}" "${STUB_NODE_MEM_B:-55}" ;;
   *" get pods "*) printf Running ;;
   *".status.succeeded"*)
     # First read comes right after the rollout: still running unless told otherwise
