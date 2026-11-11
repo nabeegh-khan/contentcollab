@@ -11,10 +11,11 @@
 // out of memory under load). With the API at its maximum, each extra pod adds one API pod's request and use.
 //
 // Exit 0 with the report; 2 when kubectl fails, a node has no `kubectl top` reading (metrics-server has not
-// scraped it yet: wait a minute after a rebuild), no API pod is found in NAMESPACE, or AGENT_MI / CLUSTER_AGENT_MI
-// is not a plain number of MiB.
+// scraped it yet: wait a minute after a rebuild), no API pod is found in NAMESPACE, a memory quantity cannot be
+// read, AGENT_MI / CLUSTER_AGENT_MI is not a plain number of MiB, or CLUSTER_AGENT_MI is given without AGENT_MI.
 // A pod's request is counted as the scheduler counts it: the larger of its biggest init container and the sum of
-// its containers, plus the pod's overhead. Cordoned or NotReady nodes still count as capacity.
+// its containers, plus the pod's overhead (the rule before native sidecars, which add an init container's request
+// instead; none run here). Cordoned or NotReady nodes still count as capacity.
 
 import { execFileSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
@@ -117,7 +118,9 @@ export function headroom({ nodes, pods, topNodes, topApi, hpa, agentMi, clusterA
   // No reading for the API pods: their request stands in for their use, and the result says so
   const apiUseMeasured = apiUse.length > 0;
   const perPodUse = apiUseMeasured ? sum(apiUse) / apiUse.length : perPodRequest;
-  const extraPods = Math.max(0, (hpa?.spec?.maxReplicas ?? apiPods.length) - apiPods.length);
+  // A Pending API pod has no node yet, so its request is in no node row: count only placed pods as already there
+  const placed = apiPods.filter((p) => p.spec.nodeName).length;
+  const extraPods = Math.max(0, (hpa?.spec?.maxReplicas ?? placed) - placed);
   const atMax = {
     extraPods,
     apiUseMeasured,

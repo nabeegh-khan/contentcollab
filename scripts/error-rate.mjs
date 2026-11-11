@@ -143,7 +143,7 @@ function main() {
     );
   }
   console.log(
-    `threshold ${threshold * PERCENT}% with at least ${minRequests} requests; ` +
+    `threshold ${Number((threshold * PERCENT).toFixed(SHARE_DECIMALS))}% with at least ${minRequests} requests; ` +
       `${requests.length} requests read, ${aborted.length} aborted; a failing probe (/health, /metrics) alerts at any count`,
   );
   if (unreadable > 0) {
