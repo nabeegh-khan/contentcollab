@@ -36,17 +36,6 @@ function publicUser(row: UserRow) {
   };
 }
 
-function validationError(error: z.ZodError) {
-  return {
-    error: "Invalid Request",
-    code: "VALIDATION",
-    details: error.issues.map((issue) => ({
-      field: issue.path.join("."),
-      message: "required",
-    })),
-  };
-}
-
 // POST /api/v1/auth/register
 router.post("/register", async (req, res) => {
   const parsed = registerSchema.safeParse(req.body);
