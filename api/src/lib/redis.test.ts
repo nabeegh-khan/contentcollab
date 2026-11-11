@@ -1,5 +1,5 @@
 // Tests for redis.ts while Redis is down: /health's ping fails fast, and errors are logged once per outage (#65).
-import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "@jest/globals";
 import { EventEmitter } from "node:events";
 import { createServer, type AddressInfo } from "node:net";
 import { createClient } from "redis";
@@ -8,6 +8,11 @@ import { logStateChanges, pingRedis } from "./redis.js";
 
 // A port that was listening and then closed stands in for Redis being down
 let closedPort: number;
+
+// The log-level tests expect the default level, whatever the shell exported
+beforeEach(() => {
+  delete process.env.LOG_LEVEL;
+});
 
 beforeAll(async () => {
   const s = createServer();

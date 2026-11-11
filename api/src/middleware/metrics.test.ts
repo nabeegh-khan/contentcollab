@@ -1,7 +1,8 @@
-import { beforeEach, describe, expect, it } from "@jest/globals";
+import { afterEach, beforeEach, describe, expect, it } from "@jest/globals";
 import express, { Router } from "express";
 import request from "supertest";
 import { HTTP_INTERNAL_ERROR, HTTP_NOT_FOUND, HTTP_OK } from "../lib/httpStatus.js";
+import { captureStdout } from "../lib/logCapture.js";
 import { registry } from "../lib/metrics.js";
 import { errorHandler } from "./errorHandler.js";
 import { requestMetrics } from "./metrics.js";
@@ -33,9 +34,13 @@ const DISTINCT_PATHS = 25;
 // Two routes only: the item template and "unmatched"
 const EXPECTED_SERIES = 2;
 
+// The error handler logs /boom; captured so the line does not reach the test output
+let out: ReturnType<typeof captureStdout>;
 beforeEach(() => {
+  out = captureStdout();
   registry.resetMetrics();
 });
+afterEach(() => out.restore());
 
 describe("http_requests_total", () => {
   it("carries method, route and status_class, and nothing else", async () => {

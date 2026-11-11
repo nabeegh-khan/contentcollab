@@ -70,6 +70,8 @@ async function samples(name: string): Promise<Sample[]> {
 
 let out: ReturnType<typeof captureStdout>;
 beforeEach(() => {
+  // These tests expect the default level, whatever the shell exported
+  delete process.env.LOG_LEVEL;
   out = captureStdout();
   registry.resetMetrics();
 });

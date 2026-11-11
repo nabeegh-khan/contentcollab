@@ -283,3 +283,9 @@ test("a size in hex or with an exponent is refused", () => {
     assert.match(r.stderr, /AGENT_MI/);
   }
 });
+
+test("CLUSTER_AGENT_MI without AGENT_MI is refused, not silently ignored", () => {
+  const r = runScript({ CLUSTER_AGENT_MI: "256" });
+  assert.equal(r.status, 2);
+  assert.match(r.stderr, /CLUSTER_AGENT_MI needs AGENT_MI/);
+});

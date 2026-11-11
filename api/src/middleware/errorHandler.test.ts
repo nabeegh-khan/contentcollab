@@ -124,22 +124,26 @@ describe("the real app", () => {
 });
 
 describe("errorHandler edge cases", () => {
-  it("answers with the code docs/API.md lists for each status", async () => {
-    const cases: [number, string][] = [
-      [HTTP_BAD_REQUEST, "VALIDATION"],
-      [HTTP_UNAUTHORIZED, "UNAUTHORIZED"],
-      [HTTP_FORBIDDEN, "FORBIDDEN"],
-      [HTTP_NOT_FOUND, "NOT_FOUND"],
-      [HTTP_CONFLICT, "CONFLICT"],
-      [HTTP_PAYLOAD_TOO_LARGE, "TOO_LARGE"],
-      [HTTP_TOO_MANY_REQUESTS, "RATE_LIMITED"],
-      [HTTP_IM_A_TEAPOT, "IM_A_TEAPOT"],
-    ];
-    for (const [status, code] of cases) {
-      const err = Object.assign(new Error("x"), { status, expose: true });
-      const res = await request(failingApp(err)).get("/fail");
-      expect([res.status, res.body.code]).toEqual([status, code]);
-    }
+  it("treats an exposed 5xx as a server error: 500, logged at error", async () => {
+    const exposed = Object.assign(new Error("down"), { status: HTTP_UNAVAILABLE, expose: true });
+    const res = await request(failingApp(exposed)).get("/fail");
+    expect(res.status).toBe(HTTP_INTERNAL_ERROR);
+    expect(out.lines().find((l) => l.msg === "request failed")?.level).toBe("error");
+  });
+
+  it.each([
+    [HTTP_BAD_REQUEST, "VALIDATION"],
+    [HTTP_UNAUTHORIZED, "UNAUTHORIZED"],
+    [HTTP_FORBIDDEN, "FORBIDDEN"],
+    [HTTP_NOT_FOUND, "NOT_FOUND"],
+    [HTTP_CONFLICT, "CONFLICT"],
+    [HTTP_PAYLOAD_TOO_LARGE, "TOO_LARGE"],
+    [HTTP_TOO_MANY_REQUESTS, "RATE_LIMITED"],
+    [HTTP_IM_A_TEAPOT, "IM_A_TEAPOT"],
+  ])("answers %i with the code %s of docs/API.md", async (status, code) => {
+    const err = Object.assign(new Error("x"), { status, expose: true });
+    const res = await request(failingApp(err)).get("/fail");
+    expect([res.status, res.body.code]).toEqual([status, code]);
   });
 
   it("keeps a 500 for an error whose status is a server error", async () => {
