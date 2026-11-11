@@ -19,7 +19,7 @@ const DOWN = join(here, "observability-down.sh");
 const STUB = `#!/usr/bin/env bash
 echo "kubectl $*" >> "$STUB_LOG"
 case "$*" in
-  "apply -f -"*) cat >> "$STUB_LOG.stdin" ;;
+  "apply -f -"*|"create -f -"*) cat >> "$STUB_LOG.stdin" ;;
   "config current-context") echo "$STUB_CONTEXT" ;;
   "get nodes --no-headers") printf '%b' "$STUB_NODES" ;;
   "-n observability get secret grafana-admin"*) [ "$STUB_SECRET" = 1 ] || exit 1 ;;
@@ -101,7 +101,10 @@ test("up: on two nodes creates the Grafana password once, applies, waits for eac
     assert.ok(r.calls.some((c) => c.includes(`rollout status deploy/${d}`)), `waits for ${d}`);
   }
   // The Secret goes in through stdin, never as a command-line argument
-  // (arguments are visible to every process on the machine)
+  // (arguments are visible to every process on the machine), and with
+  // `create`, not `apply`: apply would copy the password into the
+  // last-applied-configuration annotation, which describe prints
+  assert.ok(r.calls.includes("kubectl create -f -"), "Secret created from stdin");
   const pw = /admin-password: "?([0-9a-f]+)"?/.exec(r.stdin)?.[1];
   assert.ok(pw && pw.length >= 32, "random password of 32+ characters in the piped manifest");
   assert.match(r.stdin, /kind: Secret[\s\S]*name: grafana-admin[\s\S]*stringData:/);

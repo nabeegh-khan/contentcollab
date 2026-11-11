@@ -214,6 +214,8 @@ test("each panel queries the series its title names", () => {
   assert.match(exprsOf(panel(/p95/i)), /\ble\b/);
   assert.match(exprsOf(panel(/replicas/i)), /kube_horizontalpodautoscaler_status_current_replicas/);
   assert.match(exprsOf(panel(/replicas/i)), /kube_horizontalpodautoscaler_status_desired_replicas/);
+  assert.match(exprsOf(panel(/replicas/i)), /kube_horizontalpodautoscaler_spec_max_replicas/);
+  assert.match(panel(/replicas/i).title, /maximum/);
   assert.match(exprsOf(panel(/node memory/i)), /node_memory_working_set_bytes/);
   assert.match(exprsOf(panel(/node memory/i)), /kube_node_status_allocatable/);
 });
@@ -229,6 +231,22 @@ test("every dashboard query is covered by the promtool expression tests", () => 
   for (const p of dashboard.panels) {
     for (const t of p.targets) assert.ok(tested.includes(t.expr), `untested query in "${p.title}": ${t.expr}`);
   }
+});
+
+// The CI job is what runs promtool; a step that cannot run proves nothing.
+// A literal backslash-n in a run block once made docker read "n" as the image.
+test("the CI job runs promtool on the config and on the dashboard tests", () => {
+  const ci = join(here, "..", "..", ".github", "workflows", "ci.yml");
+  const runs = JSON.parse(
+    execFileSync("yq", ["-o=json", "-I=0", "[.jobs.observability.steps[].run | select(. != null)]"], {
+      input: readFileSync(ci, "utf8"),
+      encoding: "utf8",
+    }),
+  );
+  for (const r of runs) assert.ok(!r.includes("\\n"), `literal backslash-n in a run block:\n${r}`);
+  const commands = runs.join("\n").replace(/\\\n\s*/g, " ");
+  assert.match(commands, /docker run [^\n]*prom\/prometheus:v3\.16\.0 check config \/cfg\/prometheus\.yml/);
+  assert.match(commands, /docker run [^\n]*prom\/prometheus:v3\.16\.0 test rules dashboard\.test\.yml/);
 });
 
 test("the dashboard is provisioned from the same file", () => {
