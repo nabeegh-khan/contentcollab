@@ -388,3 +388,50 @@ The autoscaler, the disruption budget, `maxUnavailable: 0` and the readiness pro
 - Pushed each batch of tests before the code that satisfies it, so CI showed them failing: 4, 5 and then 6 cases. One case passed on the runner for the wrong reason (it matched bash's wording of an error) and was rewritten to check behaviour.
 - An independent review found three ways the script could report a pass by mistake; each got a failing test first, then a fix.
 - Did not run anything on the cluster: it does not exist yet. The demo page says so and lists what is unverified, and the pull request stays a draft until the numbers are in.
+
+## PRACTICES alignment with the API contract, and lecture 9 rows (#104), 11 November 2026
+
+### Prompt
+
+`docs/PRACTICES.md` API-4 still described offset pagination with a `total`, while `docs/API.md` defines cursor pagination, and a review on #93 had promised to bring the row into line. Lecture 9 had just been posted. We asked for the row to match API.md with an honest source, for one row per lecture 9 practice with page citations, and for a list of what the manifests and code now miss, with no code changes.
+
+### AI Response
+
+A rewritten API-4 and seven new rows from all 98 pages of lecture 9. It found that no lecture or assignment sets a pagination scheme, so the old A1 citation was wrong. It also found one gap: the database volume's Delete reclaim policy, which it opened as #104.
+
+### What Your Team Did With It
+
+- Had the change checked by a new reviewer each round, one who had not written it or seen the earlier rounds, until a round came back clean. Each round checked the slides, the handouts, the manifests and the DigitalOcean and Kubernetes documentation. They found a blank line that broke the API table, a wrong cause for volume loss on cluster teardown (the `--dangerous` flag in `cluster-down.sh`, not the reclaim policy), planned work worded as done, an unsupported A2 citation, and a sentence about the cluster that went stale while the change was being checked. All were fixed before the commit.
+- Left out of this change, and logged as open: an inconsistency inside `docs/API.md` (the API slice's file) and two older rows that no longer agree with the contract.
+
+## PRACTICES rows for lectures 1, 7 and 9, page numbers rechecked (#105, #106), 11 November 2026
+
+### Prompt
+
+The lecture 9 rows had been cited against the 98-page note-taking PDF, while the team keeps the full slides. Lecture 7 had no rows and lecture 1 only two. We asked for every page of the three decks to be read, the lecture 9 citations to be checked against the full slides, rows to be added with page citations, and one issue to be opened for each real gap, with no code changes.
+
+### AI Response
+
+A page map between the two lecture 9 files (two slides are split over two pages in the full version, so citations after p9 move by one, and after p37 by two), corrected citations, six new rows (INF-18 to INF-21, PRC-5, PRC-6) and lecture 1 and 7 pages added to existing rows. It found two gaps: migrations are not required to keep the old API version working during a rolling update (#105), and local scripts do not check the kubectl context (#106).
+
+### What Your Team Did With It
+
+- Checked each new row against the manifests and scripts before writing where it applies, and dropped lecture 1 citations the slides did not support (for "demo live", "pay for what you use" as a reason to destroy resources, and contribution read from Git history).
+- Had the change checked by reviewers who had not written it, a new one each round, and fixed what they found (a migration Job described as existing when it is only planned, a script listed as calling kubectl that does not, a row still placing the cluster in Toronto after the move to nyc3) before committing.
+
+## Two more review passes on the request log and the monitoring scripts (#55, PR #102), 11 November 2026
+
+### Prompt
+
+PR #102 (JSON request logs, bounded metric labels, the error-rate check and the memory-headroom script) had one review. Before it can merge we asked for two more independent passes, the second by a reviewer who had not seen the first: every test shown failing without its change, the error paths (no data, bad input, crash), the log format and label bounds, and every claim in the PR and in D18. Each fault fixed test-first; nothing pushed until the second pass was clean.
+
+### AI Response
+
+The first pass found about thirty items. The most serious were silent all-clears: a node with no reading counted as 0 MiB used, a failing probe below the minimum reported as fine, unreadable lines dropped, a late server error logged as the client aborting. It also found tests that passed with the feature removed and a CRLF README. The second pass found no code fault that blocked a push, but it did find plain-text startup lines, untested bounds, environment-dependent tests and several doc claims that were wrong or stale.
+
+### What Your Team Did With It
+
+- Wrote a failing test for each finding before the fix, in five rounds, and added checks that would have caught the late faults: line endings read from git's index, `--tail=-1` in every documented command, and the logger's output parsed by the check itself.
+- Brought the error bodies in line with our own API contract (`code`), made both scripts exit 2 instead of reporting all clear on bad input, and ran the real server with Redis paused to see the alert fire.
+- Corrected D16, D18, RESEARCH and the demo page where they had gone stale after the cluster rebuild. Left the architecture diagram and the submitted proposal's Datadog line unchanged.
+- Rejected one suggestion: counting aborted requests as failures. They get their own column instead, because a closed browser tab is not a server error.
