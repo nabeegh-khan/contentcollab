@@ -257,6 +257,22 @@ test('an api memory limit or maxSurge it cannot read stops the run before any ch
   }
 });
 
+test('MIN_NODE_FREE_MIB set: the run goes ahead even when the surge cannot be sized', () => {
+  // maxSurge defaults to "25%" on a Deployment that does not set it
+  for (const env of [{ STUB_SURGE: '25%' }, { STUB_API_LIMIT: '' }]) {
+    const r = rollout({ ...env, MIN_NODE_FREE_MIB: '800' });
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /\(needs 800\)/, JSON.stringify(env));
+  }
+});
+
+test('usage is rounded up, so a fraction of a MiB never lets a node through', () => {
+  // 3002 - 2234.5 is under 768
+  const r = rollout({ STUB_NODES: '1', STUB_USED: '2234.5Mi' });
+  assert.equal(r.code, 1, r.out);
+  assert.match(r.out, /767 MiB free/);
+});
+
 // Second review round: the checks must fail closed (a pass has to be earned)
 
 test('a RESULT line without a failure count is not a pass', () => {
