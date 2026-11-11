@@ -341,6 +341,22 @@ The pinned cert-manager (1.19) had reached end of life, and cert-manager 1.21 su
 - An independent review of the fix found three gaps (a certificate never created was reported as not issued, the worker rollout was not waited for, the Datadog path was untested in dry runs). Each got a test that failed first, then a fix.
 - Ran the dry run against the real cluster and checked that nothing changed. The live upgrade and the CI token wait for Nabeegh.
 
+## Schema contract test for the #37 checklist (#77), 11 November 2026
+
+### Prompt
+
+The schema in #37 carries every promise the proposal makes about data, so we wanted a CI test that fails when one goes missing. We asked for a test written against the #37 checklist and PR #88's migration, shown failing on a bad migration first, with its own claims mutation-tested by someone who had not written it.
+
+### AI Response
+
+A catalog-query checker with 13 checks, scratch databases for isolation, a bad-migration fixture and 15 single-promise changes. A fresh reviewer then changed the checker and the schema and found false passes: a role CHECK of `OR true` or `NOT IN` passed because the check compared quoted text, column types were not checked, any identity column counted as "increasing", and any table named like a mentions table passed.
+
+### What Your Team Did With It
+
+- Replaced the text comparison with a probe on a temporary copy of `shares` inside a rolled-back transaction (four roles accepted, seven other values refused), added type, step, cycle and per-version checks, and grew the change list to 38 rows, each run on #88's migration.
+- Ran the test on the bad migration first (it failed, listing the six broken lines), then on #88's (43 of 43), and a second review round before opening the draft PR.
+- Kept the one item not fixed (`EXISTS` can never be null, so a null guard has nothing to catch) out of the code and in the log.
+
 ## DigitalOcean project, Spaces bucket and the app Secret (#53), 11 November 2026
 
 ### Prompt
