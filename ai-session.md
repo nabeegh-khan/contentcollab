@@ -79,6 +79,39 @@ ts-jest with `useESM`, `.ts` treated as ESM, a `moduleNameMapper` that strips th
 - Checked: the three tests (`/health` with both services up, the 404 error shape, the request counter on `/metrics`) were run locally against PostgreSQL and Redis before pushing, and lint, Prettier and the typecheck pass. With Redis stopped, the suite fails on test timeouts rather than at once (superseded 7 November: the suite now stops at once, see the entry below), which is why CI starts Redis as a service instead of relying on the client's reconnect.
 - Kept out of the image: test files and the Jest config are listed in `api/.dockerignore`.
 
+## Load test for the autoscaling extension (#69), 4 November 2026
+
+### Prompt
+
+For the autoscaling and high-availability extension in section 2.7, we need to step the request rate up against the deployed API and see when latency or errors climb, how many API replicas the HPA adds, and whether a rolling update under load drops requests. Can this be one script with no new dependencies, since the team runs it from different laptops?
+
+### AI Response
+
+A Node script using the built-in `fetch`: an open-loop request schedule at a fixed rate per step (so slow responses don't lower the offered load), p50 and p95 latency and the error rate per step, the ready replica count read with `kubectl` at the end of each step, and an optional mode that runs `kubectl rollout restart` halfway through a constant-load step and counts every failed request.
+
+### What Your Team Did With It
+
+- Checked locally against the API with PostgreSQL and Redis at 20 and 100 req/s (no errors, p95 10 and 22 ms); the replicas column shows "-" without cluster access, which is the intended fallback.
+- Changed: the step-length variable is `STEP_SECONDS`, not `SECONDS`, because `SECONDS` is a built-in bash variable.
+- Run on DigitalOcean on 6 November (two runs in `docs/loadtest/`, made with earlier versions of the script, see `docs/loadtest/README.md`). Added since: a check that the HPA can read CPU before a scaling run, a node-memory guard, and per-request failure and scaling logs.
+
+## Review of the load test (#69, pull request #72), 10 November 2026
+
+### Prompt
+
+We reviewed our own load-test pull request against the diff, issue #69 and our practices, and checked each finding against the code before acting on it. We asked: where can this script report a clean result that is not true, and which columns can't support the conclusions we want to draw for the report?
+
+### AI Response
+
+Thirteen findings: a failed `kubectl rollout restart` was swallowed, so a rollout run could show 0 failed requests with no rollout; the rollout call blocked the request timer; "achieved req/s" was the rate requests were sent, not served; latency included failed requests; only 5xx counted as errors; bad environment variables produced NaN rows; p95 equalled the maximum for small samples; failures were timed when they ended; the Helm version check fell through to Helm 4 on any output; the CI job had no permissions or timeout; and the docs and the two committed CSVs no longer matched the script.
+
+### What Your Team Did With It
+
+- Checked each finding against the code and by running the script against a local stand-in server with no cluster before changing anything; all thirteen held.
+- Changed: the rollout runs asynchronously and is waited on with `kubectl rollout status`; a failed or unfinished rollout is written to a `rollout` column and the run exits 1. New columns `sent_per_s` and `ok_per_s`; latency from successes only; any 4xx is a failure; nearest-rank percentiles; variables validated. Tests for the new helpers were written first and failed before the change.
+- Kept: the two 6 November CSVs, labelled in `docs/loadtest/README.md` with the commit that produced them, instead of deleting them.
+- Not covered: the rollout's success path needs the cluster, so it runs with the final measurements.
+
 ## Deploy pipeline and lecture 8 fixes (#59, #65, #70, #74), 4 November 2026
 
 ### Prompt
@@ -256,3 +289,19 @@ PR #76 was stacked on #71, which was squash-merged, so it conflicted with main i
 - A stub test of the rollout and smoke scripts under `bash -e` passes nine cases (four failed before the fixes); #83's own deploy test passes 9 of 9 on the two branches combined; CI green.
 - Wrote the merge order (#83 first) and the exact conflict resolution into the description; review requested from a teammate, due 11 November.
 
+## Self-review of three cloud PRs while teammates build the core (#27, #55, #82; PRs #61, #62, #83), 10 November 2026
+
+### Prompt
+
+The 7 November meeting put the schema and core features ahead of reviews, so PRs #61, #62 and #83 were past their three-day windows with no review. Nabeegh's approach: bring each branch up to date with main, have it reviewed from the diff, the issue and the practices only, check every finding against the code before acting on it, fix the real ones test first, rerun every check, and record a self-review on each PR without merging. AI was used for the merges, the reviews, the fixes and stub tests, and the independent checks.
+
+### AI Response
+
+#61 (Datadog): the cluster agent could list every Secret in the cluster through two default ClusterRoles, every pod's logs went to Datadog, a rotated key never reached running agents, and `DATADOG_SITE` was unchecked. #83 (image pinning): the workflow tests passed on broken rollout steps (13 of 22 deliberate breakages at the first check), the bring-up pin check missed tagless, digest and hyphenated images, practice IDs cited rows that do not exist, and a Deployment left on the placeholder tag was never undone. #62 (smoke and alerts): `smoke.sh` could not pass against the deployed URL, accepted the Gateway's 404, and failed on a large `/metrics` body; `alerts.sh` left a rebuilt cluster without alerts.
+
+### What Your Team Did With It
+
+- Each fix came with a check that failed before it: a `helm template` render check, stub tests of the bring-up steps and of both scripts, and 52 changed copies of `deploy.yml` run against the test. Limits the test cannot see are written in the build log.
+- Every round went back to a fresh reviewer until it came back clean. Later rounds caught an undo placed so it could go back one revision too far (fixed before the branch was pushed) and loose wording in the build log (corrected on `main`).
+- One check by mistake ran the real `doctl` against the team account; DigitalOcean refused the only change it tried, and a read-only listing confirmed nothing was created. The test harness now refuses to run unless its stubs are the ones on PATH.
+- Decisions went into ARCHITECTURE D6 and the build log on `main` before the branches were pushed. The PRs are not merged: that, and removing the requested reviewers, waits for Nabeegh.
