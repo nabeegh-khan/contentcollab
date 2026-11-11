@@ -1,9 +1,28 @@
 import type { EventEmitter } from "node:events";
 import { createClient } from "redis";
-import { log as writeLog } from "./log.js";
+import { errorFields, log as writeLog } from "./log.js";
 
-// A state change of the Redis connection as one JSON line (ARCHITECTURE D16)
-const logAsJson = (line: string): void => writeLog("warn", line, { component: "redis" });
+// A state change of the Redis connection as one JSON line (ARCHITECTURE D16):
+// the outage at error, with the error's kind, message and code, so the logs
+// show it next to the 503s of /health; the reconnection at info
+const logAsJson = (line: string, err?: unknown): void => {
+  if (err === undefined) {
+    writeLog("info", line, { component: "redis" });
+    return;
+  }
+  const code = (err as { code?: unknown }).code;
+  writeLog("error", line, {
+    component: "redis",
+    error: { ...errorFields(err), ...(typeof code === "string" ? { code } : {}) },
+  });
+};
+
+// Node reports a refused connection to "localhost" (IPv6 and IPv4 tried) as an
+// AggregateError with an empty message: fall back to its code, then its name
+function describeError(err: Error): string {
+  const code = (err as { code?: unknown }).code;
+  return err.message || (typeof code === "string" ? code : "") || err.name;
+}
 
 const DEFAULT_REDIS_PORT = 6379;
 const url = `redis://${process.env.REDIS_HOST ?? "localhost"}:${process.env.REDIS_PORT ?? DEFAULT_REDIS_PORT}`;
@@ -18,14 +37,17 @@ export const redis = createClient({ url });
  */
 export function logStateChanges(
   client: Pick<EventEmitter, "on">,
-  log: (line: string) => void = logAsJson,
+  log: (line: string, err?: unknown) => void = logAsJson,
 ) {
   let down = false;
   let connectedBefore = false;
   client.on("error", (err: Error) => {
     if (down) return;
     down = true;
-    log(`redis: ${err.message} (retrying; further errors not logged until Redis is back)`);
+    log(
+      `redis: ${describeError(err)} (retrying; further errors not logged until Redis is back)`,
+      err,
+    );
   });
   client.on("ready", () => {
     if (down) log(connectedBefore ? "redis: connected again" : "redis: connected");

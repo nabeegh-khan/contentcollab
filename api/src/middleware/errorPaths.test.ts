@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, jest } from "@jest/globals";
+import { afterEach, beforeEach, describe, expect, it } from "@jest/globals";
 import type { AddressInfo } from "node:net";
 import { request as httpRequest } from "node:http";
 import express, { type NextFunction, type Request, type Response } from "express";
@@ -74,21 +74,16 @@ async function getRaw(a: express.Express, path: string): Promise<void> {
 
 describe("a server error after the response has started", () => {
   it("is logged and counted as a server error, not as the client going away", async () => {
-    const stderr = jest.spyOn(console, "error").mockImplementation(() => undefined);
-    try {
-      await getRaw(
-        appWith((req, res, next) => {
-          res.status(HTTP_OK).write("partial");
-          next(new Error("db died mid-stream"));
-        }),
-        "/x",
-      );
-      // The close event of the server side can follow the client's by a tick
-      await new Promise((resolve) => setImmediate(resolve));
-      expect(stderr).not.toHaveBeenCalled();
-    } finally {
-      stderr.mockRestore();
-    }
+    await getRaw(
+      appWith((req, res, next) => {
+        res.status(HTTP_OK).write("partial");
+        next(new Error("db died mid-stream"));
+      }),
+      "/x",
+    );
+    // The close event of the server side can follow the client's by a tick
+    await new Promise((resolve) => setImmediate(resolve));
+    // lines() also fails on any console call, so nothing went to stderr as plain text
     const lines = out.lines();
     const failed = lines.find((l) => l.msg === "request failed");
     expect(failed?.level).toBe("error");
@@ -122,7 +117,7 @@ describe("odd thrown values", () => {
   it("a value that cannot be turned into text still gets the JSON 500 and one log line", async () => {
     const res = await request(appWith((req, res, next) => next(Object.create(null)))).get("/x");
     expect(res.status).toBe(HTTP_INTERNAL_ERROR);
-    expect(res.body).toEqual({ error: "Internal Server Error" });
+    expect(res.body).toEqual({ error: "Internal Server Error", code: "INTERNAL" });
     const failed = out.lines().find((l) => l.msg === "request failed");
     expect(failed?.error).toEqual({ kind: "NonError", message: "(unprintable value)" });
   });

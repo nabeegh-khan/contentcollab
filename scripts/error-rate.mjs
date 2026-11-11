@@ -104,11 +104,15 @@ export function evaluate(entries, { threshold, minRequests, aborted = [] }) {
     .sort((a, b) => b.share - a.share || a.route.localeCompare(b.route));
 }
 
+// A plain decimal: "0.05", "10". Number() alone would also take " " (as 0), "0x0" and "1e1".
+// Matches "0.05" and "10"; rejects " ", "0x0", "1e1", "-1" and ".5".
+// Try it: https://regex101.com/?regex=%5E%5Cd%2B(%5C.%5Cd%2B)%3F%24
+const DECIMAL = /^\d+(\.\d+)?$/;
+
 function readSetting(name, fallback, valid) {
   const raw = process.env[name];
   if (raw === undefined || raw === "") return fallback;
-  // Number(" ") is 0: a value of spaces is refused rather than read as 0
-  const value = raw.trim() === "" ? Number.NaN : Number(raw);
+  const value = DECIMAL.test(raw) ? Number(raw) : Number.NaN;
   if (!Number.isFinite(value) || !valid(value)) {
     console.error(`${name}=${JSON.stringify(raw)} is not valid`);
     process.exit(2);

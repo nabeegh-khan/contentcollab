@@ -1,7 +1,12 @@
 import { randomUUID } from "node:crypto";
 import type { NextFunction, Request, Response } from "express";
-import { HTTP_CLIENT_ERROR_MIN, HTTP_SERVER_ERROR_MIN } from "../lib/httpStatus.js";
+import {
+  HTTP_CLIENT_ERROR_MIN,
+  HTTP_INTERNAL_ERROR,
+  HTTP_SERVER_ERROR_MIN,
+} from "../lib/httpStatus.js";
 import { log, type Level } from "../lib/log.js";
+import { failedMidResponse } from "../lib/midResponse.js";
 import { routeLabel, trackRoute } from "../lib/routeLabel.js";
 
 // Routes the platform calls every few seconds; a successful answer is logged
@@ -50,10 +55,27 @@ export function requestLogger(req: Request, res: Response, next: NextFunction): 
       duration_ms: elapsedMs(),
     });
   });
-  // The client went away before the response was complete (a timeout, a
-  // cancelled request): "finish" never fires, so say so instead of dropping it
+  // The response never finished, so "finish" never fires. Either the server
+  // broke it after the headers went out (the error handler marked it): a
+  // server error, logged as a 500 request line so the error-rate check counts
+  // it, with `response_cut` saying the client saw a cut-off response. Or the
+  // client went away (a timeout, a cancelled request): say so instead of
+  // dropping it.
   res.on("close", () => {
     if (res.writableFinished) return;
+    if (failedMidResponse(res)) {
+      log("error", "request", {
+        http: {
+          request_id: id,
+          method: req.method,
+          route: routeLabel(req),
+          status_code: HTTP_INTERNAL_ERROR,
+        },
+        response_cut: true,
+        duration_ms: elapsedMs(),
+      });
+      return;
+    }
     log("warn", "request aborted", {
       http: { request_id: id, method: req.method, route: routeLabel(req) },
       duration_ms: elapsedMs(),

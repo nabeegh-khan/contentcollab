@@ -11,7 +11,8 @@
 // out of memory under load). With the API at its maximum, each extra pod adds one API pod's request and use.
 //
 // Exit 0 with the report; 2 when kubectl fails, a node has no `kubectl top` reading (metrics-server has not
-// scraped it yet: wait a minute after a rebuild), or AGENT_MI / CLUSTER_AGENT_MI is not a number of MiB.
+// scraped it yet: wait a minute after a rebuild), no API pod is found in NAMESPACE, or AGENT_MI / CLUSTER_AGENT_MI
+// is not a plain number of MiB.
 // A pod's request is counted as the scheduler counts it: the larger of its biggest init container and the sum of
 // its containers, plus the pod's overhead. Cordoned or NotReady nodes still count as capacity.
 
@@ -77,7 +78,7 @@ const round = (n) => Math.round(n * 10 ** DECIMALS) / 10 ** DECIMALS;
  *   the JSON of `kubectl get nodes` and `get pods -A`, the text of `top nodes --no-headers` and of `top pods -l app=api
  *   --no-headers`, and the API's HorizontalPodAutoscaler
  */
-export function headroom({ nodes, pods, topNodes, topApi, hpa, agentMi, clusterAgentMi }) {
+export function headroom({ nodes, pods, topNodes, topApi, hpa, agentMi, clusterAgentMi, namespace = "contentcollab" }) {
   const used = topMemoryByName(topNodes);
   const live = pods.items.filter((p) => !["Succeeded", "Failed"].includes(p.status?.phase));
 
@@ -106,7 +107,11 @@ export function headroom({ nodes, pods, topNodes, topApi, hpa, agentMi, clusterA
     freeUsedMi: sum(rows.map((r) => r.freeUsedMi)),
   };
 
-  const apiPods = live.filter((p) => p.metadata.labels?.app === "api");
+  // The API's pods in its own namespace, the same set `kubectl top pods -n <namespace> -l app=api` reads
+  const apiPods = live.filter((p) => p.metadata.labels?.app === "api" && p.metadata.namespace === namespace);
+  if (apiPods.length === 0) {
+    throw new Error(`no API pods (app=api) in namespace ${namespace}: the extra pods at the maximum would count as 0 MiB`);
+  }
   const apiUse = [...topMemoryByName(topApi).values()];
   const perPodRequest = apiPods.length ? sum(apiPods.map(podRequest)) / apiPods.length : 0;
   // No reading for the API pods: their request stands in for their use, and the result says so
@@ -142,12 +147,17 @@ function kubectl(args) {
   return execFileSync("kubectl", args, { encoding: "utf8", maxBuffer: 64 * BYTES_PER_MI });
 }
 
+// A plain decimal number of MiB: "768", "256.5". Number() alone would also take " " (as 0), "0x300" and "7e2".
+// Matches "768" and "256.5"; rejects " ", "768Mi", "0x300", "7e2" and "-5".
+// Try it: https://regex101.com/?regex=%5E%5Cd%2B(%5C.%5Cd%2B)%3F%24
+const DECIMAL = /^\d+(\.\d+)?$/;
+
 // A size in MiB from the environment: unset or empty means not asked; anything but a number >= 0 is refused
 function readMi(name) {
   const raw = process.env[name];
   if (raw === undefined || raw === "") return undefined;
-  const value = raw.trim() === "" ? Number.NaN : Number(raw);
-  if (!Number.isFinite(value) || value < 0) {
+  const value = DECIMAL.test(raw) ? Number(raw) : Number.NaN;
+  if (!Number.isFinite(value)) {
     throw new Error(`${name}=${JSON.stringify(raw)} is not a number of MiB (write 768, not 768Mi)`);
   }
   return value;
@@ -175,6 +185,7 @@ function main() {
     hpa: JSON.parse(kubectl(["-n", namespace, "get", "hpa", hpaName, "-o", "json"])),
     agentMi,
     clusterAgentMi,
+    namespace,
   });
   const mi = (n) => `${round(n)} MiB`;
   console.log(`measured ${new Date().toISOString()} (kubectl context ${currentContext()})`);

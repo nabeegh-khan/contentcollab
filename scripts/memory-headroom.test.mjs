@@ -20,7 +20,7 @@ test("parses Kubernetes memory quantities into MiB", () => {
 // two API pods of 128 MiB (138 MiB in use each), HPA maximum 5
 const node = (name) => ({ metadata: { name }, status: { allocatable: { memory: "1499736Ki" } } });
 const pod = (name, nodeName, mem, labels = {}) => ({
-  metadata: { name, namespace: "x", labels },
+  metadata: { name, namespace: "contentcollab", labels },
   spec: { nodeName, containers: [{ name: "c", resources: { requests: { memory: mem } } }] },
   status: { phase: "Running" },
 });
@@ -272,7 +272,7 @@ test("API pods are counted only in the API's namespace, as kubectl top reads the
   const elsewhere = pod("api-other", "a", "128Mi", { app: "api" });
   elsewhere.metadata.namespace = "someone-else";
   const more = { items: [...pods.items, elsewhere] };
-  assert.equal(headroom({ nodes, pods: more, topNodes, topApi, hpa, namespace: "x" }).atMax.extraPods, 3);
+  assert.equal(headroom({ nodes, pods: more, topNodes, topApi, hpa }).atMax.extraPods, 3);
 });
 
 test("a size in hex or with an exponent is refused", () => {
