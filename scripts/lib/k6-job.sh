@@ -88,6 +88,13 @@ k6_wait() {  # namespace job seconds
   [ "$state" = Done ] || die "k6 job $2 is $state, not Done"
 }
 
+# Highest memory percentage over the nodes (kubectl top nodes); prints nothing
+# when the metrics API cannot be read
+node_memory_max() {
+  kubectl top nodes --no-headers 2>/dev/null \
+    | awk '{ gsub("%", "", $5); if ($5 + 0 > m) m = $5 + 0 } END { if (NR) print m + 0 }'
+}
+
 # A number from the RESULT line: result_field "$line" failures
 result_field() {
   printf '%s' "$1" | sed -n "s/.*\"$2\":\([0-9][0-9]*\).*/\1/p"
