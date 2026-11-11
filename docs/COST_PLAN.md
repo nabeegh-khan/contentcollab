@@ -1,6 +1,6 @@
 # Cost plan
 
-Written Wednesday 11 November 2026. **Status: a plan. Nothing on the account or the cluster has been changed, and the rebuild below waits for Nabeegh's go.** Evidence and sources are in [RESEARCH.md](RESEARCH.md), "Cluster cost: why HA is on, what a rebuild changes, what the node pool can do". All money is US dollars with 13% HST unless it says CAD.
+Written Wednesday 11 November 2026. **Status, 11 November evening: the rebuild is done (section 9): HA off, region nyc3, one s-2vcpu-4gb node with autoscaling to two. Sections 1 to 8 are the plan as written before it.** Evidence and sources are in [RESEARCH.md](RESEARCH.md), "Cluster cost: why HA is on, what a rebuild changes, what the node pool can do". All money is US dollars with 13% HST unless it says CAD.
 
 ## The short version
 
@@ -37,7 +37,7 @@ Every day the HA cluster keeps running instead of the no-HA one costs **US$1.61 
 
 ## 3. Why the node pool will not shrink to one node
 
-Allocatable memory is about 1,464 MiB per node (1,499,736 KiB). Pod memory requests total 2,140 MiB: 1,316 MiB that run once (postgres 256, two metrics-server 400, two coredns 340, two api 256, redis 64) and 824 MiB of per-node DaemonSets (cilium 332, do-node-agent 80 on each node). On one node that is 412 + 1,316 = **1,728 MiB, 264 MiB over**, before the Datadog agent (768 MiB, D6; not installed yet). The autoscaler only removes a node when everything fits on the rest, so with `min-nodes=1` the pool stays at two. Five api replicas (the HPA maximum) still fit on two nodes: 2,140 + 3 x 128 = 2,524 MiB against 2 x 1,464 = 2,928 MiB. A third node (US$0.03 an hour) appears only if the Datadog agent's 768 MiB is added (2,908 MiB against 2,928, too tight to pack). The setting is still right to have: it costs nothing, and it lets the pool add that node and give it back. Getting to one node would need about 300 MiB less in requests (one metrics-server replica saves 200 MiB; one api replica 128 MiB), which leaves no room for Datadog or for the scale-out demo, so it is not proposed.
+Allocatable memory is about 1,464 MiB per node (1,499,736 KiB). Pod memory requests total 2,140 MiB: 1,316 MiB that run once (postgres 256, two metrics-server 400, two coredns 340, two api 256, redis 64) and 824 MiB of per-node DaemonSets (cilium 332, do-node-agent 80 on each node). On one node that is 412 + 1,316 = **1,728 MiB, 264 MiB over**, before the Datadog agent (768 MiB, D6), which is not installed (ARCHITECTURE D18). The autoscaler only removes a node when everything fits on the rest, so with `min-nodes=1` the pool stays at two. Five api replicas (the HPA maximum) still fit on two nodes: 2,140 + 3 x 128 = 2,524 MiB against 2 x 1,464 = 2,928 MiB. A third node (US$0.03 an hour) appears only if the Datadog agent's 768 MiB is added (2,908 MiB against 2,928, too tight to pack); D18 decides against the agent, so no third node is added for monitoring. The setting is still right to have: it costs nothing, and it lets the pool add that node and give it back. Getting to one node would need about 300 MiB less in requests (one metrics-server replica saves 200 MiB; one api replica 128 MiB), which leaves no room for Datadog or for the scale-out demo, so it is not proposed.
 
 ## 4. What it adds up to by the end of 5 December
 
@@ -99,7 +99,7 @@ Steps, in Git Bash from the repository:
 2. **A only: a dry run that cannot touch the live cluster:** `DRY_RUN=1 CLUSTER_NAME=contentcollab-dry LETSENCRYPT_EMAIL=<address> bash scripts/cluster-up.sh`. A name that does not exist prints the create command: check it shows `--ha=false`, a `1.36` slug and `auto-scale=true;min-nodes=1;max-nodes=3`. Nothing is created.
 3. **Delete the old cluster:** `bash scripts/cluster-down.sh` and type `contentcollab`. `--dangerous` removes the load balancer and volume with it (doctl docs, 11 November). Check nothing is left billing: `doctl kubernetes cluster list`, `doctl compute load-balancer list`, `doctl compute volume list` should show none of ours.
 4. **Create and install:** A: `LETSENCRYPT_EMAIL=<address> bash scripts/cluster-up.sh`. B: the `doctl` command above, then the same `cluster-up.sh`. The cluster name stays `contentcollab`: `deploy.yml` saves its kubeconfig by that name.
-5. **What the script does not install, on either route:** `bash scripts/metrics-server.sh` (without it the HPA reads no CPU); `bash scripts/alerts.sh` (the alert policies are tagged with the cluster id, so a rebuilt cluster has none; `ALERT_EMAIL` must be a verified address); the Datadog agent if wanted (`DATADOG_API_KEY`, then `cluster-up.sh` again; it adds 768 MiB of requests, section 3).
+5. **What the script does not install, on either route:** `bash scripts/metrics-server.sh` (without it the HPA reads no CPU); `bash scripts/alerts.sh` (the alert policies are tagged with the cluster id, so a rebuilt cluster has none; `ALERT_EMAIL` must be a verified address); no Datadog agent (ARCHITECTURE D18: its 768 MiB of requests does not fit; `cluster-up.sh` installs it only when `DATADOG_API_KEY` is set, so leave that unset).
 6. **New load balancer address:** the script prints it (`kubectl -n contentcollab get gateway`).
 7. **DNS:** at name.com change the `A` record for `contentcollab.app` to the new address. The TTL is already 300 seconds. Check: `curl -s "https://dns.google/resolve?name=contentcollab.app&type=A"`.
 8. **Certificate:** `kubectl -n contentcollab get certificate` until `contentcollab-tls` is Ready (certificate number two in the Let's Encrypt window), then `curl -sI https://contentcollab.app/health`.
@@ -124,3 +124,19 @@ Risks: the outage runs from step 3 to step 8; a failed certificate order still c
 - The projection assumes the invoice-preview hourly rates hold and that 13% HST applies to the whole cluster cost. The invoice preview applies the tax after a US$1.81 trial credit ("Inference Cloud Trial"); that credit is not counted, and the balance figure of US$23.15 cannot be rebuilt from the listed lines (they stop at 11 November 00:00 UTC; the balance is read at 06:15 UTC). The effect on any plan is under CAD 1. It excludes traffic and snapshot charges.
 - The `doctl` page and the autoscaler page disagree on whether a pool can scale to zero; a minimum of 1 sidesteps it.
 - A rebuild's duration is an estimate; the Let's Encrypt count (one known use) cannot see failed orders made elsewhere.
+
+## 9. Rebuild done, 11 November
+
+Nabeegh's go came on 11 November; the runbook in section 6 was followed with three changes, recorded in ARCHITECTURE D13: region **nyc3** (tor1 returned "insufficient capacity" for every size tried, request ids in D13), nodes **s-2vcpu-4gb with autoscaling 1 to 2** (one 4 GB node in place of two 2 GB nodes), and Kubernetes **1.37.0-do.3** with `--ha=false`. The Gateway API CRDs had to be opted out of DOKS management before `cluster-up.sh` could install NGINX Gateway Fabric (D13).
+
+| Part | Rate per hour, before tax | Per day with tax |
+|---|---|---|
+| One s-2vcpu-4gb node (US$24 a month) | 0.0357 | 0.97 |
+| Load balancer (assumed US$15 a month, as in tor1) | 0.0223 | 0.60 |
+| 5 GiB volume | 0.0007 | 0.02 |
+| **Total, one node** | **0.0587** | **1.59** |
+| **Total, two nodes** | **0.0944** | **2.56** |
+
+The HA control plane line (US$1.61 a day) is gone. The autoscaler added a second node during bring-up; until it scales back to one, the cluster runs at the two-node rate. Check on the next invoice preview that no "High Availability Control Plane" hours appear and that the load balancer rate in nyc3 matches.
+
+Not done in the rebuild: the A record (Nabeegh, name.com, to 138.197.57.149), the certificate and smoke check (after DNS), `alerts.sh` (needs a verified address), the restart test (`scripts/restart-test.sh` is on no branch), and the Spaces key (Nabeegh reruns `spaces_setup.py`).
