@@ -72,9 +72,11 @@ else
   # no SIGPIPE under pipefail (tr on /dev/urandom piped to head exits 141)
   password="$(od -An -tx1 -N24 /dev/urandom | tr -d ' \n')"
   # Piped as a manifest, so the value is never in a command line (which
-  # every process on the machine can read); works with Windows kubectl too
+  # every process on the machine can read); works with Windows kubectl too.
+  # create, not apply: apply would copy the password into the
+  # last-applied-configuration annotation, which kubectl describe prints
   printf 'apiVersion: v1\nkind: Secret\nmetadata:\n  name: grafana-admin\n  namespace: %s\ntype: Opaque\nstringData:\n  admin-password: "%s"\n' \
-    "$NS" "$password" | kubectl apply -f - >/dev/null
+    "$NS" "$password" | kubectl create -f - >/dev/null
   unset password
   echo "Secret grafana-admin created"
 fi

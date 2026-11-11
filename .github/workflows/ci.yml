@@ -147,7 +147,8 @@ jobs:
             --entrypoint promtool prom/prometheus:v3.16.0 check config /cfg/prometheus.yml
       - name: promtool test rules (the dashboard's queries)
         run: |
-          docker run --rm -v "$PWD/k8s/observability/prometheus:/cfg:ro" -w /cfg \n            --entrypoint promtool prom/prometheus:v3.16.0 test rules dashboard.test.yml
+          docker run --rm -v "$PWD/k8s/observability/prometheus:/cfg:ro" -w /cfg \
+            --entrypoint promtool prom/prometheus:v3.16.0 test rules dashboard.test.yml
       - name: Rendered objects and dashboard
         # yq 4 is preinstalled on the Ubuntu runner
         run: node --test k8s/observability/*.test.mjs

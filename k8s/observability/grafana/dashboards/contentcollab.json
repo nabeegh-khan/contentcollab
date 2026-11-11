@@ -136,8 +136,8 @@
     {
       "id": 4,
       "type": "timeseries",
-      "title": "API replicas: current and desired (HPA)",
-      "description": "From kube-state-metrics, for hpa/api in contentcollab. The maximum is drawn as a dashed line.",
+      "title": "API replicas: current, desired and maximum (HPA)",
+      "description": "From kube-state-metrics, for hpa/api in contentcollab.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"

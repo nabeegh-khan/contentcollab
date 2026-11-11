@@ -1,6 +1,8 @@
 # Unit tests for the dashboard's queries (grafana/dashboards/contentcollab.json),
 # run by `promtool test rules` in CI. The input series carry the labels the
-# scrape configuration in prometheus.yml produces (job, node, namespace, pod),
+# scrape configuration in prometheus.yml produces (job, node, namespace, pod)
+# and the API's own labels as on main (PR #102 renames status to status_class;
+# every query sums by route, so either works),
 # so a change to a relabel rule or a query that breaks the panel fails here.
 # observability.test.mjs checks that every dashboard query appears below.
 rule_files:
@@ -16,18 +18,18 @@ tests:
   - interval: 15s
     input_series:
       # 1 request a second to /documents, plus probe and scrape traffic
-      - series: 'http_requests_total{job="api",namespace="contentcollab",pod="api-a",method="GET",route="/documents",status_class="2xx"}'
+      - series: 'http_requests_total{job="api",namespace="contentcollab",pod="api-a",method="GET",route="/documents",status="200"}'
         values: '0+15x20'
-      - series: 'http_requests_total{job="api",namespace="contentcollab",pod="api-a",method="GET",route="/health",status_class="2xx"}'
+      - series: 'http_requests_total{job="api",namespace="contentcollab",pod="api-a",method="GET",route="/health",status="200"}'
         values: '0+3x20'
-      - series: 'http_requests_total{job="api",namespace="contentcollab",pod="api-a",method="GET",route="/metrics",status_class="2xx"}'
+      - series: 'http_requests_total{job="api",namespace="contentcollab",pod="api-a",method="GET",route="/metrics",status="200"}'
         values: '0+1x20'
       # /comments: 1 request a second, of which 0.2 a second are 5xx
-      - series: 'http_requests_total{job="api",namespace="contentcollab",pod="api-a",method="POST",route="/comments",status_class="2xx"}'
+      - series: 'http_requests_total{job="api",namespace="contentcollab",pod="api-a",method="POST",route="/comments",status="200"}'
         values: '0+12x20'
-      - series: 'http_requests_total{job="api",namespace="contentcollab",pod="api-a",method="POST",route="/comments",status_class="5xx"}'
+      - series: 'http_requests_total{job="api",namespace="contentcollab",pod="api-a",method="POST",route="/comments",status="500"}'
         values: '0+3x20'
-      - series: 'http_errors_total{job="api",namespace="contentcollab",pod="api-a",method="POST",route="/comments",status_class="5xx"}'
+      - series: 'http_errors_total{job="api",namespace="contentcollab",pod="api-a",route="/comments"}'
         values: '0+3x20'
       # Latency: every /documents request between 50 and 100 ms
       - series: 'http_request_duration_seconds_bucket{job="api",namespace="contentcollab",pod="api-a",method="GET",route="/documents",le="0.05"}'
