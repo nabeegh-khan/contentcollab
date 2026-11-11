@@ -129,6 +129,16 @@ test('DRY_RUN=1 changes nothing and prints each change it would make', () => {
   assert.match(r.out, /DRY-RUN: kubectl apply/);
 });
 
+test('DRY_RUN=1 on the running cluster reads its state and still changes nothing', () => {
+  const r = bringUp({ DRY_RUN: '1', STUB_CLUSTER: 'contentcollab 1.37.0-do.2', STUB_CM_INSTALLED: 'v1.19.2' });
+  assert.equal(r.code, 0, r.out);
+  assert.deepEqual(changes(r.calls), []);
+  assert.ok(r.calls.some((c) => /^helm list -n cert-manager/.test(c)));
+  assert.match(r.out, /DRY-RUN: helm upgrade --install cert-manager .*--version v1\.20\.5/);
+  assert.match(r.out, /DRY-RUN: helm upgrade --install cert-manager .*--version v1\.21\.3/);
+  assert.equal(r.calls.filter((c) => /wait --for=condition=Ready/.test(c)).length, 0);
+});
+
 test('re-run on the running 1.37 cluster: no create, cert-manager one minor at a time', () => {
   const r = bringUp({ STUB_CLUSTER: 'contentcollab 1.37.0-do.2', STUB_CM_INSTALLED: 'v1.19.2' });
   assert.equal(r.code, 0, r.out);
