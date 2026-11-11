@@ -305,3 +305,19 @@ The 7 November meeting put the schema and core features ahead of reviews, so PRs
 - Every round went back to a fresh reviewer until it came back clean. Later rounds caught an undo placed so it could go back one revision too far (fixed before the branch was pushed) and loose wording in the build log (corrected on `main`).
 - One check by mistake ran the real `doctl` against the team account; DigitalOcean refused the only change it tried, and a read-only listing confirmed nothing was created. The test harness now refuses to run unless its stubs are the ones on PATH.
 - Decisions went into ARCHITECTURE D6 and the build log on `main` before the branches were pushed. The PRs are not merged: that, and removing the requested reviewers, waits for Nabeegh.
+
+## DigitalOcean project, Spaces bucket and the app Secret (#53), 11 November 2026
+
+### Prompt
+
+Prepare issue #53 without touching the account: check Spaces pricing and access-key rules against DigitalOcean's documentation, then write the manifests, scripts and docs for the DigitalOcean project, the bucket and the app Secret. The Secret stays a template with no real values (base64 is not encryption, SEC-10); anything that needs a token or a key becomes a command for Nabeegh to run; the storage and schema work in #88 and #89 is read, not edited.
+
+### AI Response
+
+Spaces access keys can only be created in the Control Panel and the CLI cannot create a bucket, so the plan is a project script, a runbook for the two Control Panel steps, a script that proves the key, and a script that makes the Secret without a file. Reading the code turned up two problems: client-side `kubectl apply` of a filled-in Secret copies every value in plain text into an annotation (the minikube steps and `cluster-up.sh` did that), and the migration Job in #88 gives its init container the whole Secret, including the storage keys. Running the scripts for real, against throwaway local servers, found two faults the stub tests could not: a Windows temp path the AWS CLI cannot open, and a loop variable that overwrote a function's local in bash.
+
+### What Your Team Did With It
+
+- Wrote the decision, the options not taken, the cost and the sources into the build log before any script; wrote each test first (the template check failed on the old template, the 24 script tests failed with no scripts) and checked the tests with ten deliberate breakages of the scripts, one of which got through and now has a test.
+- Ran `spaces-verify.sh` with the AWS CLI against a local S3 gateway and `app-secret.sh` with kubectl against a local k3s cluster, using made-up keys and the cluster's own kubeconfig, never the account or the DOKS context. Nothing was created on DigitalOcean: the project, bucket, key and Secret are commands and Control Panel steps for Nabeegh to run (`k8s/README.md`).
+- Read #88 and #89 without editing them. The one point for #88 (its init container should read `DB_USER` by key) is in the build log, and a new test reports it once both are merged.
