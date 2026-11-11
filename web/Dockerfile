@@ -8,6 +8,8 @@ RUN npm ci
 
 RUN npm run build
 
-COPY dist/ /usr/share/nginx/html
+FROM nginx
 
-EXPOSE 3000
+COPY nginx.conf # not sure what to do here
+
+COPY dist/ /usr/share/nginx/html
