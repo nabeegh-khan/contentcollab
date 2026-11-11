@@ -14,11 +14,8 @@ const userIds: string[] = [];
 const documentIds: string[] = [];
 const app = express();
 
-app.get(
-  "/documents/:documentId/owner-only",
-  requireAuth,
-  requireRole("owner"),
-  (_req, res) => res.status(200).json({ role: res.locals.documentShareRole }),
+app.get("/documents/:documentId/owner-only", requireAuth, requireRole("owner"), (_req, res) =>
+  res.status(200).json({ role: res.locals.documentShareRole }),
 );
 
 async function createUser(): Promise<string> {
@@ -91,10 +88,10 @@ describe("requireRole on an owner-only document route", () => {
     const ownerId = await createUser();
     const viewerId = await createUser();
     const documentId = await createDocument(ownerId);
-    await pool.query(
-      "INSERT INTO shares (document_id, user_id, role) VALUES ($1, $2, 'viewer')",
-      [documentId, viewerId],
-    );
+    await pool.query("INSERT INTO shares (document_id, user_id, role) VALUES ($1, $2, 'viewer')", [
+      documentId,
+      viewerId,
+    ]);
 
     const res = await request(app)
       .get(`/documents/${documentId}/owner-only`)
@@ -107,10 +104,10 @@ describe("requireRole on an owner-only document route", () => {
   it("lets an owner through with 200", async () => {
     const ownerId = await createUser();
     const documentId = await createDocument(ownerId);
-    await pool.query(
-      "INSERT INTO shares (document_id, user_id, role) VALUES ($1, $2, 'owner')",
-      [documentId, ownerId],
-    );
+    await pool.query("INSERT INTO shares (document_id, user_id, role) VALUES ($1, $2, 'owner')", [
+      documentId,
+      ownerId,
+    ]);
 
     const res = await request(app)
       .get(`/documents/${documentId}/owner-only`)

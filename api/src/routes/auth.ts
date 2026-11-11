@@ -68,12 +68,7 @@ router.post("/register", async (req, res) => {
     res.status(201).json(publicUser(result.rows[0]!));
   } catch (error) {
     // PostgreSQL unique_violation, for example an email UNIQUE constraint.
-    if (
-      typeof error === "object" &&
-      error !== null &&
-      "code" in error &&
-      error.code === "23505"
-    ) {
+    if (typeof error === "object" && error !== null && "code" in error && error.code === "23505") {
       res.status(409).json({
         error: "Email Already Registered",
         code: "CONFLICT",
@@ -102,9 +97,7 @@ router.post("/login", async (req, res) => {
   );
 
   const user = result.rows[0];
-  const passwordMatches = user
-    ? await bcrypt.compare(password, user.password_hash)
-    : false;
+  const passwordMatches = user ? await bcrypt.compare(password, user.password_hash) : false;
 
   if (!user || !passwordMatches) {
     res.status(401).json({
