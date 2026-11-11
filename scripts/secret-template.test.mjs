@@ -117,6 +117,18 @@ test("Git tracks the template and no filled-in copy; the filled-in copy is ignor
   }
 });
 
+test("the bring-up script makes the Secret with scripts/app-secret.sh and applies no filled-in file", () => {
+  const code = read("scripts/cluster-up.sh").split("\n").filter((l) => !l.trim().startsWith("#")).join("\n");
+  assert.match(code, /scripts\/app-secret\.sh/);
+  assert.doesNotMatch(code, /SECRETS_FILE|secrets\.yaml/, "client-side apply keeps every value in plain text in an annotation");
+});
+
+test("no tracked document tells the reader to apply a filled-in secrets.yaml", () => {
+  const docs = git("ls-files", "*.md").split("\n").filter((f) => !f.startsWith("docs/BUILD_LOG"));
+  const offenders = docs.filter((f) => /kubectl apply -f \S*secrets\.yaml/.test(read(f)));
+  assert.deepEqual(offenders, []);
+});
+
 test("no tracked file under k8s/ or scripts/ other than the template defines a Secret object", () => {
   const offenders = git("ls-files", "k8s", "scripts")
     .split("\n")

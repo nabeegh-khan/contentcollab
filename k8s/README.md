@@ -6,7 +6,7 @@ Kubernetes manifests, applied with `kubectl apply -k` (Kustomize) in two overlay
 k8s/
   base/        Namespace, ConfigMap, StatefulSet (postgres) with its volume claim, Deployment (redis),
                Deployment + Service + HorizontalPodAutoscaler + PodDisruptionBudget (api), Deployment (worker),
-               secrets.example.yaml (the shape of the one Secret; real values are never committed)
+               secrets.example.yaml (the shape of the one Secret, placeholders only; real values are never committed)
   minikube/    overlay: one api replica, image built inside minikube, NodePort
   doks/        overlay: DigitalOcean block-storage class for the database, Gateway and HTTPRoute for traffic
 ```
@@ -19,9 +19,8 @@ k8s/
 minikube start --cpus 2 --memory 4096
 minikube image build -t contentcollab-api:dev api
 minikube image build -t contentcollab-worker:dev worker
-cp k8s/base/secrets.example.yaml k8s/base/secrets.yaml      # edit the values; the file is git-ignored
 kubectl apply -f k8s/base/namespace.yaml
-kubectl apply -f k8s/base/secrets.yaml
+scripts/app-secret.sh                                        # the app Secret, from no file; asks for the Spaces key in a terminal (below)
 kubectl apply -k k8s/minikube
 kubectl -n contentcollab get pods -w                         # wait for postgres, redis and api to be Running and 1/1
 minikube service api -n contentcollab --url                  # then open <url>/health
@@ -33,7 +32,23 @@ Validate without a cluster: `kubectl kustomize k8s/minikube` renders the objects
 
 ## Cluster
 
-`scripts/cluster-up.sh` creates the DOKS cluster and installs what the `doks` overlay expects (Gateway API CRDs, NGINX Gateway Fabric, cert-manager with the Let's Encrypt issuer in `doks/cluster-issuer.yaml`), applies the Secret and the overlay, and prints the load balancer address for the DNS record. Needs `doctl`, `kubectl`, `helm` and `LETSENCRYPT_EMAIL`; it bills from the moment it runs. With `DATADOG_API_KEY` in the environment it also installs the Datadog agent from `doks/datadog-values.yaml` (container logs from the `contentcollab` namespace, Kubernetes state, the API's `/metrics` by autodiscovery); set the key with `read -rs DATADOG_API_KEY && export DATADOG_API_KEY` so it stays out of the shell history, and re-run the script to rotate it. `scripts/cluster-down.sh` deletes it all after grading.
+`scripts/cluster-up.sh` creates the DOKS cluster and installs what the `doks` overlay expects (Gateway API CRDs, NGINX Gateway Fabric, cert-manager with the Let's Encrypt issuer in `doks/cluster-issuer.yaml`), makes the Secret with `scripts/app-secret.sh` (export `SPACES_KEY` and `SPACES_SECRET` first, or type them when asked) and applies the overlay, and prints the load balancer address for the DNS record. Needs `doctl`, `kubectl`, `helm` and `LETSENCRYPT_EMAIL`; it bills from the moment it runs. With `DATADOG_API_KEY` in the environment it also installs the Datadog agent from `doks/datadog-values.yaml` (container logs from the `contentcollab` namespace, Kubernetes state, the API's `/metrics` by autodiscovery); set the key with `read -rs DATADOG_API_KEY && export DATADOG_API_KEY` so it stays out of the shell history, and re-run the script to rotate it. `scripts/cluster-down.sh` deletes it all after grading.
+
+## Object storage and the app Secret (#53)
+
+Files live in one private Spaces bucket in TOR1. The API and the worker reach it with one access key limited to that bucket. Decision, options not taken and sources: [BUILD_LOG](../docs/BUILD_LOG.md), 11 November. Spaces keys can only be created in the Control Panel, so three of these steps are clicks:
+
+1. `doctl auth init`, then `scripts/do-project.sh` creates the project `ContentCollab`, or finds it.
+2. Control Panel, **Spaces Object Storage**, **Create Bucket**: region **TOR1**, **Standard Storage**, CDN off, name `contentcollab`, project `ContentCollab`. Bucket names are unique across all DigitalOcean accounts: if the name is taken, pick another and change `SPACES_BUCKET` in `k8s/base/configmap.yaml` and in your local environment, and use it below.
+3. **Access Keys**, **Create Access Key**: **Limited access**, the bucket from step 2, permission **Read/Write/Delete**, name `contentcollab-app`. The secret half is shown once. Copy it into your terminal with `read -rs`, nowhere else.
+4. Check the key: `read -rs SPACES_SECRET && export SPACES_SECRET`, `export SPACES_KEY=<the access key>`, then `scripts/spaces-verify.sh` (needs the AWS CLI v2 and curl). It puts, uploads in parts, copies and deletes objects under `probe/` and confirms an anonymous read is refused. To prove the key reaches only this bucket, run it with `FOREIGN_BUCKET=<another existing bucket>`, such as the backup job's.
+5. The app Secret: `scripts/app-secret.sh` on minikube (namespace applied first); on DOKS `scripts/cluster-up.sh` runs it. It generates `DB_PASSWORD` and `JWT_SECRET` the first time and keeps them on every later run (PostgreSQL stores its password when its volume is first created), and takes the Spaces key from the environment or asks for it. Nothing is written to a file or printed.
+
+To rotate the Spaces key, regenerate its secret in the Control Panel (the old one stops working at once), then run `RESTART=1 scripts/app-secret.sh` with the new values exported: the pods read the Secret only when they start.
+
+Who can read the values: anyone allowed to `get secrets` in the `contentcollab` namespace, on DOKS anyone holding the cluster's kubeconfig. Base64 is not encryption (SEC-10), so that kubeconfig and the DigitalOcean token stay with the cluster owner. `scripts/secret-template.test.mjs` fails a pull request that puts a real value in the template or gives the storage keys, or the whole Secret, to anything but `api` and `worker`.
+
+Teardown: `scripts/cluster-down.sh` does not touch Spaces. The bucket keeps billing (US$5 a month covers 250 GiB stored and 1,024 GiB of transfer) until it is destroyed in the Control Panel, which deletes its files. Do that on purpose, after the final `pg_dump` (DB-12, INF-7).
 
 ## Images
 

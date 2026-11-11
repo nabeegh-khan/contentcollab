@@ -4,7 +4,9 @@
 # Let's Encrypt issuer, and the app Secret. Repeatable: every step is
 # idempotent, so re-running after a failure is safe (INF-3).
 #
-# Needs: doctl (authenticated with `doctl auth init`), kubectl, helm.
+# Needs: doctl (authenticated with `doctl auth init`), kubectl, helm. The app
+# Secret is made by scripts/app-secret.sh (step 4): export SPACES_KEY and
+# SPACES_SECRET first, or type them when asked (k8s/README.md).
 # Creates billable resources: two US$18 nodes and one US$12 load balancer,
 # about US$48 a month for the cluster alone; US$54 with Spaces and the database
 # volume (docs/ARCHITECTURE.md). Run `scripts/cluster-down.sh` after grading (INF-7).
@@ -16,7 +18,6 @@ cd "$(dirname "$0")/.."   # paths below are relative to the repository root
 : "${NODE_SIZE:=s-2vcpu-2gb}"   # smallest size that runs two api pods plus postgres comfortably
 : "${NODE_COUNT:=2}"
 : "${LETSENCRYPT_EMAIL:?set LETSENCRYPT_EMAIL to the address Lets Encrypt notifies about expiry}"
-: "${SECRETS_FILE:=k8s/base/secrets.yaml}"   # git-ignored copy of secrets.example.yaml with real values
 : "${DATADOG_API_KEY:=}"                      # optional: empty skips the Datadog agent
 : "${DATADOG_SITE:=datadoghq.com}"            # the account's site: datadoghq.eu, us3.datadoghq.com, ...
 
@@ -27,7 +28,6 @@ DATADOG_CHART_VERSION="3.269.1" # https://github.com/DataDog/helm-charts/blob/ma
 for tool in doctl kubectl helm; do
   command -v "$tool" >/dev/null || { echo "missing: $tool"; exit 1; }
 done
-[ -f "$SECRETS_FILE" ] || { echo "missing $SECRETS_FILE: copy k8s/base/secrets.example.yaml and fill in real values"; exit 1; }
 
 # 1. Cluster: created once; later runs find it and move on
 if ! doctl kubernetes cluster get "$CLUSTER_NAME" >/dev/null 2>&1; then
@@ -64,7 +64,7 @@ done
 
 # 4. Namespace, Secret, issuer, then the application
 kubectl apply -f k8s/base/namespace.yaml
-kubectl apply -f "$SECRETS_FILE"
+bash scripts/app-secret.sh   # not `kubectl apply -f` of a filled-in file: client-side apply keeps every value in plain text in an annotation (SEC-10)
 sed "s|LETSENCRYPT_EMAIL|$LETSENCRYPT_EMAIL|" k8s/doks/cluster-issuer.yaml | kubectl apply -f -   # | delimiter: an address may contain & or /
 # 4b. The application, pinned to an image CI built, never :latest (INF-9;
 #     L8 p67, p73). IMAGE_TAG defaults to the newest commit on main that
