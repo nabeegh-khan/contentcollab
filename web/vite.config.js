@@ -10,7 +10,8 @@ export default defineConfig({
     {
       '/api': 
       {
-        target: env.VITE_API_URL,
+        const env = loadEnv(mode, process.cwd(), '');
+        target: env.VITE_API_URL || 'http://localhost:3000',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, ''),
       },
