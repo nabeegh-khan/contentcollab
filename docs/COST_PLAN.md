@@ -134,8 +134,8 @@ Nabeegh's go came on 11 November; the runbook in section 6 was followed with thr
 | One s-2vcpu-4gb node (US$24 a month) | 0.0357 | 0.97 |
 | Load balancer (assumed US$15 a month, as in tor1) | 0.0223 | 0.61 |
 | 5 GiB volume | 0.0007 | 0.02 |
-| **Total, one node** | **0.0587** | **1.59** |
-| **Total, two nodes** | **0.0944** | **2.56** |
+| **Total, one node** | **0.0588** | **1.59** |
+| **Total, two nodes** | **0.0945** | **2.56** |
 
 Rows are rounded; the totals come from the hourly sum. The HA control plane line (US$1.61 a day) is gone. The autoscaler added a second node during bring-up and removed it at 19:24 UTC, so the cluster runs at the one-node rate. This adopts the single 4 GB node that section 2 did not recommend; what that costs the demo (no drain or cross-node spread without adding a node on purpose) is in ARCHITECTURE D13. Check on the next invoice preview that no "High Availability Control Plane" hours appear, which is the only proof that HA is off since the cluster JSON shows no `ha` field, and that the load balancer rate in nyc3 matches.
 
