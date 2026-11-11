@@ -2,7 +2,7 @@
 
 For the Wednesday 2 December demo on DOKS (advanced feature: auto-scaling and high availability, #69). The design is in [ARCHITECTURE.md D14](ARCHITECTURE.md). Every command below is run from the repository root with `kubectl` pointed at the cluster. Nothing below assumes a context name, a region or a node count: `kubectl config current-context` names the cluster, and `rollout-no-drop.sh` prints the context, the nodes and the node autoscaler's bounds as the cluster reports them before it changes anything. On 11 November the rebuilt cluster is `do-nyc3-contentcollab` (region nyc3, because tor1 had no capacity), one node pool of `s-2vcpu-4gb` with node autoscaling between 1 and 2 nodes.
 
-**Status (11 November 2026): none of this has been run on the rebuilt cluster yet.** The old cluster was deleted on 11 November for the rebuild; the new one came up in nyc3 the same day. The outputs described are the shape the scripts print, taken from their tests and from the scripts themselves, not measured on DOKS. Measured results go to `docs/evidence/` and BUILD_LOG.md after the first live run, and this page is updated with them. See "Not yet verified" at the end.
+**Status (11 November 2026): first live run done on the rebuilt cluster.** Results are in "Measured on the rebuilt cluster" at the end, with the raw output in `docs/evidence/2026-11-11-*`; what it did not show is under "Not yet verified".
 
 ## What the audience sees
 
@@ -106,13 +106,26 @@ To see what the hook changes, run section 2 once before this patch and once afte
 - A rollout that never finishes: `kubectl -n contentcollab rollout undo deployment/api`.
 - The k6 Job is removed an hour after it finishes (`ttlSecondsAfterFinished`), but its ConfigMap, which holds the k6 script, is not. After a run: `kubectl -n contentcollab delete job/k6-rollout configmap/k6-rollout --ignore-not-found`.
 
-## Not yet verified (first live run)
+## Measured on the rebuilt cluster (11 November 2026)
 
-- Nothing here has been run on the rebuilt cluster yet.
-- Node autoscaling (1 to 2 nodes) is new with this cluster. Whether the scale-out adds the second node, how long that takes, and whether it is removed again after the load are not measured. A second node changes both the replicas reached and the cost while it runs.
-- The load test from the laptop now crosses to nyc3, not tor1, so its latencies include that distance; the k6 Job inside the cluster is not affected.
-- The output shapes come from the scripts and their stub tests. The numbers (replicas reached, time to scale, requests counted, failures) are not measured yet.
-- Whether five API pods fit in memory beside the other workloads. On the first afternoon the cluster had scaled down to one node, using 2154 of 3002 MiB allocatable (71%) with two API pods; on the old two-node cluster, on 6 November, the nodes peaked at 91 to 93% with five (BUILD_LOG.md). The rollout runs are made at two replicas, with the HPA idle.
-- Whether `/health` fails under load on DOKS with no rollout (a local run saw 1 failure in 4,501 requests), and how many requests fail through the Gateway during a rollout, with and without the drain.
-- Time to scale back to 2 after the load ends (the 5-minute window is from the Kubernetes docs, not yet seen here).
-- The drain patch has been checked only offline (`kubectl patch --local` on the rendered Deployment), not on a live Deployment.
+First live run, nyc3, one `s-2vcpu-4gb` node (autoscaling 1 to 2), api image `08b479e`. Raw output in `docs/evidence/2026-11-11-*`.
+
+| Run | Path | Replicas | Requests | Failed | Notes |
+|---|---|---|---|---|---|
+| Restart, before the drain (no `preStop`) | k6 Job inside the cluster, `/metrics` | 2 (HPA went to 5 during the run) | 4,437 | 0 | rollout 24 s, p95 30 ms, 64 iterations dropped |
+| Restart, with the drain | same | 2 | 4,501 | 0 | rollout 23 s, p95 9 ms |
+| Undo, with the drain | same | 4 (left over from the previous run) | 4,501 | 0 | rollout 45 s, p95 11 ms |
+| Control, no rollout | laptop through the Gateway, `/health`, 50 req/s for 120 s | 4 | about 6,000 | 0 | p50 60 ms, p95 96 ms |
+| Restart halfway, with the drain | same | 4 | about 6,000 | 28 (0.47%) | all `UND_ERR_SOCKET`, in 4 bursts 9 to 12 s apart, one per old pod replaced |
+
+- **Scale-out:** the HPA went from 2 to 4 at 21:49:24Z and to 5 at 21:49:39Z, during the first restart run (k6 load plus new pods starting), so the stepped load test that followed (50 then 150 req/s, 150 s each) ran at 5 replicas from the start: 0 failures, p95 113 ms at both steps, HPA CPU 28 to 37% at 50 req/s and 51 to 66% at 150 req/s. The watch file therefore shows the scale-back, not the scale-out; the HPA's own events give the scale-out times.
+- **Scale-back:** the load ended at 21:55:25Z; the HPA went 5 to 3 at 22:00:25Z and to 2 at 22:00:40Z, the 5-minute window to the second.
+- **Nodes:** one node throughout. Five API pods fitted beside everything else (peak 67% node memory during the stepped load); the cluster autoscaler reported no scale-up, so the second node was never added.
+- **The drain:** inside the cluster both restarts dropped nothing, with and without the hook, so this run does not show the hook's effect on the Service path. Through the Gateway, a restart with the hook still lost 28 requests, while the control lost none: the drops happen between the client and the pods while old pods leave. Where exactly (the Gateway's connections to the old pods, or its connections to the client) is not established.
+- The drain was added to the live Deployment with `kubectl patch` (revision 5); it stays until the next `kubectl apply` of the manifests or until the pull request merges. `kubectl rollout undo` warned that the `last-applied-configuration` annotation is not updated by a rollback.
+
+## Not yet verified
+
+- A scale-out from 2 to 5 recorded in the watch file (it happened before the watch started), and the cluster autoscaler adding the second node.
+- Why requests fail through the Gateway during a rollout, and what removes those failures.
+- The undo at two replicas (it ran at four).

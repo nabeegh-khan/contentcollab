@@ -453,3 +453,19 @@ Checked DigitalOcean's doctl reference, its high-availability how-to, its pricin
 - An independent review found a test that could not fail on one of its claims, a missing default test and a misleading sentence in D13. All three were fixed before the push.
 - A second review of the final change found an untested warning, a stale paragraph in D13 and two inaccurate sentences in the build log, one of them saying a lint tool was unavailable when it was not. All four were fixed before the push.
 - Noted the deploy path-filter gap on #70 instead of editing `deploy.yml`, because another open pull request changes that file.
+
+## The rollout check reads the rebuilt cluster, and its first live run (#69, PR #103), 11 November 2026
+
+### Prompt
+
+The cluster was rebuilt in nyc3 with one 4 GB node that autoscales to two. Make the rollout script and the demo page read the context and the node limits from the cluster instead of assuming the old Toronto context or two nodes, so the memory check works for one 4 GB node, with tests first and two independent reviews. Then, once the site serves HTTPS on the new cluster, run the scaling and rollout steps and record the numbers.
+
+### AI Response
+
+Proposed printing the context, the nodes and the node autoscaler's bounds read from the cluster, and replacing the 90% memory limit with a check in MiB: every node must have room for the load generator's memory limit plus the extra API pod the rollout adds, read from the Deployment. Wrote failing tests first for each change. Ran the live steps: rollouts under load inside the cluster dropped nothing with or without the drain; through the public URL a rollout lost 28 of about 6,000 requests while the control lost none; the HPA scaled 2 to 5 and back to 2 after five minutes on one node.
+
+### What Your Team Did With It
+
+- Kept a percentage out: 10% of a 4 GB node is less than the load generator may use.
+- Four review rounds found real gaps (a full node let through when another had no metrics, an ignored override, a stale design note, an octal surge value); each got a test that failed first. After our verification rule changed to two full passes plus one delta check, the extra rounds were stopped there.
+- Recorded the public-URL failures as an open question rather than claiming the drain fixed them, and noted that the scale-out happened before the watch started.
