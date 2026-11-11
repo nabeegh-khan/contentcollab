@@ -119,6 +119,9 @@ test('a revision that is not a number stops with a message, not a shell error', 
   assert.equal(r.code, 1, r.out);
   assert.match(r.out, /revision/);
   assert.doesNotMatch(r.out, /integer expression expected/);
+  // Stops before the load starts or anything restarts: bash's own wording for a
+  // bad number differs between versions, this does not
+  assert.ok(!r.calls.some((c) => /rollout restart|apply/.test(c)), r.calls.join('\n'));
 });
 
 test('nodes above the memory limit: refuses before starting the load or the restart', () => {
