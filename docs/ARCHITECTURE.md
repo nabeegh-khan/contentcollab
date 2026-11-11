@@ -25,7 +25,7 @@ flowchart TB
   LLM["Language-model API"]
   MAIL["Email service"]
   CI["GitHub Actions · tests, image build · GHCR"]
-  M["DO alerts, Datadog · /metrics, logs"]
+  M["DO alerts and Insights · /metrics, JSON logs"]
   U -- "HTTPS, WebSocket" --> GW
   GW --> W
   GW --> A
@@ -95,11 +95,12 @@ Options it beat:
 
 The web front end gets the same HPA, PDB and hook when its Deployment exists (#47); today there is no `web` Deployment to scale.
 
-**Proof:** shown on a local single-node k3s cluster in Docker before DOKS.
-- Under a steady k6 load through the Service, `scripts/rollout-no-drop.sh` runs `kubectl rollout restart` and fails on any non-2xx response or connection error.
-- It runs first against the old settings (`maxUnavailable: 1`, no hook), which drop requests, then against the new ones.
-- `scripts/hpa-scale.sh` ramps the load and records `kubectl get hpa -w` as the API scales out.
-- Results are in BUILD_LOG.md; the DOKS demo steps are in `docs/DEMO_SCALING.md`.
+**Proof:** on the DOKS cluster itself, not locally (a local k3s run was stopped for lack of memory, and none of its results are kept). Nothing in this paragraph has been run on DOKS yet; the results go to `docs/evidence/` and BUILD_LOG.md after the run.
+- **Rollout.** `scripts/rollout-no-drop.sh` runs a steady k6 load from a Job inside the cluster, through the API Service, runs `kubectl rollout restart` (or `ACTION=undo`) halfway, and fails on any non-2xx response or connection error. The before-run is the cluster as deployed from `main`, which has `maxUnavailable: 0` and no hook; the after-run applies the hook.
+- **Target.** The load goes to `/metrics`, not `/health`. `/health` returns 503 whenever the Postgres or Redis check misses, and the Redis ping gives up after 500 ms, so under load it can fail with no rollout at all: a local run saw 1 of 4,501 requests fail that way. Through the Gateway, which routes only `/api`, `/socket.io` and `/health`, the public-URL run with `scripts/loadtest.mjs` (`ROLLOUT=1`) therefore needs a control run with no rollout, and the rollout's count is read against it.
+- **Scaling.** `scripts/loadtest.mjs` steps the request rate against the public URL while `kubectl get hpa api -w` is recorded, then the load stops and the watch continues until the HPA is back at its minimum (the 5-minute scale-down window).
+- **Memory.** The two nodes sat at 77 and 83% memory with two API pods (`kubectl top nodes` on the cluster before the rebuild, 11 November). `rollout-no-drop.sh` refuses to start above 90%, and `loadtest.mjs` stops above 95%; five API pods may not fit, and the run reports that rather than hiding it.
+- The DOKS demo steps are in `docs/DEMO_SCALING.md`.
 
 Sources, checked 11 November 2026: [Horizontal Pod Autoscaling](https://kubernetes.io/docs/concepts/workloads/autoscaling/horizontal-pod-autoscale/); [Deployments: max unavailable, max surge](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/); [Disruptions](https://kubernetes.io/docs/concepts/workloads/pods/disruptions/); [Pod lifecycle: termination](https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle/); [Container lifecycle hooks](https://kubernetes.io/docs/concepts/containers/container-lifecycle-hooks/); [feature gates](https://kubernetes.io/docs/reference/command-line-tools-reference/feature-gates/) (PodLifecycleSleepAction stable from 1.34). DOKS metrics-server: the DigitalOcean HPA guide as cited in `scripts/metrics-server.sh` (checked 6 November), and read-only `helm list` on the cluster (11 November: metrics-server chart 3.14.0, app 0.9.0, installed).
 
@@ -150,7 +151,7 @@ The autoscaler is allowed five API pods (128 MiB requested each, about 138 MiB i
 
 | | Requests | Fits with the API at five pods? |
 |---|---|---|
-| (c) Datadog agent and cluster agent (D6) | 768 MiB | No: 405 MiB unrequested. A third node (about US$0.73 a day with tax, COST_PLAN) would be needed. Halving the requests to 384 MiB leaves 21 MiB of requests and none of the real memory. Datadog's own Kubernetes example gives the Agent container a 256 MiB request, and it warns that a 100 MiB limit may lead it to be killed for memory ([Kubernetes distributions](https://docs.datadoghq.com/containers/kubernetes/distributions/), read 11 November 2026), so going lower is outside what the vendor shows. |
+| (c) Datadog agent and cluster agent (D6) | 768 MiB | No: 405 MiB unrequested, and by placement it fails today: an agent of 256 MiB on each node leaves 234.6 and 42.6 MiB, so the 256 MiB cluster agent fits on neither (`AGENT_MI=256 CLUSTER_AGENT_MI=256 node scripts/memory-headroom.mjs`). A third node (about US$0.73 a day with tax, COST_PLAN) would be needed. Halving the requests to 384 MiB leaves 21 MiB of requests and none of the real memory. Datadog's Kubernetes example for GKE Autopilot gives the Agent container a 256 MiB request, and it warns that Autopilot's default limit of 100 MiB may lead it to be killed for memory, depending on the environment ([Kubernetes distributions](https://docs.datadoghq.com/containers/kubernetes/distributions/), read 11 November 2026), so going lower is outside what the vendor shows. |
 | (b) One Prometheus pod with short retention, and Grafana | about 192 to 384 MiB (an estimate: Prometheus 128 to 256 MiB, Grafana 64 to 128 MiB; the official pages give no memory figure per series, only the retention flags `--storage.tsdb.retention.time` and `--storage.tsdb.retention.size`, [Storage](https://prometheus.io/docs/prometheus/latest/storage/), read 11 November 2026) | Not with room to spare. The requests fit 405 MiB only at the low end, and the 172 MiB of real memory left at five API pods is less than either pod would use. `/metrics` has 153 series, so the data is small; the baseline of the two processes is the cost. |
 | (a) DigitalOcean metrics and alerts, `/metrics` shown live, JSON logs through `kubectl logs`, no agent | 0 | Yes |
 
@@ -165,7 +166,7 @@ The autoscaler is allowed five API pods (128 MiB requested each, about 138 MiB i
 
 **What is given up.** No history beyond the provider's retention and the pods' own logs (a pod's log is gone with the pod); no alert on the application's error rate that sends a message; no p95 latency graph. The first is accepted for a project that runs for weeks, the second is covered by running the error-rate check by hand in the demo, and the third was already out of reach (D16). If the rubric credits an alert on an application metric, the next step is not an agent: `scripts/error-rate.mjs` can run in a CronJob that mails or posts to a webhook, a small pod that exists only while it runs; that is not built and its memory is not measured.
 
-**Not claimed.** That the rebuilt cluster has the same headroom (re-measured after the rebuild); that Insights shows what `kubectl top` shows; any Datadog result, since the agent was never installed.
+**Not claimed.** That the rebuilt cluster has the same headroom (the rebuild had not started on 11 November; it is re-measured after it); that stopping Redis turns the error-rate check red on the cluster (checked against the code and a local run, not yet run there); that Insights shows what `kubectl top` shows; any Datadog result, since the agent was never installed.
 
 ### D0. Service model
 
