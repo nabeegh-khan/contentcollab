@@ -95,11 +95,12 @@ Options it beat:
 
 The web front end gets the same HPA, PDB and hook when its Deployment exists (#47); today there is no `web` Deployment to scale.
 
-**Proof:** shown on a local single-node k3s cluster in Docker before DOKS.
-- Under a steady k6 load through the Service, `scripts/rollout-no-drop.sh` runs `kubectl rollout restart` and fails on any non-2xx response or connection error.
-- It runs first against the old settings (`maxUnavailable: 1`, no hook), which drop requests, then against the new ones.
-- `scripts/hpa-scale.sh` ramps the load and records `kubectl get hpa -w` as the API scales out.
-- Results are in BUILD_LOG.md; the DOKS demo steps are in `docs/DEMO_SCALING.md`.
+**Proof:** on the DOKS cluster itself, not locally (a local k3s run was stopped for lack of memory, and none of its results are kept). Nothing in this paragraph has been run on DOKS yet; the results go to `docs/evidence/` and BUILD_LOG.md after the run.
+- **Rollout.** `scripts/rollout-no-drop.sh` runs a steady k6 load from a Job inside the cluster, through the API Service, runs `kubectl rollout restart` (or `ACTION=undo`) halfway, and fails on any non-2xx response or connection error. The before-run is the cluster as deployed from `main`, which has `maxUnavailable: 0` and no hook; the after-run applies the hook.
+- **Target.** The load goes to `/metrics`, not `/health`. `/health` returns 503 whenever the Postgres or Redis check misses, and the Redis ping gives up after 500 ms, so under load it can fail with no rollout at all: a local run saw 1 of 4,501 requests fail that way. Through the Gateway, which routes only `/api`, `/socket.io` and `/health`, the public-URL run with `scripts/loadtest.mjs` (`ROLLOUT=1`) therefore needs a control run with no rollout, and the rollout's count is read against it.
+- **Scaling.** `scripts/loadtest.mjs` steps the request rate against the public URL while `kubectl get hpa api -w` is recorded, then the load stops and the watch continues until the HPA is back at its minimum (the 5-minute scale-down window).
+- **Memory.** The two nodes sat at 77 and 83% memory with two API pods (`kubectl top nodes` on the cluster before the rebuild, 11 November). `rollout-no-drop.sh` refuses to start above 90%, and `loadtest.mjs` stops above 95%; five API pods may not fit, and the run reports that rather than hiding it.
+- The DOKS demo steps are in `docs/DEMO_SCALING.md`.
 
 Sources, checked 11 November 2026: [Horizontal Pod Autoscaling](https://kubernetes.io/docs/concepts/workloads/autoscaling/horizontal-pod-autoscale/); [Deployments: max unavailable, max surge](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/); [Disruptions](https://kubernetes.io/docs/concepts/workloads/pods/disruptions/); [Pod lifecycle: termination](https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle/); [Container lifecycle hooks](https://kubernetes.io/docs/concepts/containers/container-lifecycle-hooks/); [feature gates](https://kubernetes.io/docs/reference/command-line-tools-reference/feature-gates/) (PodLifecycleSleepAction stable from 1.34). DOKS metrics-server: the DigitalOcean HPA guide as cited in `scripts/metrics-server.sh` (checked 6 November), and read-only `helm list` on the cluster (11 November: metrics-server chart 3.14.0, app 0.9.0, installed).
 
