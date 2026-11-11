@@ -152,21 +152,23 @@ test('one 4 GB node with room: runs, and prints the node count, size and autosca
   assert.match(r.out, /Cluster: stub-cluster/);
   assert.match(r.out, /Nodes: 1 \(node-a s-2vcpu-4gb 3002 MiB allocatable\)/);
   assert.match(r.out, /Node autoscaling: min 1, max 2/);
-  assert.match(r.out, /Least free memory: node-a 1502 MiB \(needs 512\)/);
+  assert.match(r.out, /Least free memory: node-a 1502 MiB \(needs 768\)/);
 });
 
 test('two 2 GB nodes still work: allocatable read in any unit', () => {
-  const r = rollout({ STUB_TYPE: 's-2vcpu-2gb', STUB_ALLOC: '1.6Gi', STUB_ALLOC_B: '1678Mi', STUB_USED: '1000Mi', STUB_USED_B: '1100Mi' });
+  const r = rollout({ STUB_TYPE: 's-2vcpu-2gb', STUB_ALLOC: '1.6Gi', STUB_ALLOC_B: '1678Mi', STUB_USED: '800Mi', STUB_USED_B: '900Mi' });
   assert.equal(r.code, 0, r.out);
   assert.match(r.out, /Nodes: 2 \(node-a s-2vcpu-2gb 1638 MiB allocatable, node-b s-2vcpu-2gb 1678 MiB allocatable\)/);
-  assert.match(r.out, /Least free memory: node-b 578 MiB/);
+  assert.match(r.out, /Least free memory: node-b 778 MiB/);
 });
 
-test('the headroom asked for is the k6 pod\'s own memory limit', () => {
+test('the headroom asked for is the k6 pod\'s limit plus the surge pods\', read from the Deployment', () => {
   const r = rollout({});
   assert.equal(r.code, 0, r.out);
   assert.match(r.applied, /limits: \{cpu: "1", memory: 512Mi\}/);
-  assert.match(r.out, /\(needs 512\)/);
+  assert.match(r.out, /\(needs 768\)/);
+  const two = rollout({ STUB_SURGE: '2', STUB_API_LIMIT: '0.5Gi' });
+  assert.match(two.out, /\(needs 1536\)/);
   const more = rollout({ MIN_NODE_FREE_MIB: '2000' });
   assert.equal(more.code, 1, more.out);
   assert.match(more.out, /MIN_NODE_FREE_MIB=2000/);
@@ -195,8 +197,64 @@ test('MIN_NODE_FREE_MIB that is not a number stops the run before any change', (
 test('an allocatable figure in a unit it cannot read is not checked, never guessed', () => {
   const r = rollout({ STUB_ALLOC_B: '3e9' });
   assert.equal(r.code, 0, r.out);
-  assert.match(r.out, /not checked/);
-  assert.doesNotMatch(r.out, /Least free memory/);
+  assert.match(r.out, /node-b: memory not readable, not checked/);
+  assert.match(r.out, /Least free memory: node-a/);
+});
+
+// Review round on the cluster-shape change: every readable node is checked,
+// a node with no metrics is never counted as empty, and the threshold
+// includes the pod the rollout adds
+
+test('a full node is refused even when another node has no metrics yet', () => {
+  for (const env of [{ STUB_USED: '2950Mi', STUB_USED_B: '<unknown>' }, { STUB_USED: '2950Mi', STUB_TOP_MISSING_B: '1' }]) {
+    const r = rollout(env);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /node-a has 52 MiB free/, JSON.stringify(env));
+    assert.ok(!r.calls.some((c) => /rollout restart|apply/.test(c)), JSON.stringify(env));
+  }
+});
+
+test('a node listed by get nodes but missing from kubectl top is not checked, never counted as empty', () => {
+  const r = rollout({ STUB_TOP_MISSING_B: '1' });
+  assert.equal(r.code, 0, r.out);
+  assert.match(r.out, /node-b: memory not readable, not checked/);
+  assert.doesNotMatch(r.out, /node-b 3002 MiB/);
+});
+
+test('no node readable at all: refuses unless ALLOW_UNCHECKED_MEMORY=1', () => {
+  const env = { STUB_NODES: '1', STUB_USED: '<unknown>' };
+  const r = rollout(env);
+  assert.equal(r.code, 1, r.out);
+  assert.match(r.out, /ALLOW_UNCHECKED_MEMORY/);
+  assert.ok(!r.calls.some((c) => /rollout restart|apply/.test(c)), r.calls.join('\n'));
+  const ok = rollout({ ...env, ALLOW_UNCHECKED_MEMORY: '1' });
+  assert.equal(ok.code, 0, ok.out);
+  assert.match(ok.out, /not checked/);
+});
+
+test('free memory exactly at the threshold passes; one MiB under refuses', () => {
+  // 3002 - 2234 = 768 = 512 (k6) + 256 (one surge api pod)
+  const at = rollout({ STUB_NODES: '1', STUB_USED: '2234Mi' });
+  assert.equal(at.code, 0, at.out);
+  const under = rollout({ STUB_NODES: '1', STUB_USED: '2235Mi' });
+  assert.equal(under.code, 1, under.out);
+  assert.match(under.out, /767 MiB free/);
+});
+
+test('an empty context name is refused like a missing one', () => {
+  const r = rollout({ STUB_EMPTY_CONTEXT: '1' });
+  assert.equal(r.code, 1, r.out);
+  assert.match(r.out, /context/);
+  assert.ok(!r.calls.some((c) => /apply|rollout restart/.test(c)), r.calls.join('\n'));
+});
+
+test('an api memory limit or maxSurge it cannot read stops the run before any change', () => {
+  for (const env of [{ STUB_API_LIMIT: '' }, { STUB_SURGE: '25%' }]) {
+    const r = rollout(env);
+    assert.equal(r.code, 1, JSON.stringify(env));
+    assert.match(r.out, /surge/, JSON.stringify(env));
+    assert.ok(!r.calls.some((c) => /apply|rollout restart/.test(c)), JSON.stringify(env));
+  }
 });
 
 // Second review round: the checks must fail closed (a pass has to be earned)
@@ -223,11 +281,11 @@ test('a failed load Job stops the run and names the state', () => {
 });
 
 test('a node whose memory is unknown is reported as not checked, never as free', () => {
-  for (const env of [{ STUB_USED_B: '<unknown>' }, { STUB_USED: '<unknown>' }]) {
+  for (const [env, node] of [[{ STUB_USED_B: '<unknown>' }, 'node-b'], [{ STUB_USED: '<unknown>' }, 'node-a']]) {
     const r = rollout(env);
     assert.equal(r.code, 0, r.out);
-    assert.match(r.out, /not checked/, JSON.stringify(env));
-    assert.doesNotMatch(r.out, /Least free memory/, JSON.stringify(env));
+    assert.match(r.out, new RegExp(`${node}: memory not readable, not checked`), JSON.stringify(env));
+    assert.doesNotMatch(r.out, new RegExp(`Least free memory: ${node}`), JSON.stringify(env));
   }
 });
 
