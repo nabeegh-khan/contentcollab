@@ -28,9 +28,11 @@ CREATE TABLE shares (
 );
 CREATE TABLE comments (
   id UUID PRIMARY KEY,
+  version_id UUID NOT NULL,
   parent_id UUID REFERENCES comments(id),
   anchor JSONB,
-  sequence_number BIGINT GENERATED ALWAYS AS IDENTITY
+  sequence_number BIGINT GENERATED ALWAYS AS IDENTITY,
+  UNIQUE (version_id, sequence_number)
 );
 CREATE TABLE tags (id UUID PRIMARY KEY, name TEXT NOT NULL);
 CREATE TABLE document_tags (document_id UUID NOT NULL, tag_id UUID NOT NULL);

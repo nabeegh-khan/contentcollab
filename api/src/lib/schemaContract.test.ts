@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it, jest } from "@jest/globals";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { checks, schemaViolations } from "./schemaContract.js";
 import { connect, createDatabase, dropDatabase, migrate } from "./scratchDb.js";
 
@@ -7,8 +7,8 @@ import { connect, createDatabase, dropDatabase, migrate } from "./scratchDb.js";
 // Part 1 runs on any PostgreSQL and proves the checker can fail: it reads a
 // deliberately bad schema and an empty one. Part 2 runs once api/package.json
 // has a `migrate` script (#37): it builds the schema from empty with
-// `npm run migrate`, expects no violations, then drops one promise at a time
-// from a copy and expects the checker to name exactly that one.
+// `npm run migrate`, expects no violations, then removes or weakens one promise at a
+// time in a copy and expects the checker to name exactly that one.
 const SLOW_MS = 120_000;
 jest.setTimeout(SLOW_MS);
 
@@ -17,6 +17,11 @@ const packageJson = JSON.parse(readFileSync("package.json", "utf8")) as {
 };
 const migrateExists = Boolean(packageJson.scripts?.["migrate"]);
 const MIGRATE_UP = "npm run migrate -- up";
+
+// Replaces the role CHECK with this condition
+function roleCheckWith(condition: string): string {
+  return `ALTER TABLE shares DROP CONSTRAINT shares_role_check, ADD CONSTRAINT shares_role_check CHECK (${condition})`;
+}
 
 async function violationsOf(database: string): Promise<string[]> {
   const client = await connect(database);
@@ -66,31 +71,76 @@ describe("the contract checker fails on a schema that breaks the checklist", () 
   });
 });
 
-// One promise removed per row: the SQL, and the checklist id that must turn red
-const mutations: [string, string][] = [
-  ["users-password-hash", "ALTER TABLE users ALTER COLUMN password_hash DROP NOT NULL"],
-  ["shares-role-check", "ALTER TABLE shares DROP CONSTRAINT shares_role_check"],
+// One promise removed or weakened per row: the ids that must turn red, then the SQL
+const mutations: [string[], string][] = [
+  [["users-password-hash"], "ALTER TABLE users ALTER COLUMN password_hash DROP NOT NULL"],
+  [["shares-role-check"], "ALTER TABLE shares DROP CONSTRAINT shares_role_check"],
+  [["shares-role-check"], roleCheckWith("role IN ('owner','editor','commenter','viewer','admin')")],
+  [["shares-role-check"], roleCheckWith("role IN ('owner','editor','commenter')")],
+  [["shares-role-check"], roleCheckWith("role IN ('owner','editor','commenter','viewer') OR true")],
+  [["shares-role-check"], roleCheckWith("role NOT IN ('owner','editor','commenter','viewer')")],
+  [["shares-link-token-unique"], "ALTER TABLE shares DROP CONSTRAINT shares_link_token_key"],
   [
-    "shares-role-check",
-    `ALTER TABLE shares DROP CONSTRAINT shares_role_check,
-       ADD CONSTRAINT shares_role_check CHECK (role IN ('owner','editor','commenter','viewer','admin'))`,
+    ["shares-link-token-unique"],
+    `ALTER TABLE shares DROP CONSTRAINT shares_link_token_key;
+     CREATE UNIQUE INDEX shares_link_token_partial ON shares (link_token) WHERE role = 'viewer'`,
   ],
-  ["shares-link-token-unique", "ALTER TABLE shares DROP CONSTRAINT shares_link_token_key"],
-  ["shares-expires-at", "ALTER TABLE shares DROP COLUMN expires_at"],
+  [["shares-expires-at"], "ALTER TABLE shares DROP COLUMN expires_at"],
+  [["shares-expires-at"], "ALTER TABLE shares ALTER COLUMN expires_at TYPE TEXT"],
   [
-    "versions-checksum-unique",
+    ["versions-checksum-unique"],
     "ALTER TABLE document_versions DROP CONSTRAINT document_versions_checksum_unique",
   ],
-  ["documents-row-version", "ALTER TABLE documents DROP COLUMN row_version"],
-  ["comments-row-version", "ALTER TABLE comments DROP COLUMN row_version"],
-  ["comments-parent-fk", "ALTER TABLE comments DROP CONSTRAINT comments_parent_id_fkey"],
-  ["comments-anchor", "ALTER TABLE comments DROP COLUMN anchor"],
-  ["mentions-table", "DROP TABLE comment_mentions"],
-  ["comments-increasing-column", "ALTER TABLE comments DROP COLUMN sequence_number"],
-  ["document-tags-fks", "ALTER TABLE document_tags DROP CONSTRAINT document_tags_tag_id_fkey"],
-  ["document-tags-fks", "ALTER TABLE document_tags DROP CONSTRAINT document_tags_document_id_fkey"],
-  ["document-tags-fks", "DROP TABLE document_tags"],
+  [
+    ["versions-checksum-unique"],
+    `ALTER TABLE document_versions DROP CONSTRAINT document_versions_checksum_unique;
+     ALTER TABLE document_versions ADD CONSTRAINT checksum_alone UNIQUE (checksum)`,
+  ],
+  [["documents-row-version"], "ALTER TABLE documents DROP COLUMN row_version"],
+  [["comments-row-version"], "ALTER TABLE comments DROP COLUMN row_version"],
+  [
+    ["comments-row-version"],
+    `ALTER TABLE comments DROP CONSTRAINT comments_row_version_check;
+     ALTER TABLE comments ALTER COLUMN row_version DROP DEFAULT, ALTER COLUMN row_version TYPE BOOLEAN USING TRUE`,
+  ],
+  [["comments-parent-fk"], "ALTER TABLE comments DROP CONSTRAINT comments_parent_id_fkey"],
+  [
+    ["comments-parent-fk"],
+    `ALTER TABLE comments DROP CONSTRAINT comments_parent_id_fkey;
+     ALTER TABLE comments ADD FOREIGN KEY (parent_id) REFERENCES documents(id)`,
+  ],
+  [["comments-anchor"], "ALTER TABLE comments DROP COLUMN anchor"],
+  [["comments-anchor"], "ALTER TABLE comments DROP COLUMN anchor, ADD COLUMN anchor INTEGER"],
+  [["mentions-table"], "DROP TABLE comment_mentions"],
+  [["mentions-table"], "ALTER TABLE comment_mentions DROP COLUMN mentioned_user_id"],
+  [
+    ["mentions-table"],
+    `DROP TABLE comment_mentions;
+     CREATE TABLE junk_mention (id INT, comment_id UUID REFERENCES comments(id))`,
+  ],
+  [["comments-increasing-column"], "ALTER TABLE comments DROP COLUMN sequence_number"],
+  [
+    ["comments-increasing-column"],
+    "ALTER TABLE comments ALTER COLUMN sequence_number SET INCREMENT BY -1",
+  ],
+  [["comments-increasing-column"], "ALTER TABLE comments ALTER COLUMN sequence_number SET CYCLE"],
+  [
+    ["comments-increasing-column"],
+    "ALTER TABLE comments DROP CONSTRAINT comments_version_sequence_unique",
+  ],
+  [["tags-table", "document-tags-fks"], "DROP TABLE tags CASCADE"],
+  [["document-tags-fks"], "ALTER TABLE document_tags DROP CONSTRAINT document_tags_tag_id_fkey"],
+  [
+    ["document-tags-fks"],
+    "ALTER TABLE document_tags DROP CONSTRAINT document_tags_document_id_fkey",
+  ],
+  [["document-tags-fks"], "DROP TABLE document_tags"],
 ];
+
+// Migrations without the script would silently switch the gated part off
+it("has a migrate script whenever api/migrations exists", () => {
+  expect(!existsSync("migrations") || migrateExists).toBe(true);
+});
 
 const whenMigrateExists = migrateExists ? describe : describe.skip;
 
@@ -131,10 +181,10 @@ whenMigrateExists("the schema built by `npm run migrate` keeps the checklist", (
     expect(await read()).toEqual(before);
   });
 
-  it.each(mutations)("%s turns red when it is dropped: %s", async (id, sql) => {
+  it.each(mutations)("%j turns red after: %s", async (ids, sql) => {
     const copy = await createDatabase(template);
     created.push(copy);
     await runSql(copy, sql);
-    expect(await violationsOf(copy)).toEqual([id]);
+    expect(await violationsOf(copy)).toEqual(ids);
   });
 });
