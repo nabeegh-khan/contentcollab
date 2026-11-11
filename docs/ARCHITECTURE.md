@@ -75,6 +75,34 @@ Certificate: Let's Encrypt can issue the certificate only once `contentcollab.ap
 
 Sources, checked 11 November 2026: [NGINX Gateway Fabric Helm install](https://docs.nginx.com/nginx-gateway-fabric/install/helm/) and [releases](https://github.com/nginx/nginx-gateway-fabric/releases); [cert-manager supported releases](https://cert-manager.io/docs/releases/), [upgrading](https://cert-manager.io/docs/installation/upgrade/), [Gateway API usage](https://cert-manager.io/docs/usage/gateway/), [releases](https://github.com/cert-manager/cert-manager/releases) and `pkg/apis/config/controller/v1alpha1/types.go` at v1.20.5 and v1.21.3; [DigitalOcean: connect to a cluster](https://docs.digitalocean.com/products/kubernetes/how-to/connect-to-cluster/) and [push-to-deploy with GitHub Actions](https://docs.digitalocean.com/products/kubernetes/how-to/deploy-using-github-actions/); `doctl kubernetes options versions` (doctl 2.1.0); [kubectl wait](https://kubernetes.io/docs/reference/kubectl/generated/kubectl_wait/).
 
+### D14. Scaling and rolling updates that drop no requests (decided 11 November, #69)
+
+What the API already has, in `k8s/base/api.yaml`: an `autoscaling/v2` HorizontalPodAutoscaler (2 to 5 pods, 70% average CPU); a PodDisruptionBudget (`minAvailable: 1`); a rolling update with `maxUnavailable: 0` and `maxSurge: 1`; a readiness probe on `/health`; and a 30-second grace period. What each piece does, from the Kubernetes docs:
+
+- **HPA.** Utilization is measured against the container's CPU request (100m here), so the API scales out when its pods average 70m. The desired count is `ceil(current replicas × current / target)`. The controller checks every 15 seconds and does nothing within 10% of the target. It scales down only to the highest recommendation of the last 5 minutes. On DOKS it needs metrics-server, which `scripts/metrics-server.sh` installs (D5).
+- **Rolling update.** `maxUnavailable: 0` keeps every old pod until a new one is ready, and `maxSurge: 1` adds one pod at a time. Both default to 25%, which with two replicas would let a rollout run on one.
+- **PDB.** It limits voluntary disruptions that go through the Eviction API, such as `kubectl drain` and node upgrades. Deployments "are not limited by PDBs when doing rolling upgrades", so the rollout's guarantee comes from `maxUnavailable`, not from the PDB.
+
+The gap is shutdown. When a pod is deleted, the kubelet starts stopping it "at the same time as" the control plane removes it from the Service's EndpointSlices. On SIGTERM the API calls `server.close()` and refuses new connections, while kube-proxy and the Gateway may still send it traffic for a moment, so requests can fail even with `maxUnavailable: 0`.
+
+**Decision:** a `preStop` hook that sleeps 10 seconds before SIGTERM. The pod stops being an endpoint while it still serves; the API then finishes its in-flight requests and exits. The hook uses the kubelet's built-in `sleep` handler, stable since Kubernetes 1.34 (on DOKS 1.37 and on new 1.36 clusters, D13), so the image needs no shell. The hook counts against `terminationGracePeriodSeconds`, which stays at 30 s: 10 s of sleep plus the API's shutdown.
+
+Options it beat:
+- An `exec` hook running `sleep`: it needs a shell binary in the image and its CPU counts against the container.
+- A delay inside the API's SIGTERM handler: that is API code, outside this slice, and it does the same job.
+
+**Where the change lives:** the hook lives in a kustomize component, `k8s/components/graceful-drain`, which both overlays include. `k8s/base/api.yaml` is not edited while #83 changes it; the patch moves into that file after #83 merges.
+
+The web front end gets the same HPA, PDB and hook when its Deployment exists (#47); today there is no `web` Deployment to scale.
+
+**Proof:** shown on a local single-node k3s cluster in Docker before DOKS.
+- Under a steady k6 load through the Service, `scripts/rollout-no-drop.sh` runs `kubectl rollout restart` and fails on any non-2xx response or connection error.
+- It runs first against the old settings (`maxUnavailable: 1`, no hook), which drop requests, then against the new ones.
+- `scripts/hpa-scale.sh` ramps the load and records `kubectl get hpa -w` as the API scales out.
+- Results are in BUILD_LOG.md; the DOKS demo steps are in `docs/DEMO_SCALING.md`.
+
+Sources, checked 11 November 2026: [Horizontal Pod Autoscaling](https://kubernetes.io/docs/concepts/workloads/autoscaling/horizontal-pod-autoscale/); [Deployments: max unavailable, max surge](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/); [Disruptions](https://kubernetes.io/docs/concepts/workloads/pods/disruptions/); [Pod lifecycle: termination](https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle/); [Container lifecycle hooks](https://kubernetes.io/docs/concepts/containers/container-lifecycle-hooks/); [feature gates](https://kubernetes.io/docs/reference/command-line-tools-reference/feature-gates/) (PodLifecycleSleepAction stable from 1.34). DOKS metrics-server: the DigitalOcean HPA guide as cited in `scripts/metrics-server.sh` (checked 6 November), and read-only `helm list` on the cluster (11 November: metrics-server chart 3.14.0, app 0.9.0, installed).
+
 ### D0. Service model
 
 Lecture 1 splits cloud services into IaaS (you manage the OS), PaaS (the provider manages the hosts, you ship containers or code) and FaaS (functions run on events). Assignment 1 was IaaS: a droplet, Nginx, PostgreSQL installed by hand. The project is not that. We use managed Kubernetes, where DigitalOcean runs the control plane and the worker nodes' OS and we run containers (PaaS-style on top of the provider's IaaS), object storage as a service for files, and the provider's metrics and alerts. A DigitalOcean Function is an option for one small event-driven job (a thumbnail when a file lands in Spaces) if we want the serverless advanced feature; it is not in the core path. The point for the proposal: we manage containers and data, not machines.
