@@ -10,7 +10,7 @@ Each row says what we do, where it comes from, and where in ContentCollab it app
 |---|---|---|---|
 | INF-1 | Pick the service model on purpose: IaaS when you need the OS, PaaS when you want to hand off the hosts, FaaS for small event-driven pieces. More abstraction means less to manage and less control | L1 p77-81, L2 p6-10, L3 p86, L6 p45-47 | We run on managed Kubernetes (the provider runs the control plane, we run the containers), object storage as a service for files, and optionally a serverless function for one background job. Heavy VM work was A1; the project is not that |
 | INF-2 | Read machine-specific values at runtime (environment variables, `PORT`), never hard-code them | A1 handout, L3 p6-7, L6 p56 | The same image runs in Compose, minikube and the cluster |
-| INF-3 | Script cloud tasks through the CLI or API and stop early if a required variable is missing | L2 p36, L3 p61-65, p72 | Cluster setup, volume creation and backups live in `scripts/`, not in dashboard clicks |
+| INF-3 | Script cloud tasks through the CLI or API and stop early if a required variable is missing | L2 p36, L3 p61-65, p72 | Cluster setup, volume creation and backups live in `scripts/`, not in dashboard clicks; `cluster-up.sh` checks its tools, the doctl sign-in and every variable before it changes anything, and `DRY_RUN=1` prints the changes instead of making them (D13) |
 | INF-4 | Declare the desired state (replicas) and let the orchestrator replace failed instances and route traffic | L5 p59-61, p69-71, L6 p15-23 | API Deployment with replicas, a Service in front, readiness probes |
 | INF-5 | Roll out updates gradually with versioned image tags; keep the manifest's tag in step | L4 p58-59, L5 p72, L6 p29-30 | CI tags images by commit SHA; a rollout can be undone with one command |
 | INF-6 | Deploy near users and know the cold-start cost | L6 p47, p63-64, p73-74 | Toronto region; the API never scales to zero |
@@ -40,12 +40,12 @@ Each row says what we do, where it comes from, and where in ContentCollab it app
 | SEC-2 | Prefer file-mounted secrets to environment variables for passwords and keys, and grant each secret only to the service that needs it | L5 p27-42, L6 p80-81 (Fly.io secrets are app-wide: a stated trade-off) | Database password mounted into api and worker only; Spaces keys into api and worker; nothing into web |
 | SEC-3 | The app connects as its own database role with only the grants it needs, never the superuser | L2 p74-75, A1 handout | `contentcollab` role owns one database |
 | SEC-4 | Protect API routes with a token in the `Authorization` header; leave only `/health` public | L1 p80, L6 p49-50, p77 (A3) | JWT on every route except health and sign-in |
-| SEC-5 | Force HTTPS | L6 p62 | TLS at the Ingress with cert-manager |
+| SEC-5 | Force HTTPS | L6 p62 | TLS at the Gateway with cert-manager and Let's Encrypt; `cluster-up.sh` exits 1 if the certificate is not issued once DNS points at the Gateway (D11, D13) |
 | SEC-6 | Run as a non-root user; SSH with keys only | L2 p49-50, A1 handout | Dockerfiles set a non-root user; pods run with `runAsNonRoot` |
 | SEC-7 | Escape stored text before rendering it as HTML | A1 (query page) | Comment bodies and filenames are rendered as text, never injected as HTML |
 | SEC-8 | Restrict network paths: firewall, private network, no public database port | L2 p29-34 | Postgres and Redis on ClusterIP Services only |
 | SEC-9 | Share links carry a random token and an expiry, and the role check runs on every request, not only when the link is created | project idea (link access limited to the people shared with) | `shares` table, role middleware |
-| SEC-10 | A Kubernetes Secret is base64, not encryption: keep real values out of Git and out of images, and treat anyone with cluster access as able to read them | L8 p99-105 | `k8s/base/secrets.yaml` is git-ignored; the cluster token and kubeconfig stay with the cluster owner |
+| SEC-10 | A Kubernetes Secret is base64, not encryption: keep real values out of Git and out of images, and treat anyone with cluster access as able to read them | L8 p99-105 | `k8s/base/secrets.yaml` is git-ignored; the cluster token and kubeconfig stay with the cluster owner; CI gets a kubeconfig that expires after 600 seconds, never a stored one (D13) |
 
 ## Data
 
