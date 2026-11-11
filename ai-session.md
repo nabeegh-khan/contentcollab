@@ -323,3 +323,20 @@ The 7 November meeting put the schema and core features ahead of reviews, so PRs
 - Every round went back to a fresh reviewer until it came back clean. Later rounds caught an undo placed so it could go back one revision too far (fixed before the branch was pushed) and loose wording in the build log (corrected on `main`).
 - One check by mistake ran the real `doctl` against the team account; DigitalOcean refused the only change it tried, and a read-only listing confirmed nothing was created. The test harness now refuses to run unless its stubs are the ones on PATH.
 - Decisions went into ARCHITECTURE D6 and the build log on `main` before the branches were pushed. The PRs are not merged: that, and removing the requested reviewers, waits for Nabeegh.
+
+## Bring-up script checked against current versions and made safe to re-run (#54, PR #94), 11 November 2026
+
+### Prompt
+
+Issue #54: the DOKS bring-up script (Gateway controller, cert-manager, the kubeconfig secret for CI). Check every component version and install path against kubernetes.io, DigitalOcean, cert-manager and NGINX Gateway Fabric docs first. Record the architecture choice in ARCHITECTURE.md and PRACTICES.md. Then harden the script with tests for re-runs, missing variables and a certificate that is not issued. Dry run only; no cluster created or deleted.
+
+### AI Response
+
+The pinned cert-manager (1.19) had reached end of life, and cert-manager 1.21 supports Kubernetes up to 1.36, while an unpinned DOKS create gets 1.37. cert-manager's guide recommends upgrading one minor version at a time, and the setting that enables Gateway API support changed name in 1.21. The running cluster is on 1.37 with cert-manager 1.19.2. DigitalOcean's documented CI pattern is a token plus a 10-minute kubeconfig, not a stored kubeconfig. Proposed changes: checks before any change, a dry-run mode, a stepwise cert-manager upgrade, a certificate wait with cert-manager's status on failure, and stub-driven tests.
+
+### What Your Team Did With It
+
+- Kept the token pattern the deploy workflow already used and recorded why in D13. Recorded the version pins with their sources, and kept the running 1.37 cluster: rebuilding it is the cluster owner's decision.
+- Pushed the tests before the fix so CI showed them failing (11 of 13), then fixed the script.
+- An independent review of the fix found three gaps (a certificate never created was reported as not issued, the worker rollout was not waited for, the Datadog path was untested in dry runs). Each got a test that failed first, then a fix.
+- Ran the dry run against the real cluster and checked that nothing changed. The live upgrade and the CI token wait for Nabeegh.

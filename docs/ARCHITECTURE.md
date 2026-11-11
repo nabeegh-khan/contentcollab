@@ -62,7 +62,7 @@ Versions, checked 11 November 2026 against each project's own pages:
 
 | Component | Pinned | Why this one |
 |---|---|---|
-| Kubernetes, new clusters | newest `1.36.x` DOKS offers | cert-manager 1.21 supports Kubernetes 1.33 to 1.36; DOKS offers 1.34 to 1.37 and defaults to the newest, so an unpinned create lands outside that range |
+| Kubernetes, new clusters | newest `1.36.x` DOKS offers | cert-manager 1.21 supports Kubernetes 1.33 to 1.36; DOKS offers 1.34 to 1.37, and `doctl kubernetes cluster create` defaults to `latest` (doctl 2.1.0 help), so an unpinned create lands outside that range |
 | NGINX Gateway Fabric | 2.8.1 (3 November) | latest release; its Helm chart needs Kubernetes 1.32 or later |
 | Gateway API CRDs | 1.6.3, standard channel | the bundle NGINX Gateway Fabric 2.8.1 ships, installed from its own `config/crd` path |
 | cert-manager | v1.21.3 (23 October) | 1.19, installed on 4 November, reached end of life on 8 July 2026; 1.21 and 1.20 are the supported releases |
