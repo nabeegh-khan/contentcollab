@@ -1,6 +1,11 @@
 // Tests for memory-headroom.mjs: how much memory the nodes have left for monitoring (#55, ARCHITECTURE D18).
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { headroom, parseMemory } from "./memory-headroom.mjs";
 
 test("parses Kubernetes memory quantities into MiB", () => {
@@ -120,4 +125,140 @@ test("packing: a smaller cluster agent fits on the node with the most room", () 
 test("packing: an agent too big for the fuller node is reported", () => {
   const r = headroom({ nodes, pods, topNodes, topApi, hpa, agentMi: 400, clusterAgentMi: 1 });
   assert.equal(r.packing.agentOnEachNode, false);
+});
+
+// Review round 2 (pass 1 of the second verification): missing readings, edges and the command itself
+
+test("a node with no reading in kubectl top is refused, not counted as 0 MiB in use", () => {
+  const onlyA = "a   209m   11%   1217Mi   83%\n";
+  assert.throws(() => headroom({ nodes, pods, topNodes: onlyA, topApi, hpa }), /no memory reading for node b/);
+  const unknown = `${onlyA}b   <unknown>   <unknown>   <unknown>   <unknown>\n`;
+  assert.throws(() => headroom({ nodes, pods, topNodes: unknown, topApi, hpa }), /no memory reading for node b/);
+});
+
+test("with no reading for the API pods, the extra pods are counted at their request, and the result says so", () => {
+  const { total, atMax } = headroom({ nodes, pods, topNodes, topApi: "", hpa });
+  assert.equal(atMax.apiUseMeasured, false);
+  assert.equal(atMax.freeUsedMi, total.freeUsedMi - 3 * 128);
+  assert.equal(headroom({ nodes, pods, topNodes, topApi, hpa }).atMax.apiUseMeasured, true);
+});
+
+test("an HPA maximum below today's replicas, or no HPA, adds no pods", () => {
+  assert.equal(headroom({ nodes, pods, topNodes, topApi, hpa: { spec: { maxReplicas: 1 } } }).atMax.extraPods, 0);
+  assert.equal(headroom({ nodes, pods, topNodes, topApi, hpa: undefined }).atMax.extraPods, 0);
+});
+
+test("only pods labelled app=api count as API pods", () => {
+  const withWeb = { items: [...pods.items, pod("web-1", "a", "512Mi", { app: "web" })] };
+  assert.equal(headroom({ nodes, pods: withWeb, topNodes, topApi, hpa }).atMax.extraPods, 3);
+});
+
+test("an agent exactly as large as the memory not in use fits by use", () => {
+  const { atMax } = headroom({ nodes, pods, topNodes, topApi, hpa });
+  assert.equal(headroom({ nodes, pods, topNodes, topApi, hpa, agentMi: atMax.freeUsedMi }).fits.inUse, true);
+  assert.equal(headroom({ nodes, pods, topNodes, topApi, hpa, agentMi: atMax.freeUsedMi + 1 }).fits.inUse, false);
+});
+
+test("packing at the edges: exactly the room left on a node fits", () => {
+  const { nodes: rows } = headroom({ nodes, pods, topNodes, topApi, hpa });
+  const smallest = Math.min(...rows.map((r) => r.freeRequestedMi));
+  const largest = Math.max(...rows.map((r) => r.freeRequestedMi));
+  const edge = headroom({ nodes, pods, topNodes, topApi, hpa, agentMi: smallest, clusterAgentMi: largest - smallest });
+  assert.deepEqual(edge.packing, { agentOnEachNode: true, clusterAgentFits: true });
+  const over = headroom({ nodes, pods, topNodes, topApi, hpa, agentMi: smallest, clusterAgentMi: largest - smallest + 1 });
+  assert.equal(over.packing.clusterAgentFits, false);
+});
+
+test("parses fractions and every decimal suffix, and an absent request as 0", () => {
+  assert.equal(parseMemory("0.5Gi"), 512);
+  assert.equal(parseMemory("1024k"), 1024000 / (1024 * 1024));
+  assert.equal(parseMemory("1T"), 1e12 / (1024 * 1024));
+  assert.equal(parseMemory(null), 0);
+  assert.equal(parseMemory(""), 0);
+});
+
+test("counts a pod as the scheduler does: the larger of its init containers and its containers, plus overhead", () => {
+  const init = {
+    ...pod("init", "a", "128Mi"),
+    spec: {
+      nodeName: "a",
+      initContainers: [{ name: "i", resources: { requests: { memory: "900Mi" } } }],
+      containers: [{ name: "c", resources: { requests: { memory: "128Mi" } } }],
+      overhead: { memory: "10Mi" },
+    },
+  };
+  const { nodes: rows } = headroom({ nodes, pods: { items: [...pods.items, init] }, topNodes, topApi, hpa });
+  assert.equal(rows[0].requestedMi, 974 + 900 + 10);
+});
+
+// The command itself, with kubectl replaced by a stub (never the real cluster: KUBECONFIG points nowhere)
+const SCRIPT = fileURLToPath(new URL("./memory-headroom.mjs", import.meta.url));
+
+function stubKubectl(behaviour) {
+  const dir = mkdtempSync(join(tmpdir(), "mh-stub-"));
+  const answers = {
+    "get nodes": JSON.stringify(nodes),
+    "get pods": JSON.stringify(pods),
+    "top nodes": topNodes,
+    "top pods": topApi,
+    "get hpa": JSON.stringify(hpa),
+    "config current-context": "stub-context\n",
+  };
+  const body = `#!${process.execPath}
+const args = process.argv.slice(2).filter((a, i, all) => a !== "-n" && all[i - 1] !== "-n").join(" ");
+const behaviour = ${JSON.stringify(behaviour)};
+for (const [key, text] of Object.entries(${JSON.stringify(answers)})) {
+  if (args.startsWith(key)) {
+    if (behaviour.fail === key) { process.stderr.write("stub: " + key + " failed\\n"); process.exit(1); }
+    process.stdout.write(text);
+    process.exit(0);
+  }
+}
+process.stderr.write("stub: unexpected " + args + "\\n");
+process.exit(3);
+`;
+  writeFileSync(join(dir, "kubectl"), body, { mode: 0o755 });
+  return dir;
+}
+
+function runScript(env, stubDir) {
+  return spawnSync(process.execPath, [SCRIPT], {
+    encoding: "utf8",
+    env: {
+      PATH: stubDir ?? mkdtempSync(join(tmpdir(), "mh-empty-")),
+      KUBECONFIG: join(tmpdir(), "no-such-kubeconfig"),
+      ...env,
+    },
+  });
+}
+
+test("a size that is not a number of MiB is refused with exit 2 before kubectl runs", () => {
+  for (const value of ["abc", "768Mi", " ", "-5"]) {
+    const r = runScript({ AGENT_MI: value });
+    assert.equal(r.status, 2, `AGENT_MI=${JSON.stringify(value)}`);
+    assert.match(r.stderr, /AGENT_MI/);
+  }
+  assert.equal(runScript({ AGENT_MI: "256", CLUSTER_AGENT_MI: "x" }).status, 2);
+});
+
+const posix = process.platform !== "win32";
+
+test("prints the report and exits 0 with a working kubectl", { skip: !posix && "stub needs a POSIX shebang" }, () => {
+  const r = runScript({ AGENT_MI: "768" }, stubKubectl({}));
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /kubectl context stub-context/);
+  assert.match(r.stdout, /an agent of 768 MiB: does NOT fit by requests/);
+});
+
+test("a failing kubectl call exits 2, also the context lookup after the numbers", { skip: !posix && "stub needs a POSIX shebang" }, () => {
+  const top = runScript({}, stubKubectl({ fail: "top nodes" }));
+  assert.equal(top.status, 2);
+  assert.match(top.stderr, /top nodes failed/);
+  const context = runScript({}, stubKubectl({ fail: "config current-context" }));
+  assert.equal(context.status, 0, context.stderr);
+  assert.match(context.stdout, /kubectl context \(unknown\)/);
+});
+
+test("no kubectl on the PATH exits 2", () => {
+  assert.equal(runScript({}).status, 2);
 });
