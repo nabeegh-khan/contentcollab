@@ -135,6 +135,44 @@ const mutations: [string[], string][] = [
     "ALTER TABLE document_tags DROP CONSTRAINT document_tags_document_id_fkey",
   ],
   [["document-tags-fks"], "DROP TABLE document_tags"],
+  [
+    ["versions-checksum-unique"],
+    `ALTER TABLE document_versions DROP CONSTRAINT document_versions_checksum_unique;
+     ALTER TABLE document_versions ADD CONSTRAINT checksum_number UNIQUE (document_id, checksum, number)`,
+  ],
+  [
+    ["shares-link-token-unique"],
+    `ALTER TABLE shares DROP CONSTRAINT shares_link_token_key;
+     CREATE UNIQUE INDEX shares_link_token_lower ON shares (lower(link_token))`,
+  ],
+  [
+    ["shares-link-token-unique"],
+    `ALTER TABLE shares DROP CONSTRAINT shares_link_token_key;
+     CREATE INDEX shares_link_token_plain ON shares (link_token)`,
+  ],
+  [
+    ["comments-parent-fk"],
+    `ALTER TABLE comments DROP CONSTRAINT comments_parent_id_fkey;
+     ALTER TABLE comments ADD FOREIGN KEY (author_id) REFERENCES comments(id)`,
+  ],
+  [
+    ["document-tags-fks"],
+    `ALTER TABLE document_tags DROP CONSTRAINT document_tags_tag_id_fkey;
+     ALTER TABLE document_tags ADD FOREIGN KEY (tag_id) REFERENCES users(id)`,
+  ],
+  [
+    ["mentions-table"],
+    "ALTER TABLE comment_mentions DROP CONSTRAINT comment_mentions_comment_id_fkey",
+  ],
+  [
+    ["comments-increasing-column"],
+    `ALTER TABLE comments DROP CONSTRAINT comments_version_sequence_unique;
+     CREATE UNIQUE INDEX comments_sequence_partial ON comments (version_id, sequence_number) WHERE resolved`,
+  ],
+  [
+    ["tags-table", "document-tags-fks"],
+    "DROP TABLE tags CASCADE; CREATE VIEW tags AS SELECT gen_random_uuid() AS id, 'x'::text AS name",
+  ],
 ];
 
 // Migrations without the script would silently switch the gated part off

@@ -10,7 +10,8 @@ export type Queryable = {
 export type Check = { id: string; promise: string; run: (db: Queryable) => Promise<boolean> };
 
 const ROLES = ["commenter", "editor", "owner", "viewer"];
-const NOT_ROLES = ["admin", "xyz"];
+// Values the CHECK must refuse: another role, near misses, a different case, empty
+const NOT_ROLES = ["admin", "xyz", "zzz", "Owner", "ADMIN", "", "viewers"];
 const INTEGERS = ["smallint", "integer", "bigint"];
 
 async function exists(db: Queryable, sql: string, params: unknown[] = []): Promise<boolean> {
