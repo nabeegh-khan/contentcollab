@@ -1,0 +1,9 @@
+# API pods leave the Service's endpoints before they stop accepting
+# connections, so a rolling update or a scale-down drops no requests
+# (ARCHITECTURE D14, #69). A component so every overlay gets the same
+# shutdown; it moves into k8s/base/api.yaml once #83 has merged.
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+
+patches:
+  - path: api-prestop.yaml
