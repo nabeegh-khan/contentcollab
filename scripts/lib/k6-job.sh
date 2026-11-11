@@ -5,6 +5,9 @@
 # shellcheck shell=bash
 
 : "${K6_IMAGE:=grafana/k6:2.3.0}"   # github.com/grafana/k6/releases, checked 11 Nov 2026
+# The k6 pod's memory limit, in MiB: the most it can take from a node, so also
+# the free memory a node needs before the load starts
+K6_MEMORY_LIMIT_MI=512
 
 die() {
   echo "$(basename "$0"): $*" >&2
@@ -51,7 +54,7 @@ $envs
           volumeMounts: [{name: script, mountPath: /scripts}]
           resources:
             requests: {cpu: 200m, memory: 128Mi}
-            limits: {cpu: "1", memory: 512Mi}
+            limits: {cpu: "1", memory: ${K6_MEMORY_LIMIT_MI}Mi}
       volumes: [{name: script, configMap: {name: $name}}]
 EOF
   for _ in $(seq 1 60); do
@@ -96,12 +99,67 @@ k6_wait() {  # namespace job seconds
   fi
 }
 
-# Highest memory percentage over the nodes (kubectl top nodes); prints nothing
-# when the metrics API cannot be read or any node has no reading yet
-# (<unknown>), so a missing number is never taken for 0%
-node_memory_max() {
-  kubectl top nodes --no-headers 2>/dev/null \
-    | awk '$5 !~ /^[0-9]+%$/ { bad = 1 } { v = $5; gsub("%", "", v); if (v + 0 > m) m = v + 0 } END { if (NR && !bad) print m + 0 }'
+# The nodes as the cluster reports them, whatever their number or size (the
+# cluster rebuilt on 11 November is not the two 2 GB nodes of the first one):
+# "name instance-type allocatable" per line, from kubectl get nodes
+nodes_raw() {
+  kubectl get nodes --no-headers \
+    -o 'custom-columns=N:.metadata.name,T:.metadata.labels.node\.kubernetes\.io/instance-type,M:.status.allocatable.memory'
+}
+
+# Kubernetes quantity (3074892Ki, 1.6Gi, 1200Mi, plain bytes) to whole MiB;
+# -1 for anything else, so an unreadable figure is never taken for a number
+MIB_AWK='function mib(s,  n, u, f) {
+  if (s !~ /^[0-9]+(\.[0-9]+)?(Ki|Mi|Gi|Ti|k|M|G|T)?$/) return -1
+  n = s; sub(/[A-Za-z]+$/, "", n); u = substr(s, length(n) + 1)
+  f = u == "Ki" ? 1024 : u == "Mi" ? 1048576 : u == "Gi" ? 1073741824 : u == "Ti" ? 1099511627776 : \
+      u == "k" ? 1000 : u == "M" ? 1000000 : u == "G" ? 1000000000 : u == "T" ? 1000000000000 : 1
+  return int(n * f / 1048576)
+}'
+
+# "2 (a s-2vcpu-4gb 3002 MiB allocatable, b ...)"; "unreadable" if kubectl fails
+node_shape() {
+  local raw
+  raw=$(nodes_raw 2>/dev/null) || { echo unreadable; return 0; }
+  printf '%s\n' "$raw" | awk "$MIB_AWK"'
+    NF >= 3 { m = mib($3); n++
+              list = list sep $1 " " $2 " " (m < 0 ? "allocatable unreadable (" $3 ")" : m " MiB allocatable"); sep = ", " }
+    END { if (n) print n " (" list ")"; else print "unreadable" }'
+}
+
+# The node with the least free memory (allocatable minus kubectl top's usage):
+# "name MiB". Prints nothing when any node's usage or allocatable cannot be
+# read (metrics not ready, <unknown>, a unit it does not know), so the check
+# is reported as not done rather than passed on a guess
+node_least_free() {
+  local raw top
+  raw=$(nodes_raw 2>/dev/null) || return 0
+  top=$(kubectl top nodes --no-headers 2>/dev/null) || return 0
+  printf '%s\n--\n%s\n' "$raw" "$top" | awk "$MIB_AWK"'
+    $0 == "--" { part = 2; next }
+    part != 2 && NF >= 3 { alloc[$1] = mib($3); names[++n] = $1; next }
+    part == 2 && NF >= 4 { used[$1] = mib($4) }
+    END {
+      for (i = 1; i <= n; i++) {
+        k = names[i]
+        if (alloc[k] < 0 || !(k in used) || used[k] < 0) exit
+        free = alloc[k] - used[k]
+        if (best == "" || free < least) { least = free; best = k }
+      }
+      if (n) print best " " least
+    }'
+}
+
+# Node autoscaling bounds from the cluster autoscaler's status ConfigMap
+# (DOKS publishes it in kube-system): "min 1, max 2", one entry per node
+# group joined by "; "; nothing when it cannot be read
+autoscaler_bounds() {
+  kubectl -n kube-system get configmap cluster-autoscaler-status -o 'jsonpath={.data.status}' 2>/dev/null \
+    | awk 'function flush() { if (mn != "" && mx != "") { out = out sep "min " mn ", max " mx; sep = "; " } mn = mx = "" }
+           /^- / { flush() }
+           $1 == "minSize:" { mn = $2 }
+           $1 == "maxSize:" { mx = $2 }
+           END { flush(); if (out) print out }'
 }
 
 # A number from the RESULT line: result_field "$line" failures

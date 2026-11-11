@@ -9,8 +9,16 @@
 #
 # NAMESPACE (contentcollab), ACTION (restart or undo), RATE (50 req/s),
 # DURATION (90s of load), WARMUP (10 s of load before the rollout),
-# MAX_NODE_MEMORY_PCT (90: refuses to add a load generator above it),
+# MIN_NODE_FREE_MIB (the k6 pod's memory limit, 512: refuses to add a load
+# generator when the fullest node has less free memory than that),
 # TARGET (the API Service's /metrics).
+#
+# Nothing about the cluster is assumed: it prints the kubectl context, the
+# nodes with their size and allocatable memory, and the node autoscaler's
+# bounds as the cluster reports them, and measures free memory in MiB
+# (allocatable minus use), so the same check holds for one 4 GB node or two
+# 2 GB ones. If the autoscaler adds a node during the run, the printout from
+# before the run does not show it: watch kubectl get nodes alongside.
 #
 # TARGET is /metrics, not /health: /health answers 503 whenever Postgres or
 # Redis misses its check, and the Redis ping gives up after 500 ms, so under
@@ -35,17 +43,21 @@ cd "$(dirname "$0")/.."   # paths relative to the repository root
 : "${RATE:=50}"
 : "${DURATION:=90s}"
 : "${WARMUP:=10}"
-: "${MAX_NODE_MEMORY_PCT:=90}"
+: "${MIN_NODE_FREE_MIB:=$K6_MEMORY_LIMIT_MI}"
 case "$ACTION" in restart|undo) ;; *) die "ACTION '$ACTION' must be restart or undo" ;; esac
 [[ "$NAMESPACE" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$ ]] || die "NAMESPACE '$NAMESPACE' is not a Kubernetes namespace name"
 [[ "$K6_IMAGE" =~ ^[A-Za-z0-9._/:@-]+$ ]] || die "K6_IMAGE '$K6_IMAGE' is not an image reference"
 [[ "$RATE" =~ ^[1-9][0-9]*$ ]] || die "RATE '$RATE' is not a number of requests per second"
 [[ "$WARMUP" =~ ^[0-9]+$ ]] || die "WARMUP '$WARMUP' is not a number of seconds"
-[[ "$MAX_NODE_MEMORY_PCT" =~ ^[1-9][0-9]?$|^100$ ]] || die "MAX_NODE_MEMORY_PCT '$MAX_NODE_MEMORY_PCT' is not a percentage"
+[[ "$MIN_NODE_FREE_MIB" =~ ^[0-9]+$ ]] || die "MIN_NODE_FREE_MIB '$MIN_NODE_FREE_MIB' is not a number of MiB"
 total=$(seconds_of "$DURATION")
 command -v kubectl >/dev/null || die "kubectl is required"
 
-echo "Cluster: $(kubectl config current-context); $ACTION under $RATE req/s for $DURATION on $TARGET"
+ctx=$(kubectl config current-context) && [ -n "$ctx" ]   || die "kubectl has no current context: point it at the cluster first (doctl kubernetes cluster kubeconfig save <name>)"
+echo "Cluster: $ctx; $ACTION under $RATE req/s for $DURATION on $TARGET"
+echo "Nodes: $(node_shape)"
+bounds=$(autoscaler_bounds || true)
+echo "Node autoscaling: ${bounds:-not readable (kube-system/cluster-autoscaler-status)}"
 revision() {
   kubectl -n "$NAMESPACE" get deployment api -o jsonpath='{.metadata.annotations.deployment\.kubernetes\.io/revision}'
 }
@@ -53,14 +65,15 @@ old=$(revision)
 [[ "$old" =~ ^[0-9]+$ ]] || die "cannot read the api Deployment's revision (got '$old'): is NAMESPACE=$NAMESPACE right?"
 kubectl -n "$NAMESPACE" get deployment api -o jsonpath='strategy: {.spec.strategy.rollingUpdate}  preStop: {.spec.template.spec.containers[0].lifecycle.preStop}{"\n"}'
 
-# The nodes are small; a load generator on a full node risks evicting API pods
-mem=$(node_memory_max || true)
-if [ -z "$mem" ]; then
-  echo "warning: node memory not readable (kubectl top nodes), so not checked"
-elif [ "$mem" -gt "$MAX_NODE_MEMORY_PCT" ]; then
-  die "a node is at ${mem}% memory, above MAX_NODE_MEMORY_PCT=$MAX_NODE_MEMORY_PCT: a load generator could get API pods evicted"
+# A load generator on a node without room for it risks evicting API pods. In
+# MiB, not percent: 10% of a 4 GB node is under k6's own limit
+least=$(node_least_free || true)
+if [ -z "$least" ]; then
+  echo "warning: node memory not readable (kubectl get nodes, kubectl top nodes), so not checked"
 else
-  echo "Highest node memory: ${mem}% (limit $MAX_NODE_MEMORY_PCT%)"
+  name=${least% *} free=${least#* }
+  [ "$free" -ge "$MIN_NODE_FREE_MIB" ]     || die "$name has $free MiB free, under MIN_NODE_FREE_MIB=$MIN_NODE_FREE_MIB (k6 may use $K6_MEMORY_LIMIT_MI MiB): a load generator there could get API pods evicted"
+  echo "Least free memory: $name $free MiB (needs $MIN_NODE_FREE_MIB)"
 fi
 
 k6_start "$NAMESPACE" k6-rollout scripts/k6/steady.js "TARGET=$TARGET" "RATE=$RATE" "DURATION=$DURATION"
