@@ -134,3 +134,49 @@ test('nodes above the memory limit: refuses before starting the load or the rest
   const ok = rollout({ STUB_NODE_MEM: '85', MAX_NODE_MEMORY_PCT: '90' });
   assert.equal(ok.code, 0, ok.out);
 });
+
+// Second review round: the checks must fail closed (a pass has to be earned)
+
+test('a RESULT line without a failure count is not a pass', () => {
+  const r = rollout({ STUB_RESULT_MALFORMED: '1' });
+  assert.equal(r.code, 1, r.out);
+  assert.doesNotMatch(r.out, /PASS/);
+  assert.match(r.out, /RESULT/);
+});
+
+test('a kubectl error while reading the load Job is not read as "still running"', () => {
+  const r = rollout({ STUB_JOB_ERR: '1' });
+  assert.equal(r.code, 1, r.out);
+  assert.doesNotMatch(r.out, /PASS/);
+  assert.match(r.out, /Unknown/);
+});
+
+test('a failed load Job stops the run and names the state', () => {
+  const r = rollout({ STUB_JOB_FAILED: '1' });
+  assert.equal(r.code, 1, r.out);
+  assert.doesNotMatch(r.out, /PASS/);
+  assert.match(r.out, /Failed/);
+});
+
+test('a node whose memory is unknown is reported as not checked, never as 0%', () => {
+  for (const env of [{ STUB_NODE_MEM_B: '<unknown>' }, { STUB_NODE_MEM: '<unknown>', STUB_NODE_MEM_B: '70' }]) {
+    const r = rollout(env);
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /not checked/, JSON.stringify(env));
+    assert.doesNotMatch(r.out, /Highest node memory/, JSON.stringify(env));
+  }
+});
+
+test('k6 sending far fewer requests than the rate asks for is a failed run', () => {
+  const r = rollout({ STUB_REQUESTS: '1000' });
+  assert.equal(r.code, 1, r.out);
+  assert.match(r.out, /only 1000 of about 4500/);
+});
+
+test('NAMESPACE and K6_IMAGE are checked before anything is applied', () => {
+  for (const env of [{ NAMESPACE: 'a b' }, { K6_IMAGE: 'grafana/k6:2.3.0;rm' }]) {
+    const r = rollout(env);
+    assert.equal(r.code, 1, JSON.stringify(env));
+    assert.ok(!r.calls.some((c) => /apply|rollout restart/.test(c)), JSON.stringify(env));
+  }
+});
