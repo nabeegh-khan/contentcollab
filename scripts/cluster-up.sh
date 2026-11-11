@@ -23,7 +23,7 @@ cd "$(dirname "$0")/.."   # paths below are relative to the repository root
 # Node pool, region and version of the 11 November rebuild (D13). They apply
 # only to a create; an existing cluster's region is read from doctl
 : "${REGION:=nyc3}"             # tor1 had no capacity on 11 November
-: "${NODE_SIZE:=s-2vcpu-4gb}"   # one 4 GB node holds what two 2 GB nodes held
+: "${NODE_SIZE:=s-2vcpu-4gb}"   # one 4 GB node holds the memory two 2 GB nodes held (half the CPU)
 : "${NODE_COUNT:=1}"
 : "${NODE_MIN:=1}"              # autoscaling bounds
 : "${NODE_MAX:=2}"
@@ -81,8 +81,8 @@ else
   fi
 fi
 # Reading the cluster needs its credentials, which a dry run has only when
-# the cluster already exists. The context is named after the cluster's own
-# region, so a run never acts on whatever context happened to be current
+# the cluster already exists. kubeconfig save switches context by default;
+# the context, named after the cluster's own region, is also selected explicitly
 can_read=1
 if [ -n "$version" ] || [ "$DRY_RUN" = 0 ]; then
   doctl kubernetes cluster kubeconfig save "$CLUSTER_NAME"   # local kubeconfig only
@@ -94,8 +94,8 @@ fi
 
 # 2. Gateway API CRDs (standard channel, the bundle NGF ships) and the NGINX
 #    controller. Creating a Gateway later makes the controller provision a
-#    DigitalOcean load balancer in front of it. DOKS 1.37 installs its own
-#    Gateway API CRDs and its admission policy doks-gateway-api-crd-protection
+#    DigitalOcean load balancer in front of it. DOKS installs its own
+#    Gateway API CRDs (seen on 1.37) and its admission policy doks-gateway-api-crd-protection
 #    refuses changes to them, so each one first gets DigitalOcean's opt-out
 #    (https://docs.digitalocean.com/products/kubernetes/how-to/use-gateway-api/,
 #    checked 11 Nov 2026; D13)

@@ -67,8 +67,8 @@ cluster_info() {
   printf '%s\n' "$list" | awk -v name="$1" '$1 == name { print $2, $3 }'
 }
 
-# Names of the Gateway API CRDs on the cluster. DOKS 1.37 installs its own
-# and protects them until they carry its opt-out annotation (D13)
+# Names of the Gateway API CRDs on the cluster. DOKS installs its own (seen
+# on 1.37) and protects them until they carry its opt-out annotation (D13)
 gateway_api_crds() {
   local list
   list=$(kubectl get crd -o name) || die "could not list CRDs (kubectl get crd)"
