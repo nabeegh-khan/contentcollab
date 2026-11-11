@@ -165,13 +165,14 @@ class RollbackOnFailedRollout(unittest.TestCase):
 
     def test_a_deployment_left_on_the_placeholder_is_undone(self):
         # A pin that matched nothing applies `unpinned`, which cannot be
-        # pulled: that new revision is undone and the run fails
-        self.assertRegex(
-            self.body,
-            r"\*:unpinned\) echo [^\n]*\n"
-            r"kubectl -n contentcollab rollout undo deployment/\$svc \\\n"
-            r"\|\| echo [^\n]*\nfailed=1; continue ;;",
-        )
+        # pulled: the run fails, and the branch falls through to the watch,
+        # whose `rollout status` waits for the new revision before the undo
+        # (an undo straight after the apply could go one revision too far)
+        branch = re.search(r"\*:unpinned\) ([^\n]*(?:\n(?!\*\))[^\n]*)*?;;)", self.body)
+        self.assertIsNotNone(branch, "no case for the placeholder tag")
+        self.assertRegex(branch.group(1), r"failed=1 ;;$")
+        self.assertNotIn("continue", branch.group(1))
+        self.assertNotIn("rollout undo", branch.group(1))
 
     def test_smoke_failure_fails_the_run(self):
         self.assertEqual(shell_lines(step(SMOKE_STEP)["run"])[-1], "exit 1")
