@@ -54,6 +54,8 @@ function bringUp(env = {}) {
         CLUSTER_NAME: 'contentcollab',
         REGION: 'tor1',
         NODE_COUNT: '2',
+        NODE_MIN: '1',
+        NODE_MAX: '3',
         DRY_RUN: '0',
         STUB_CLUSTER: 'contentcollab 1.36.5-do.3',
         STUB_CM_INSTALLED: 'v1.21.3',
@@ -99,6 +101,15 @@ test('rejects an address that is not an email (and an & that sed would expand)',
   }
 });
 
+test('rejects autoscaling bounds that do not bracket NODE_COUNT before any call', () => {
+  for (const env of [{ NODE_MIN: '3' }, { NODE_MAX: '1' }, { NODE_MIN: '0' }, { NODE_MAX: 'many' }]) {
+    const r = bringUp(env);
+    assert.notEqual(r.code, 0, r.out);
+    assert.match(r.out, /NODE_MIN <= NODE_COUNT <= NODE_MAX/);
+    assert.equal(r.calls.filter((c) => / cluster create /.test(c)).length, 0);
+  }
+});
+
 test('rejects a NODE_COUNT that is not a positive number before any call', () => {
   const r = bringUp({ NODE_COUNT: 'two' });
   assert.notEqual(r.code, 0);
@@ -119,6 +130,8 @@ test('creates a missing cluster at the newest 1.36 slug DOKS offers', () => {
   const create = r.calls.filter((c) => /^doctl kubernetes cluster create /.test(c));
   assert.equal(create.length, 1);
   assert.match(create[0], /--version 1\.36\.10-do\.1\b/); // 1.36.10 sorts above 1.36.5
+  assert.match(create[0], / --ha=false /); // omitted, DigitalOcean turns the US$40 control plane on for 1.36+
+  assert.match(create[0], /auto-scale=true;min-nodes=1;max-nodes=3/);
   assert.deepEqual(certManagerVersions(r.calls), ['v1.21.3']); // fresh: straight to the pin
 });
 
