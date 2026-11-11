@@ -123,8 +123,9 @@ test("exits 2 on a threshold that is not a share between 0 and 1", () => {
 
 test("THRESHOLD and MIN_REQUESTS come from the environment", () => {
   const input = lines(...repeat(18, line("/a", 200)), ...repeat(2, line("/a", 500)));
-  assert.equal(run(input, { THRESHOLD: "0.05" }).status, 0);
+  // 2 of 20 is a 10% share
+  assert.equal(run(input, { THRESHOLD: "0.5" }).status, 0);
+  assert.equal(run(input, { THRESHOLD: "0.05" }).status, 1);
   assert.equal(run(input, { THRESHOLD: "0.05", MIN_REQUESTS: "30" }).status, 0);
-  assert.equal(run(input, { THRESHOLD: "0.02", MIN_REQUESTS: "30" }).status, 0);
-  assert.equal(run(input, { THRESHOLD: "0.02", MIN_REQUESTS: "10" }).status, 1);
+  assert.equal(run(input, { THRESHOLD: "0.05", MIN_REQUESTS: "10" }).status, 1);
 });
