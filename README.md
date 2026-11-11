@@ -40,7 +40,7 @@ This is a review tool, not an editor. Live text editing and track changes are ou
 | Frontend | small React app served as static files by its own container |
 | Background jobs | worker container on a Redis queue (BullMQ): Office-to-PDF conversion, bulk imports, thumbnails |
 | Local development | Docker Compose |
-| Monitoring | DigitalOcean metrics and alerts; `/metrics` on the API (Prometheus format), collected with container logs by Datadog |
+| Monitoring | DigitalOcean metrics and alerts; `/metrics` on the API (Prometheus format) and JSON request logs read with `kubectl`; no agent in the cluster (the nodes cannot carry one: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) D18) |
 | CI/CD | GitHub Actions: lint and test on every pull request, build and deploy on merge to `main` |
 
 Advanced features committed in the proposal: security (sign-in, roles, HTTPS, secrets), CI/CD, real-time, and auto-scaling with high availability. Stretch goals: backup and recovery, external email. Everything else on the board is for the final report, not the proposal.
