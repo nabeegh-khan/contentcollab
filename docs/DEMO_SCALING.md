@@ -94,7 +94,7 @@ To see what the hook changes, run section 2 once before this patch and once afte
 - A node is above 90% memory: `rollout-no-drop.sh` refuses to start. Stop other work on the cluster, or lower `RATE`.
 - Pods stuck `Pending` while scaling: the nodes are out of memory or CPU. `kubectl -n contentcollab describe pod <name>` says which. The HPA maximum of 5 may be more than two small nodes hold.
 - A rollout that never finishes: `kubectl -n contentcollab rollout undo deployment/api`.
-- The k6 Job stays around for an hour (`ttlSecondsAfterFinished`); `kubectl -n contentcollab delete job k6-rollout` removes it.
+- The k6 Job is removed an hour after it finishes (`ttlSecondsAfterFinished`), but its ConfigMap, which holds the k6 script, is not. After a run: `kubectl -n contentcollab delete job/k6-rollout configmap/k6-rollout --ignore-not-found`.
 
 ## Not yet verified (first live run)
 
