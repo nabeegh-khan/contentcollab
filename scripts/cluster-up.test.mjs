@@ -6,7 +6,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -31,7 +31,8 @@ exec bash "$0"`;
 function bringUp(env = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'cluster-up-'));
   try {
-    for (const tool of ['doctl', 'kubectl', 'helm', 'curl', 'gh', 'git', 'sleep']) {
+    const tools = ['doctl', 'kubectl', 'helm', 'curl', 'gh', 'git', 'sleep'];
+    for (const tool of tools.filter((t) => t !== env.STUB_HIDE)) {
       writeFileSync(join(dir, tool), STUB);
       chmodSync(join(dir, tool), 0o755);
     }
@@ -64,7 +65,9 @@ function bringUp(env = {}) {
     });
     assert.notEqual(r.status, 99, r.stdout); // stub guard tripped
     const calls = readFileSync(join(dir, 'calls.log'), 'utf8').split('\n').filter(Boolean);
-    return { code: r.status, out: `${r.stdout}${r.stderr}`, calls };
+    const appliedPath = join(dir, 'applied.yaml');
+    const applied = existsSync(appliedPath) ? readFileSync(appliedPath, 'utf8') : '';
+    return { code: r.status, out: `${r.stdout}${r.stderr}`, calls, applied };
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -221,4 +224,118 @@ test('DRY_RUN=1 with a Datadog key changes nothing either', () => {
   assert.equal(r.code, 0, r.out);
   assert.deepEqual(changes(r.calls), []);
   assert.match(r.out, /DRY-RUN: helm upgrade --install datadog-agent/);
+});
+
+// Second review round (30 mutants on d74a04d)
+
+test('IMAGE_TAG defaults to the newest commit touching api, worker, k8s or deploy.yml', () => {
+  const r = bringUp({ IMAGE_TAG: '', STUB_GIT_SHA: 'f00dfeed' });
+  assert.equal(r.code, 0, r.out);
+  const log = r.calls.find((c) => /^git log /.test(c));
+  assert.ok(log, 'git log called');
+  for (const path of ['api', 'worker', 'k8s', '.github/workflows/deploy.yml']) {
+    assert.ok(log.split(' ').includes(path), path); // deploy.yml also builds on worker/**
+  }
+  assert.match(r.applied, /contentcollab-api:f00dfeed/);
+});
+
+test('the applied app uses IMAGE_TAG, never :latest', () => {
+  const r = bringUp({});
+  assert.equal(r.code, 0, r.out);
+  assert.match(r.applied, /contentcollab-api:abc123/);
+  assert.doesNotMatch(r.applied, /contentcollab-api:latest/);
+});
+
+test('an image missing from the registry stops the run before the app is applied', () => {
+  const r = bringUp({ STUB_MANIFEST_CODE: '404' });
+  assert.notEqual(r.code, 0);
+  assert.match(r.out, /no image .*abc123/);
+  assert.doesNotMatch(r.applied, /contentcollab-api/);
+});
+
+test('a failed helm list stops the run instead of reading as "not installed"', () => {
+  const r = bringUp({ STUB_HELM_LIST_RC: '1', STUB_CM_INSTALLED: 'v1.19.2' });
+  assert.notEqual(r.code, 0);
+  assert.deepEqual(certManagerVersions(r.calls), []);
+  assert.match(r.out, /helm list/);
+});
+
+test('helm list includes releases stuck in pending or failed states', () => {
+  const r = bringUp({});
+  assert.ok(r.calls.some((c) => /^helm list .*(--all|-a)\b/.test(c)));
+});
+
+test('a failed cluster list stops the run with no create', () => {
+  const r = bringUp({ STUB_CLUSTER_LIST_RC: '1', STUB_CLUSTER: '' });
+  assert.notEqual(r.code, 0);
+  assert.equal(r.calls.filter((c) => / cluster create /.test(c)).length, 0);
+});
+
+test('cert-manager newer than the pin (even a patch) is refused, never downgraded', () => {
+  for (const v of ['v1.22.0', 'v1.21.5']) {
+    const r = bringUp({ STUB_CM_INSTALLED: v });
+    assert.notEqual(r.code, 0, v);
+    assert.match(r.out, /newer than the pinned/, v);
+    assert.deepEqual(certManagerVersions(r.calls), [], v);
+  }
+});
+
+test('rejects bad DRY_RUN, REGION, NODE_SIZE, IMAGE_TAG and a missing app file before any call', () => {
+  const cases = [
+    [{ DRY_RUN: 'yes' }, /DRY_RUN/],
+    [{ REGION: 'Toronto' }, /REGION/],
+    [{ NODE_SIZE: 's-2vcpu-2gb;count=9' }, /NODE_SIZE/],
+    [{ IMAGE_TAG: 'abc#123' }, /IMAGE_TAG/],
+    [{ SECRETS_FILE: '/nonexistent/app.yaml' }, /missing \/nonexistent\/app\.yaml/],
+  ];
+  for (const [env, msg] of cases) {
+    const r = bringUp(env);
+    assert.notEqual(r.code, 0, JSON.stringify(env));
+    assert.match(r.out, msg, JSON.stringify(env));
+    assert.deepEqual(r.calls, [], JSON.stringify(env));
+  }
+});
+
+test('a missing tool stops the run before any change', () => {
+  // PATH holds only the stubs and /usr/bin:/bin; hide helm
+  const r = bringUp({ STUB_HIDE: 'helm' });
+  assert.notEqual(r.code, 0);
+  assert.match(r.out, /missing tool: helm/);
+  assert.deepEqual(changes(r.calls), []);
+});
+
+test('installs pin the CRD ref, switch off telemetry and wait for each step', () => {
+  const r = bringUp({ STUB_CM_INSTALLED: 'v1.19.2' });
+  assert.equal(r.code, 0, r.out);
+  assert.ok(r.calls.some((c) => /kustomize .*standard\?ref=v2\.8\.1\b/.test(c)));
+  assert.ok(r.calls.some((c) => /^helm upgrade --install ngf .*productTelemetry\.enable=false/.test(c)));
+  for (const c of r.calls.filter((c) => /^helm upgrade --install cert-manager /.test(c))) {
+    assert.match(c, /--wait\b/);
+  }
+  for (const d of ['cert-manager', 'cert-manager-cainjector', 'cert-manager-webhook']) {
+    assert.ok(r.calls.some((c) => c.includes(`-n cert-manager rollout status deployment/${d}`)), d);
+  }
+  assert.ok(r.calls.some((c) => /wait --for=create certificate\/contentcollab-tls/.test(c)));
+});
+
+test('Datadog with a key: checks key and site, installs, restarts an installed agent', () => {
+  const bad = [
+    [{ DATADOG_API_KEY: 'abc-123' }, /DATADOG_API_KEY has characters/],
+    [{ DATADOG_API_KEY: 'abc123', DATADOG_SITE: 'evil.example' }, /not a Datadog site/],
+  ];
+  for (const [env, msg] of bad) {
+    const r = bringUp(env);
+    assert.notEqual(r.code, 0, JSON.stringify(env));
+    assert.match(r.out, msg);
+    assert.equal(r.calls.filter((c) => /datadog-agent/.test(c)).length, 0);
+  }
+  const ok = bringUp({ DATADOG_API_KEY: 'abc123', STUB_DD_INSTALLED: '1' });
+  assert.equal(ok.code, 0, ok.out);
+  assert.ok(ok.calls.some((c) => /^helm upgrade --install datadog-agent .*--version 3\.269\.1/.test(c)));
+  assert.ok(ok.calls.some((c) => /rollout restart daemonset\/datadog-agent/.test(c)));
+  assert.match(ok.applied, /name: datadog-secret/);
+  const dry = bringUp({ DRY_RUN: '1', DATADOG_API_KEY: 'abc123', STUB_DD_INSTALLED: '1' });
+  assert.equal(dry.code, 0, dry.out);
+  assert.deepEqual(changes(dry.calls), []);
+  assert.match(dry.out, /DRY-RUN: kubectl -n datadog rollout restart/);
 });
