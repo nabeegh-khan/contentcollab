@@ -15,10 +15,11 @@
 # node's memory can be read), TARGET (the API Service's /metrics).
 #
 # Every node whose memory can be read must have MIN_NODE_FREE_MIB free, or the
-# run stops before it changes anything. A node with no reading (one the
-# autoscaler has just added has no metrics for about a minute) is named as
-# not checked; if no node can be read the run stops unless
-# ALLOW_UNCHECKED_MEMORY=1.
+# run stops before it changes anything. A node with no reading (for example
+# one the autoscaler has just added, before metrics-server reports it) is
+# named as not checked; if no node can be read the run stops unless
+# ALLOW_UNCHECKED_MEMORY=1. When MIN_NODE_FREE_MIB is set the Deployment is
+# not read for it.
 #
 # Nothing about the cluster is assumed: it prints the kubectl context, the
 # nodes with their size and allocatable memory, and the node autoscaler's
@@ -76,13 +77,16 @@ kubectl -n "$NAMESPACE" get deployment api -o jsonpath='strategy: {.spec.strateg
 # A load generator on a node without room for it risks evicting API pods. In
 # MiB, not percent: 10% of a 4 GB node is under k6's own limit. The rollout
 # also adds maxSurge new api pods beside the old ones, on any node
-api_limit=$(kubectl -n "$NAMESPACE" get deployment api -o 'jsonpath={.spec.template.spec.containers[0].resources.limits.memory}' || true)
-surge=$(kubectl -n "$NAMESPACE" get deployment api -o 'jsonpath={.spec.strategy.rollingUpdate.maxSurge}' || true)
-api_mib=$(quantity_mib "$api_limit")
-[[ -n "$api_mib" && "$surge" =~ ^[0-9]+$ ]] \
-  || die "cannot size the surge: api memory limit '$api_limit', maxSurge '$surge' (a whole number of pods is needed); set MIN_NODE_FREE_MIB"
-if [ -z "$MIN_NODE_FREE_MIB" ]; then
+if [ -n "$MIN_NODE_FREE_MIB" ]; then
+  why="set by MIN_NODE_FREE_MIB"
+else
+  api_limit=$(kubectl -n "$NAMESPACE" get deployment api -o 'jsonpath={.spec.template.spec.containers[0].resources.limits.memory}' || true)
+  surge=$(kubectl -n "$NAMESPACE" get deployment api -o 'jsonpath={.spec.strategy.rollingUpdate.maxSurge}' || true)
+  api_mib=$(quantity_mib "$api_limit")
+  [[ -n "$api_mib" && "$surge" =~ ^[0-9]+$ ]] \
+    || die "cannot size the surge: api memory limit '$api_limit', maxSurge '$surge' (a whole number of pods is needed); set MIN_NODE_FREE_MIB to the MiB the run may add to a node"
   MIN_NODE_FREE_MIB=$((K6_MEMORY_LIMIT_MI + surge * api_mib))
+  why="k6 $K6_MEMORY_LIMIT_MI MiB + $surge surge api pod(s) of $api_mib MiB"
 fi
 report=$(node_free_report || true)
 checked=0 least_name="" least_free=""
@@ -94,7 +98,7 @@ while read -r state name free; do
   fi
   checked=$((checked + 1))
   [ "$free" -ge "$MIN_NODE_FREE_MIB" ] \
-    || die "$name has $free MiB free, under MIN_NODE_FREE_MIB=$MIN_NODE_FREE_MIB (k6 $K6_MEMORY_LIMIT_MI MiB + $surge surge api pod(s) of $api_mib MiB): the run could get API pods evicted"
+    || die "$name has $free MiB free, under MIN_NODE_FREE_MIB=$MIN_NODE_FREE_MIB ($why): the run could get API pods evicted"
   if [ -z "$least_free" ] || [ "$free" -lt "$least_free" ]; then least_name=$name least_free=$free; fi
 done <<< "$report"
 if [ "$checked" -gt 0 ]; then

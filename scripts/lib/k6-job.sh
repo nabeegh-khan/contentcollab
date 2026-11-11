@@ -5,8 +5,8 @@
 # shellcheck shell=bash
 
 : "${K6_IMAGE:=grafana/k6:2.3.0}"   # github.com/grafana/k6/releases, checked 11 Nov 2026
-# The k6 pod's memory limit, in MiB: the most it can take from a node, so also
-# the free memory a node needs before the load starts
+# The k6 pod's memory limit, in MiB: the most it can take from a node, and
+# part of the free memory rollout-no-drop.sh asks a node for
 K6_MEMORY_LIMIT_MI=512
 
 die() {
@@ -107,14 +107,16 @@ nodes_raw() {
     -o 'custom-columns=N:.metadata.name,T:.metadata.labels.node\.kubernetes\.io/instance-type,M:.status.allocatable.memory'
 }
 
-# Kubernetes quantity (3074892Ki, 1.6Gi, 1200Mi, plain bytes) to whole MiB;
+# Kubernetes quantity (3074892Ki, 1.6Gi, 1200Mi, plain bytes) to whole MiB,
+# rounded down (capacity) or, with up set, rounded up (usage), so rounding never
+# adds room;
 # -1 for anything else, so an unreadable figure is never taken for a number
-MIB_AWK='function mib(s,  n, u, f) {
+MIB_AWK='function mib(s, up,  n, u, f, v) {
   if (s !~ /^[0-9]+(\.[0-9]+)?(Ki|Mi|Gi|Ti|k|M|G|T)?$/) return -1
   n = s; sub(/[A-Za-z]+$/, "", n); u = substr(s, length(n) + 1)
   f = u == "Ki" ? 1024 : u == "Mi" ? 1048576 : u == "Gi" ? 1073741824 : u == "Ti" ? 1099511627776 : \
       u == "k" ? 1000 : u == "M" ? 1000000 : u == "G" ? 1000000000 : u == "T" ? 1000000000000 : 1
-  return int(n * f / 1048576)
+  v = n * f / 1048576; return (up && v > int(v)) ? int(v) + 1 : int(v)
 }'
 
 # "2 (a s-2vcpu-4gb 3002 MiB allocatable, b ...)"; "unreadable" if kubectl fails
@@ -140,7 +142,7 @@ node_free_report() {
   printf '%s\n--\n%s\n' "$raw" "$top" | awk "$MIB_AWK"'
     $0 == "--" { part = 2; next }
     part != 2 && NF >= 3 { alloc[$1] = mib($3); names[++n] = $1; next }
-    part == 2 && NF >= 4 { used[$1] = mib($4) }
+    part == 2 && NF >= 4 { used[$1] = mib($4, 1) }
     END {
       for (i = 1; i <= n; i++) {
         k = names[i]
@@ -150,9 +152,10 @@ node_free_report() {
     }'
 }
 
-# A memory quantity from kubectl in whole MiB, or nothing if unreadable
+# A memory limit from kubectl in whole MiB, rounded up (it is added to what a
+# node must have free), or nothing if unreadable
 quantity_mib() {
-  printf '%s\n' "$1" | awk "$MIB_AWK"' { m = mib($1); if (m >= 0) print m }'
+  printf '%s\n' "$1" | awk "$MIB_AWK"' { m = mib($1, 1); if (m >= 0) print m }'
 }
 
 # Node autoscaling bounds from the cluster autoscaler's status ConfigMap
