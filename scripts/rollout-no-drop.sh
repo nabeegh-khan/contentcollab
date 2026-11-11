@@ -19,6 +19,11 @@
 #
 # It fails, rather than passing, when the rollout does not finish while the
 # load is still running, so a pass always means a rollout happened under load.
+# Limits: that check reads the load Job's status once, right after the
+# rollout, and k6 stays up a few seconds after its last request, so keep
+# DURATION at least twice the rollout's length (a restart of two pods took
+# 33 s locally). It also fails when k6 sent under half the requests the rate
+# asks for, or when the Job cannot be read.
 set -euo pipefail
 cd "$(dirname "$0")/.."   # paths relative to the repository root
 # shellcheck source=scripts/lib/k6-job.sh
@@ -32,6 +37,8 @@ cd "$(dirname "$0")/.."   # paths relative to the repository root
 : "${WARMUP:=10}"
 : "${MAX_NODE_MEMORY_PCT:=90}"
 case "$ACTION" in restart|undo) ;; *) die "ACTION '$ACTION' must be restart or undo" ;; esac
+[[ "$NAMESPACE" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$ ]] || die "NAMESPACE '$NAMESPACE' is not a Kubernetes namespace name"
+[[ "$K6_IMAGE" =~ ^[A-Za-z0-9._/:@-]+$ ]] || die "K6_IMAGE '$K6_IMAGE' is not an image reference"
 [[ "$RATE" =~ ^[1-9][0-9]*$ ]] || die "RATE '$RATE' is not a number of requests per second"
 [[ "$WARMUP" =~ ^[0-9]+$ ]] || die "WARMUP '$WARMUP' is not a number of seconds"
 [[ "$MAX_NODE_MEMORY_PCT" =~ ^[1-9][0-9]?$|^100$ ]] || die "MAX_NODE_MEMORY_PCT '$MAX_NODE_MEMORY_PCT' is not a percentage"
@@ -65,10 +72,15 @@ echo "$(date -u +%T) rollout finished"
 new=$(revision)
 [[ "$new" =~ ^[0-9]+$ ]] || die "cannot read the api Deployment's revision after the rollout (got '$new')"
 [ "$new" -gt "$old" ] || die "no new revision after the $ACTION ($old -> $new)"
-[ "$(k6_state "$NAMESPACE" k6-rollout)" = Running ] \
-  || die "the load ended before the rollout finished: raise DURATION (now $DURATION)"
+state=$(k6_state "$NAMESPACE" k6-rollout)
+case "$state" in
+  Running) ;;
+  Done) die "the load ended before the rollout finished: raise DURATION (now $DURATION)" ;;
+  *) die "the load Job is $state, not Running, so the load cannot be shown to have run through the rollout: kubectl -n $NAMESPACE get job k6-rollout" ;;
+esac
 
-log=$(k6_wait "$NAMESPACE" k6-rollout $((total + 60)))
+# The logs are printed even when k6 did not finish cleanly: they say why
+log=$(k6_wait "$NAMESPACE" k6-rollout $((total + 60))) || { printf '%s\n' "$log"; die "the load Job did not finish cleanly"; }
 # k6 wraps console output: time=... level=info msg="FAIL <time> status=..." source=console
 printf '%s\n' "$log" | sed -n 's/.*msg="\(FAIL [^"]*\)".*/\1/p' | head -20
 line=$(printf '%s\n' "$log" | grep '^RESULT ' | tail -n 1)
@@ -77,7 +89,12 @@ requests=$(result_field "$line" requests)
 failures=$(result_field "$line" failures)
 echo "${line#RESULT }"
 echo "Revision $old -> $new: $requests requests, $failures failed"
-[ "${requests:-0}" -gt 0 ] || die "no requests were sent"
+[[ "$requests" =~ ^[0-9]+$ && "$failures" =~ ^[0-9]+$ ]] \
+  || die "the k6 RESULT line has no request count or no failure count, so it proves nothing: $line"
+[ "$requests" -gt 0 ] || die "no requests were sent"
+expected=$((RATE * total))
+[ $((requests * 2)) -ge "$expected" ] \
+  || die "k6 sent only $requests of about $expected expected requests: the load generator was starved, so the result proves little"
 if [ "$failures" -gt 0 ]; then
   echo "FAIL: $failures of $requests requests failed during the rollout" >&2
   exit 1

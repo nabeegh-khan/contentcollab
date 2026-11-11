@@ -68,8 +68,10 @@ EOF
 # Done, Running or Failed
 k6_state() {  # namespace job
   local ok bad
-  ok=$(kubectl -n "$1" get job "$2" -o jsonpath='{.status.succeeded}')
-  bad=$(kubectl -n "$1" get job "$2" -o jsonpath='{.status.failed}')
+  # An unreadable Job is Unknown, never Running: callers need Running to mean
+  # "the load is still on", and a kubectl error must not prove that
+  ok=$(kubectl -n "$1" get job "$2" -o jsonpath='{.status.succeeded}') || { echo Unknown; return 0; }
+  bad=$(kubectl -n "$1" get job "$2" -o jsonpath='{.status.failed}') || { echo Unknown; return 0; }
   if [ "${ok:-0}" -ge 1 ]; then echo Done
   elif [ "${bad:-0}" -ge 1 ]; then echo Failed
   else echo Running
@@ -84,15 +86,22 @@ k6_wait() {  # namespace job seconds
     [ "$state" = Running ] || break
     sleep 5
   done
-  kubectl -n "$1" logs "job/$2"
-  [ "$state" = Done ] || die "k6 job $2 is $state, not Done"
+  # Logs first, even for a Job that did not finish: they say why. Returns
+  # instead of dying, because the caller captures this output and a die inside
+  # $(...) would throw the logs away
+  kubectl -n "$1" logs "job/$2" || true
+  if [ "$state" != Done ]; then
+    echo "k6 job $2 is $state, not Done" >&2
+    return 1
+  fi
 }
 
 # Highest memory percentage over the nodes (kubectl top nodes); prints nothing
-# when the metrics API cannot be read
+# when the metrics API cannot be read or any node has no reading yet
+# (<unknown>), so a missing number is never taken for 0%
 node_memory_max() {
   kubectl top nodes --no-headers 2>/dev/null \
-    | awk '{ gsub("%", "", $5); if ($5 + 0 > m) m = $5 + 0 } END { if (NR) print m + 0 }'
+    | awk '$5 !~ /^[0-9]+%$/ { bad = 1 } { v = $5; gsub("%", "", v); if (v + 0 > m) m = v + 0 } END { if (NR && !bad) print m + 0 }'
 }
 
 # A number from the RESULT line: result_field "$line" failures
