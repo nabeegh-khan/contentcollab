@@ -25,7 +25,7 @@ afterEach(() => rmSync(dir, { recursive: true, force: true }));
 function run(env = {}) {
   const pathKey = Object.keys(process.env).find((k) => k.toLowerCase() === "path") ?? "PATH";
   const base = Object.fromEntries(Object.entries(process.env).filter(([k]) => !SCRUBBED.test(k)));
-  const full = { ...base, [pathKey]: `${join(dir, "bin")}${delimiter}${process.env[pathKey]}`, KUBECONFIG: join(dir, "none"), STUB_DIR: dir, SLEEP_SCALE: "0", ...env };
+  const full = { ...base, [pathKey]: `${join(dir, "bin")}${delimiter}${process.env[pathKey]}`, KUBECONFIG: join(dir, "none"), STUB_DIR: dir, RETRY_WAIT: "0", ...env };
   const found = spawnSync("bash", ["-c", "command -v kubectl"], { env: full, encoding: "utf8" }).stdout.trim();
   if (!found.includes(basename(dir))) throw new Error(`kubectl resolves to '${found}', not the stub: refusing to run`);
   const r = spawnSync("bash", ["scripts/restart-test.sh"], { cwd: root, env: full, encoding: "utf8", timeout: 60_000 });

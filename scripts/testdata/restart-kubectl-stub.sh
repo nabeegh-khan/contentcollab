@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # Stand-in kubectl for scripts/restart-test.test.mjs. Logs its arguments to $STUB_DIR/kubectl.argv and the
 # events that replace the postgres pod to $STUB_DIR/events, so a pod's UID changes only when it was replaced.
 #   STUB_FORGET=<delete|restart|scale|drain>  reads after that event find no marker (the data was lost)
