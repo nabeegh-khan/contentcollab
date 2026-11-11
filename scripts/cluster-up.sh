@@ -4,7 +4,8 @@
 # Gateway Fabric, cert-manager with a Let's Encrypt issuer, the app Secret and
 # the app. Every step can be re-run (INF-3). DRY_RUN=1 makes every check and
 # prints each change instead of making it; it may save the cluster's
-# credentials to the local kubeconfig so it can read what is installed.
+# credentials to the local kubeconfig and select its context, so it can read
+# what is installed.
 # Design, versions and sources: docs/ARCHITECTURE.md D13.
 #
 # Needs: doctl (signed in with `doctl auth init`), kubectl, helm, curl; gh to

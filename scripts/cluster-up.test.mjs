@@ -120,6 +120,7 @@ test('defaults create the cluster the 11 November rebuild made (D13)', () => {
   assert.match(create[0], / --region nyc3 /);
   assert.match(create[0], / --version 1\.37\.0-do\.3 /);
   assert.match(create[0], /size=s-2vcpu-4gb;count=1;auto-scale=true;min-nodes=1;max-nodes=2/);
+  assert.match(r.out, /warning: Kubernetes 1\.37\.0-do\.3 is above 1\.36/); // cert-manager 1.21's newest
 });
 
 // DOKS 1.37 installs its own Gateway API CRDs and its admission policy
