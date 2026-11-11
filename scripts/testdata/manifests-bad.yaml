@@ -55,3 +55,118 @@ spec:
             requests:
               cpu: 10m
               memory: 16Mi
+---
+# Probe ports that name nothing, a digit string, a container that says it may
+# run as root under a pod that does not, and an init container with no tag,
+# resources or port name
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: named-wrong
+spec:
+  selector:
+    matchLabels:
+      app: named-wrong
+  template:
+    metadata:
+      labels:
+        app: named-wrong
+    spec:
+      securityContext:
+        runAsNonRoot: true
+      initContainers:
+        - name: init
+          image: busybox
+          ports:
+            - containerPort: 9000
+      containers:
+        - name: main
+          image: ghcr.io/nabeegh-khan/contentcollab-api:latest
+          securityContext:
+            runAsNonRoot: false
+          ports:
+            - name: http
+              containerPort: 3000
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: web
+          startupProbe:
+            tcpSocket:
+              port: "3000"
+          resources:
+            requests: {cpu: 10m, memory: 16Mi}
+            limits: {cpu: 50m, memory: 32Mi}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wrong-target
+spec:
+  selector:
+    app: named-wrong
+  ports:
+    - port: 80
+      targetPort: nope
+---
+# Whole-name match: "post" is not exempt just because "postgres" is
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: post
+spec:
+  selector:
+    matchLabels:
+      app: post
+  template:
+    metadata:
+      labels:
+        app: post
+    spec:
+      containers:
+        - name: post
+          image: post:1
+          resources:
+            requests: {cpu: 10m, memory: 16Mi}
+            limits: {cpu: 50m, memory: 32Mi}
+---
+# Must NOT be reported: the exempt workload, a Job, a Service with no selector
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+spec:
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:18
+          resources:
+            requests: {cpu: 10m, memory: 16Mi}
+            limits: {cpu: 50m, memory: 32Mi}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: migrate
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: migrate
+          image: untagged
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: external
+spec:
+  type: ExternalName
+  externalName: example.com
