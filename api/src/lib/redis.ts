@@ -1,7 +1,12 @@
 import type { EventEmitter } from "node:events";
 import { createClient } from "redis";
+import { log as writeLog } from "./log.js";
 
-const url = `redis://${process.env.REDIS_HOST ?? "localhost"}:${process.env.REDIS_PORT ?? 6379}`;
+// A state change of the Redis connection as one JSON line (ARCHITECTURE D16)
+const logAsJson = (line: string): void => writeLog("warn", line, { component: "redis" });
+
+const DEFAULT_REDIS_PORT = 6379;
+const url = `redis://${process.env.REDIS_HOST ?? "localhost"}:${process.env.REDIS_PORT ?? DEFAULT_REDIS_PORT}`;
 
 export const redis = createClient({ url });
 
@@ -13,7 +18,7 @@ export const redis = createClient({ url });
  */
 export function logStateChanges(
   client: Pick<EventEmitter, "on">,
-  log: (line: string) => void = console.error,
+  log: (line: string) => void = logAsJson,
 ) {
   let down = false;
   let connectedBefore = false;

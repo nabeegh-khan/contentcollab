@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import { EventEmitter } from "node:events";
 import { createServer, type AddressInfo } from "node:net";
 import { createClient } from "redis";
+import { captureStdout } from "./logCapture.js";
 import { logStateChanges, pingRedis } from "./redis.js";
 
 // A port that was listening and then closed stands in for Redis being down
@@ -84,5 +85,23 @@ describe("logStateChanges", () => {
       "redis: Socket closed unexpectedly (retrying; further errors not logged until Redis is back)",
       "redis: connected again",
     ]);
+  });
+});
+
+describe("logStateChanges default writer", () => {
+  it("writes one JSON line per state change, marked as the redis component", () => {
+    const out = captureStdout();
+    try {
+      const client = new EventEmitter();
+      logStateChanges(client);
+      client.emit("error", new Error("connect ECONNREFUSED"));
+      const [line, ...rest] = out.lines();
+      expect(rest).toHaveLength(0);
+      expect(line?.component).toBe("redis");
+      expect(line?.level).toBe("warn");
+      expect(line?.msg).toContain("redis: connect ECONNREFUSED");
+    } finally {
+      out.restore();
+    }
   });
 });
