@@ -111,6 +111,18 @@ jobs:
             [ -z "$stray" ] || { echo "::error::$overlay renders objects outside contentcollab: $stray"; exit 1; }
           done
 
+      - name: Lecture 8 rows on the rendered overlays
+        # INF-8 to INF-11, OBS-5 and SEC-6 of docs/PRACTICES.md, read from
+        # what each overlay renders (docs/CLUSTER_AUDIT.md). The first line
+        # proves the check can fail: it must report every row on a bad fixture.
+        # yq 4 is preinstalled on the Ubuntu runner.
+        run: |
+          bash scripts/check-manifests.test.sh
+          for overlay in minikube doks; do
+            echo "== $overlay"
+            bash scripts/check-manifests.sh < /tmp/$overlay.yaml
+          done
+
   worker:
     runs-on: ubuntu-latest
     defaults:
