@@ -100,7 +100,8 @@ To see what the hook changes, run section 2 once before this patch and once afte
 ## If something goes wrong
 
 - A node has less free memory than the run can add (768 MiB on 11 November): `rollout-no-drop.sh` refuses to start and names the node and the figures. Stop other work on the cluster, or wait for the HPA to scale back to 2. `MIN_NODE_FREE_MIB` changes the threshold; lowering it below what the run adds risks evictions.
-- `warning: <node>: memory not readable, not checked`: that node had no metrics, so the run stopped before changing anything. Run again once `kubectl top nodes` lists it, or set `ALLOW_UNCHECKED_MEMORY=1` to go ahead without that node checked.
+- `warning: <node>: memory not readable, not checked`: that node had no metrics, or a memory figure the script cannot read. Without `ALLOW_UNCHECKED_MEMORY=1` the run then stops before changing anything; run again once `kubectl top nodes` lists the node, or set it to go ahead without that node checked.
+- `ACTION=undo` sizes the surge from the Deployment's current pod template, not the previous revision's. If the previous revision had a larger api memory limit, set `MIN_NODE_FREE_MIB` to cover it.
 - Pods stuck `Pending` while scaling: the nodes are out of memory or CPU. `kubectl -n contentcollab describe pod <name>` says which. With node autoscaling, the autoscaler adds a node up to its maximum (`kubectl get nodes -w`); at the maximum, pods stay `Pending`.
 - A rollout that never finishes: `kubectl -n contentcollab rollout undo deployment/api`.
 - The k6 Job is removed an hour after it finishes (`ttlSecondsAfterFinished`), but its ConfigMap, which holds the k6 script, is not. After a run: `kubectl -n contentcollab delete job/k6-rollout configmap/k6-rollout --ignore-not-found`.
