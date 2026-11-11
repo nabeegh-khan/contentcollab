@@ -289,6 +289,24 @@ PR #76 was stacked on #71, which was squash-merged, so it conflicted with main i
 - A stub test of the rollout and smoke scripts under `bash -e` passes nine cases (four failed before the fixes); #83's own deploy test passes 9 of 9 on the two branches combined; CI green.
 - Wrote the merge order (#83 first) and the exact conflict resolution into the description; review requested from a teammate, due 11 November.
 
+## Redis-down start reviewed: /health answers at once and the reconnect is tested (#65, PR #75), 10 November 2026
+
+### Prompt
+
+Our fix for #65 opens the port before connecting to Redis. We reviewed it against the diff, the issue and our practices, and checked each finding against the code and the node-redis 6.3.0 source before acting. We asked: with Redis down, what does the kubelet actually see from /health, does the CI step prove Redis was the cause, and does the same process recover when Redis returns?
+
+### AI Response
+
+Eight findings. The main one: with Redis down, a ping waits in the client's offline queue for its 5 s command timeout, so the readiness probe (1 s default) times out instead of reading the 503. The other seven: the CI step accepted any 503 although the job has no Postgres, so it only proved the port was open; no curl or job timeout; the reconnect was claimed but not tested; no unit test covered the ping while Redis is down; every retry was logged (about one line every 2 s); the `.catch` message said "first connect failed" when, with the default retry strategy, connect() keeps retrying and does not reject; and a CI comment said the Redis service was there for a check nothing made. A second, independent pass found one more: once a command is written to the socket it has no timeout, so a paused Redis could still hold /health past 1 s.
+
+### What Your Team Did With It
+
+- Measured before changing anything: a ping to a closed port took 5009 ms; with a readiness guard, under 1 ms.
+- Wrote a Jest test first (fails with "Exceeded timeout of 5000 ms"), then made `pingRedis` return false at once while the client is not ready.
+- The CI step now reads the body within 1 s, then starts Redis on the API's port and requires `"redis":"ok"` from the same container with no restart. Run locally on a Docker network: passes on this branch, fails on the PR's previous head and on main.
+- Errors are logged once per outage, with "connected" or "connected again" when Redis is back; the reworded `.catch` says when it can fire and what follows.
+- For the paused Redis: a second test first (a ping that never settles), then a 500 ms limit on the ping. Against a real Redis under `CLIENT PAUSE 3000`: false in 501 ms, true again after the pause.
+
 ## Self-review of three cloud PRs while teammates build the core (#27, #55, #82; PRs #61, #62, #83), 10 November 2026
 
 ### Prompt
@@ -306,6 +324,23 @@ The 7 November meeting put the schema and core features ahead of reviews, so PRs
 - One check by mistake ran the real `doctl` against the team account; DigitalOcean refused the only change it tried, and a read-only listing confirmed nothing was created. The test harness now refuses to run unless its stubs are the ones on PATH.
 - Decisions went into ARCHITECTURE D6 and the build log on `main` before the branches were pushed. The PRs are not merged: that, and removing the requested reviewers, waits for Nabeegh.
 
+## Bring-up script checked against current versions and made safe to re-run (#54, PR #94), 11 November 2026
+
+### Prompt
+
+Issue #54: the DOKS bring-up script (Gateway controller, cert-manager, the kubeconfig secret for CI). Check every component version and install path against kubernetes.io, DigitalOcean, cert-manager and NGINX Gateway Fabric docs first. Record the architecture choice in ARCHITECTURE.md and PRACTICES.md. Then harden the script with tests for re-runs, missing variables and a certificate that is not issued. Dry run only; no cluster created or deleted.
+
+### AI Response
+
+The pinned cert-manager (1.19) had reached end of life, and cert-manager 1.21 supports Kubernetes up to 1.36, while an unpinned DOKS create gets 1.37. cert-manager's guide recommends upgrading one minor version at a time, and the setting that enables Gateway API support changed name in 1.21. The running cluster is on 1.37 with cert-manager 1.19.2. DigitalOcean's documented CI pattern is a token plus a 10-minute kubeconfig, not a stored kubeconfig. Proposed changes: checks before any change, a dry-run mode, a stepwise cert-manager upgrade, a certificate wait with cert-manager's status on failure, and stub-driven tests.
+
+### What Your Team Did With It
+
+- Kept the token pattern the deploy workflow already used and recorded why in D13. Recorded the version pins with their sources, and kept the running 1.37 cluster: rebuilding it is the cluster owner's decision.
+- Pushed the tests before the fix so CI showed them failing (11 of 13), then fixed the script.
+- An independent review of the fix found three gaps (a certificate never created was reported as not issued, the worker rollout was not waited for, the Datadog path was untested in dry runs). Each got a test that failed first, then a fix.
+- Ran the dry run against the real cluster and checked that nothing changed. The live upgrade and the CI token wait for Nabeegh.
+
 ## DigitalOcean project, Spaces bucket and the app Secret (#53), 11 November 2026
 
 ### Prompt
@@ -314,10 +349,11 @@ Prepare issue #53 without touching the account: check Spaces pricing and access-
 
 ### AI Response
 
-Spaces access keys can only be created in the Control Panel and the CLI cannot create a bucket, so the plan is a project script, a runbook for the two Control Panel steps, a script that proves the key, and a script that makes the Secret without a file. Reading the code turned up two problems: client-side `kubectl apply` of a filled-in Secret copies every value in plain text into an annotation (the minikube steps and `cluster-up.sh` did that), and the migration Job in #88 gives its init container the whole Secret, including the storage keys. Running the scripts for real, against throwaway local servers, found two faults the stub tests could not: a Windows temp path the AWS CLI cannot open, and a loop variable that overwrote a function's local in bash.
+Spaces access keys can only be created in the Control Panel and the CLI cannot create a bucket, so the plan is a project script, a runbook for the two Control Panel steps, a script that proves the key, and a script that makes the Secret without a file. Reading the code turned up two problems: client-side `kubectl apply` of a filled-in Secret copies every value in plain text into an annotation (the minikube steps did, and `cluster-up.sh` still does), and the migration Job in #88 gives its init container the whole Secret, including the storage keys. Running the scripts for real, against throwaway local servers, found two faults the stub tests could not: a Windows temp path the AWS CLI cannot open, and a loop variable that overwrote a function's local in bash.
 
 ### What Your Team Did With It
 
 - Wrote the decision, the options not taken, the cost and the sources into the build log before any script; wrote each test first (the template check failed on the old template, the 24 script tests failed with no scripts) and checked the tests with ten deliberate breakages of the scripts, one of which got through and now has a test.
 - Ran `spaces-verify.sh` with the AWS CLI against a local S3 gateway and `app-secret.sh` with kubectl against a local k3s cluster, using made-up keys and the cluster's own kubeconfig, never the account or the DOKS context. Nothing was created on DigitalOcean: the project, bucket, key and Secret are commands and Control Panel steps for Nabeegh to run (`k8s/README.md`).
+- Changed `cluster-up.sh` to call the new script, then dropped that change: the open PR #94 rewrites the same file and its tests would break. The follow-up is written down for after #94 merges.
 - Read #88 and #89 without editing them. The one point for #88 (its init container should read `DB_USER` by key) is in the build log, and a new test reports it once both are merged.

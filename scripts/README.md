@@ -1,6 +1,25 @@
 # scripts
 
-Repeatable operations as scripts, so nothing important lives in dashboard clicks: create the cluster, create the volume, run migrations, take a backup, restore a backup, `smoke.sh` (the curl checks run before every demo), `sync-practices.py` (copies the applicable rows of `docs/PRACTICES.md` into each folder README), `meeting-actions.py` (turns a meeting's Actions table into GitHub Issues through the GitHub CLI), and `loadtest.mjs` (stepped load against the deployed API for the autoscaling test in #69: sent and served req/s, p50 and p95 latency of successful requests, errors and ready API replicas per step, or a rolling restart under load with `ROLLOUT=1`, which exits 1 if the rollout fails or does not finish; results and column meanings in `docs/loadtest/`; it refuses to start while the HPA cannot read CPU, and warns and continues when no cluster is reachable), `metrics-server.sh` (installs metrics-server, pinned, so the HPA can read CPU), `hpa-ready.mjs` (exits 1 with the reason while it cannot), and for object storage and the app Secret (#53, steps in `k8s/README.md`): `do-project.sh` (the DigitalOcean project, found by name or created once), `app-secret.sh` (creates or updates the `app-secrets` Secret from the environment, the existing Secret, a prompt or generated values, over stdin and never as an argument; keeps `DB_PASSWORD` and `JWT_SECRET` once set; `RESTART=1` restarts api and worker) and `spaces-verify.sh` (proves a Spaces key can put, upload in parts, copy and delete, that an anonymous read is refused and, with `FOREIGN_BUCKET`, that the key is refused on another bucket). `*.test.mjs` run in CI with `node --test scripts/*.test.mjs`; the script tests run the shell scripts against stand-ins for kubectl, doctl, the AWS CLI and curl in `testdata/`, and refuse to run unless the stand-ins are the ones on PATH. Every script exits early if a required environment variable is missing.
+Repeatable operations as scripts, so nothing important lives in dashboard clicks. Every script exits early if a required environment variable is missing.
+
+| Script | What it does | Needs |
+|---|---|---|
+| `cluster-up.sh` | Creates the DOKS cluster, installs the Gateway controller, cert-manager and (optionally) the Datadog agent, applies the Secret and the doks overlay | `doctl`, `kubectl`, `helm`, `LETSENCRYPT_EMAIL`; `DATADOG_API_KEY` optional |
+| `cluster-down.sh` | Deletes the cluster, its load balancer and volumes after grading | `doctl` (authenticated with `doctl auth init`) |
+| `alerts.sh` | DigitalOcean alert policies on the nodes: CPU, memory, disk above 80% for five minutes, one set per cluster (a rebuilt cluster gets new ones; delete the old with `doctl monitoring alert delete`) | `doctl` (authenticated), the cluster up, `ALERT_EMAIL` (the account's email or a verified team member's) |
+| `smoke.sh` | The curl checks run before every demo: `/health` with both dependencies ok, `/metrics` present (through a port-forward only; the Gateway does not route it), an unknown `/api` route is the API's 404. Once the `SMOKE_URL` variable is set, `deploy.yml` checks `/health` after each rollout itself | `BASE` (default `http://localhost:3000`); `METRICS_BASE` when `BASE` is the deployed URL |
+| `loadtest.mjs` | Stepped load against the deployed API for the autoscaling test (#69): sent and served req/s, p50 and p95 latency of successful requests, errors and ready API replicas per step, or a rolling restart under load with `ROLLOUT=1`, which exits 1 if the rollout fails or does not finish. Results and column meanings in `docs/loadtest/`. Refuses to start while the HPA cannot read CPU; warns and continues when no cluster is reachable | Node, a reachable API |
+| `metrics-server.sh` | Installs metrics-server, pinned, so the HPA can read CPU | `kubectl`, a cluster |
+| `hpa-ready.mjs` | Exits 1 with the reason while the HPA cannot read CPU | `kubectl`, a cluster |
+| `sync-practices.py` | Copies the applicable rows of `docs/PRACTICES.md` into each folder README | Python |
+| `meeting-actions.py` | Turns a meeting's Actions table into GitHub Issues | GitHub CLI |
+| `do-project.sh` | The DigitalOcean project `ContentCollab`, found by exact name or created once (#53; steps in `k8s/README.md`) | `doctl` (authenticated) |
+| `app-secret.sh` | Creates or updates the `app-secrets` Secret from the environment, the existing Secret, a prompt or generated values, over stdin and never as an argument; keeps `DB_PASSWORD` and `JWT_SECRET` once set; removes the plain-text annotation a client-side apply leaves; `RESTART=1` restarts api and worker | `kubectl`; `SPACES_KEY` and `SPACES_SECRET` in the environment or typed at a prompt |
+| `spaces-verify.sh` | Proves a Spaces key can put, upload in parts, copy and delete, that an anonymous read is refused and, with `FOREIGN_BUCKET`, that the key is refused on another bucket; deletes what it wrote | AWS CLI v2, `curl`, `SPACES_KEY` and `SPACES_SECRET` |
+
+`*.test.mjs` run in CI with `node --test scripts/*.test.mjs`. The tests of the shell scripts run them against stand-ins for kubectl, doctl, the AWS CLI and curl in `testdata/`, and refuse to run unless the stand-ins are the ones on PATH.
+
+Still to write: the migrations Job wrapper (API slice) and backup and restore (backup slice).
 
 <!-- PRACTICES:start -->
 
@@ -10,7 +29,7 @@ From [`docs/PRACTICES.md`](../docs/PRACTICES.md) (generated by `scripts/sync-pra
 
 | ID | Practice | Here |
 |---|---|---|
-| INF-3 | Script cloud tasks through the CLI or API and stop early if a required variable is missing | Cluster setup, volume creation and backups live in `scripts/`, not in dashboard clicks |
+| INF-3 | Script cloud tasks through the CLI or API and stop early if a required variable is missing | Cluster setup, volume creation and backups live in `scripts/`, not in dashboard clicks; `cluster-up.sh` checks its tools, the doctl sign-in and every variable before it changes anything, and `DRY_RUN=1` prints the changes instead of making them (D13) |
 | INF-7 | Destroy what you are not using; stopped machines and detached volumes still bill | Cluster deleted after grades; a budget line in the proposal |
 | SEC-1 | Secrets in environment or a secret store, never in code or images; commit only `.env.example` | `.env` is ignored; Kubernetes Secrets in the cluster |
 | DB-3 | Volumes are not backups and not shared storage | Nightly `pg_dump` to Spaces; files never written to a pod's disk |
