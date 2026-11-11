@@ -21,6 +21,7 @@ case "$tool" in
       *" apply "*) cat >/dev/null ;;
       *" kustomize "*) printf 'kind: Deployment\nspec:\n  template:\n    spec:\n      containers:\n        - image: ghcr.io/nabeegh-khan/contentcollab-api:latest\n' ;;
       *" get gateway "*) printf '%s' "${STUB_GW_ADDR:-}" ;;
+      *" wait "*"--for=create"*) exit "${STUB_CERT_CREATE_RC:-0}" ;;
       *" wait "*"--for=condition=Ready"*) exit "${STUB_CERT_WAIT_RC:-0}" ;;
       *" get certificate,"*) echo "challenge/contentcollab-tls-1  pending  Waiting for HTTP-01 challenge propagation: wrong status code '404'" ;;
     esac ;;
@@ -35,7 +36,7 @@ case "$tool" in
   curl)
     case "$args" in
       *"ghcr.io/token"*) echo '{"token":"t"}' ;;
-      *"/manifests/"*) printf 200 ;;
+      *"/manifests/"*|*"/api/v1/validate"*) printf 200 ;;
       *"remote_ip"*) printf '%s' "${STUB_DNS_IP:-}" ;;
       *) echo '{"status":"ok"}' ;;
     esac ;;

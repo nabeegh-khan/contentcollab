@@ -188,7 +188,37 @@ test('certificate issued: reports it and exits 0', () => {
 });
 
 test('CI token missing: prints the gh command that sets it, and still exits 0', () => {
-  const r = bringUp({ STUB_GH_NAMES: 'PROJECT_TOKEN' });
+  for (const names of ['PROJECT_TOKEN', 'DIGITALOCEAN_ACCESS_TOKEN_OLD']) {
+    const r = bringUp({ STUB_GH_NAMES: names });
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /gh secret set DIGITALOCEAN_ACCESS_TOKEN/, names);
+  }
+});
+
+test('a cluster with a similar name is not this cluster', () => {
+  const r = bringUp({ STUB_CLUSTER: 'contentcollab-old 1.36.5-do.3', STUB_CM_INSTALLED: '' });
   assert.equal(r.code, 0, r.out);
-  assert.match(r.out, /gh secret set DIGITALOCEAN_ACCESS_TOKEN/);
+  assert.equal(r.calls.filter((c) => /^doctl kubernetes cluster create contentcollab /.test(c)).length, 1);
+});
+
+test('certificate never created by cert-manager: says so, not "not issued"', () => {
+  const r = bringUp({ STUB_CERT_CREATE_RC: '1' });
+  assert.equal(r.code, 1, r.out);
+  assert.match(r.out, /cert-manager did not create certificate\/contentcollab-tls/);
+  assert.doesNotMatch(r.out, /not issued within/);
+});
+
+test('waits for both the api and the worker rollouts', () => {
+  const r = bringUp({});
+  assert.equal(r.code, 0, r.out);
+  for (const d of ['api', 'worker']) {
+    assert.ok(r.calls.some((c) => c.includes(`rollout status deployment/${d}`)), d);
+  }
+});
+
+test('DRY_RUN=1 with a Datadog key changes nothing either', () => {
+  const r = bringUp({ DRY_RUN: '1', DATADOG_API_KEY: 'abc123', STUB_CLUSTER: 'contentcollab 1.37.0-do.2' });
+  assert.equal(r.code, 0, r.out);
+  assert.deepEqual(changes(r.calls), []);
+  assert.match(r.out, /DRY-RUN: helm upgrade --install datadog-agent/);
 });
