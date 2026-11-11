@@ -82,11 +82,11 @@ jobs:
   k8s:
     runs-on: ubuntu-latest
     env:
-      # The Kubernetes version every manifest is validated against, set once.
-      # 1.36 is the version new clusters are created at (ARCHITECTURE D13) and
-      # is maintained until 28 Jun 2027; 1.33 reached end of life on 28 Jun
-      # 2026 (kubernetes.io/releases, checked 11 Nov 2026)
-      KUBE_VERSION: "1.36.0"
+      # The Kubernetes versions every manifest is validated against, set once:
+      # 1.36, the plan in ARCHITECTURE D13 (maintained until 28 Jun 2027), and
+      # 1.37, which the cluster rebuilt on 11 Nov 2026 runs (D13). 1.33 reached
+      # end of life on 28 Jun 2026 (kubernetes.io/releases, checked 11 Nov 2026)
+      KUBE_VERSION: "1.36.0 1.37.0"
     steps:
       - uses: actions/checkout@v5
       - uses: azure/setup-kubectl@v4
