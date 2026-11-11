@@ -38,7 +38,7 @@ BASE=https://contentcollab.app STEPS=50,150 STEP_SECONDS=150 node scripts/loadte
 
 From PowerShell: `$env:BASE='https://contentcollab.app'; $env:STEPS='50,150'; $env:STEP_SECONDS='150'; node scripts/loadtest.mjs`.
 
-What to look for: in terminal A, `TARGETS` climbs past `70%` during the 150 req/s step and `REPLICAS` goes from 2 up to 3, 4 and possibly 5, one step each time the HPA re-evaluates (every 15 seconds). The load test prints a table with the replicas at the end of each step and writes `docs/loadtest/<time>.csv`, `-failures.csv` and `-scaling.csv` (HPA desired, pods created and ready every 2 seconds). On the previous cluster, on 6 November, the HPA went from 2 to 3, 4 and 5 replicas within 85 seconds of the 150 req/s step (BUILD_LOG.md, second load test).
+What to look for: in terminal A, `TARGETS` climbs past `70%` during the 150 req/s step and `REPLICAS` rises from 2 toward 5, in one or more steps as the HPA re-evaluates (every 15 seconds; it may add several pods at once). The load test prints a table with the replicas at the end of each step and writes `docs/loadtest/<time>.csv`, `-failures.csv` and `-scaling.csv` (HPA desired, pods created and ready every 2 seconds). On the previous cluster, on 6 November, the HPA went from 2 to 3, 4 and 5 replicas within 85 seconds of the 150 req/s step (BUILD_LOG.md, second load test).
 
 Scaling back down is slow on purpose: the HPA uses the highest recommendation of the last 5 minutes. Leave terminal A running for about 7 minutes after the load ends and `REPLICAS` returns to 2. For the live demo, show the saved watch file for this part instead of waiting.
 
@@ -98,9 +98,10 @@ To see what the hook changes, run section 2 once before this patch and once afte
 
 ## Not yet verified (first live run)
 
-- Nothing here has been run on the rebuilt cluster. The cluster did not exist when this page was written.
+- Nothing here has been run on the rebuilt cluster. The cluster did not exist when this page was written: the old one was deleted for the rebuild on 11 November and the first attempt to create the new one failed for capacity in tor1, so the node size, and possibly the region, of the cluster that finally exists are not known yet.
+- The create command that failed asked for node autoscaling (2 to 3 nodes). If the new cluster has it, API pods that cannot be scheduled may add a node during the scale-out (watch `kubectl get nodes` in a third terminal), which changes both the replicas reached and the cost.
 - The output shapes come from the scripts and their stub tests. The numbers (replicas reached, time to scale, requests counted, failures) are not measured yet.
-- Whether five API pods fit in memory beside the other workloads. Before the rebuild the two nodes sat at 77 and 83% memory with two API pods, and on 6 November one node reached 89% with five.
+- Whether five API pods fit in memory beside the other workloads. Before the rebuild the two nodes sat at 77 and 83% memory with two API pods, and on 6 November the nodes peaked at 91 to 93% with five (BUILD_LOG.md), above the 90% at which `rollout-no-drop.sh` refuses to start. The rollout runs are therefore made at two replicas, with the HPA idle.
 - Whether `/health` fails under load on DOKS with no rollout (a local run saw 1 failure in 4,501 requests), and how many requests fail through the Gateway during a rollout, with and without the drain.
 - Time to scale back to 2 after the load ends (the 5-minute window is from the Kubernetes docs, not yet seen here).
 - The drain patch has been checked only offline (`kubectl patch --local` on the rendered Deployment), not on a live Deployment.
