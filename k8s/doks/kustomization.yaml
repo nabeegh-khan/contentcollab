@@ -13,3 +13,7 @@ resources:
 # nodes and the volume follows it (DB-2)
 patches:
   - path: postgres-storage-patch.yaml
+
+# preStop drain for the API (ARCHITECTURE D14, #69)
+components:
+  - ../components/graceful-drain

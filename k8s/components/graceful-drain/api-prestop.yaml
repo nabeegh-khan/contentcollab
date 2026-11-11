@@ -1,0 +1,21 @@
+# Removal from EndpointSlices runs at the same time as the kubelet starts
+# stopping the pod, and the API refuses new connections on SIGTERM. Sleeping
+# first lets kube-proxy and the Gateway stop sending it traffic while it still
+# serves (Pod lifecycle, termination; checked 11 Nov 2026). The built-in sleep
+# handler (stable since Kubernetes 1.34) needs no shell in the image. The sleep
+# counts against the grace period: 10 s here plus the API's own shutdown,
+# inside 30 s (API-7).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+spec:
+  template:
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: api
+          lifecycle:
+            preStop:
+              sleep:
+                seconds: 10
