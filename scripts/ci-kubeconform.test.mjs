@@ -48,9 +48,30 @@ test('fails when kubeconform rejects a manifest, and says which version it used'
   assert.match(r.out, /1\.36\.0/);
 });
 
-test('ci.yml has no kubeconform call of its own: the version is set once, at a supported 1.36 patch', () => {
+test('validates once per version when KUBE_VERSION lists several', () => {
+  const r = withFiles(['a.yaml'], { KUBE_VERSION: '1.36.0 1.37.0' });
+  assert.equal(r.code, 0, r.out);
+  assert.equal(r.calls.length, 2);
+  assert.match(r.calls[0], /-kubernetes-version 1\.36\.0 /);
+  assert.match(r.calls[1], /-kubernetes-version 1\.37\.0 /);
+});
+
+test('fails when any listed version rejects a manifest, naming that version', () => {
+  const body = 'case "$*" in *1.37.0*) echo "a.yaml failed validation"; exit 1;; esac; exit 0';
+  const r = withFiles(['a.yaml'], { KUBE_VERSION: '1.36.0 1.37.0', KC_BODY: body });
+  assert.notEqual(r.code, 0);
+  assert.match(r.out, /Kubernetes 1\.37\.0/);
+});
+
+test('rejects a version that is not x.y.z before calling kubeconform', () => {
+  const r = withFiles(['a.yaml'], { KUBE_VERSION: '1.36.0 latest' });
+  assert.notEqual(r.code, 0);
+  assert.deepEqual(r.calls, []);
+});
+
+test('ci.yml has no kubeconform call of its own: versions set once, the planned 1.36 and the running 1.37', () => {
   const ci = readFileSync(join(scriptsDir, '..', '.github', 'workflows', 'ci.yml'), 'utf8');
   assert.doesNotMatch(ci, /-kubernetes-version/, 'a hard-coded version bypasses KUBE_VERSION');
   assert.doesNotMatch(ci, /^\s*kubeconform /m, 'call scripts/ci-kubeconform.sh instead');
-  assert.match(ci, /^\s+KUBE_VERSION: "?1\.36\.\d+"?\s*(#.*)?$/m);
+  assert.match(ci, /^\s+KUBE_VERSION: "1\.36\.\d+ 1\.37\.\d+"\s*(#.*)?$/m);
 });
