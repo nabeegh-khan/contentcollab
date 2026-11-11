@@ -58,6 +58,13 @@ test("a download that differs from the upload fails the round trip", () => {
   assert.match(r.stdout, /FAIL +small object round trip/);
 });
 
+test("a server-side copy whose bytes differ from the source fails its own step only", () => {
+  const r = run({ STUB_CORRUPT_COPY: "1" });
+  assert.equal(r.status, 1);
+  assert.match(r.stdout, /FAIL +server-side copy/);
+  assert.match(r.stdout, /ok +small object round trip/);
+});
+
 test("FOREIGN_BUCKET: the key must be refused there; success means the key is too wide", () => {
   let r = run({ FOREIGN_BUCKET: "some-other-bucket" });
   assert.equal(r.status, 0, r.out);

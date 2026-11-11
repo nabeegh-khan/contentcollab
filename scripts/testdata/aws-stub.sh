@@ -5,6 +5,7 @@
 #   STUB_FOREIGN_OK=1     writes to another bucket succeed (a key that is not limited to its bucket)
 #   STUB_FOREIGN_MISSING=1  writes to another bucket fail with NoSuchBucket
 #   STUB_CORRUPT=1        downloads return different bytes
+#   STUB_CORRUPT_COPY=1   a server-side copy changes the bytes
 echo "$*" >> "$STUB_DIR/aws.argv"
 echo "${AWS_ACCESS_KEY_ID:-}:${AWS_SECRET_ACCESS_KEY:-}" > "$STUB_DIR/aws.env"
 store="$STUB_DIR/store"
@@ -48,7 +49,10 @@ case "$service $op" in
   "s3api put-object") put "$bucket" "$key" "$body" ;;
   "s3api get-object") get "$bucket" "$key" "${positional[0]}" ;;
   "s3api head-object") [ -f "$store/$bucket/$key" ] || { echo "An error occurred (404) when calling the HeadObject operation: Not Found" >&2; exit 254; } ;;
-  "s3api copy-object") read -r sb sk <<< "${source/\// }"; get "$sb" "$sk" "$STUB_DIR/copy.tmp"; put "$bucket" "$key" "$STUB_DIR/copy.tmp" ;;
+  "s3api copy-object")
+    read -r sb sk <<< "${source/\// }"; get "$sb" "$sk" "$STUB_DIR/copy.tmp"
+    [ "${STUB_CORRUPT_COPY:-0}" = 1 ] && echo changed >> "$STUB_DIR/copy.tmp"
+    put "$bucket" "$key" "$STUB_DIR/copy.tmp" ;;
   "s3api delete-object") rm -f "$store/$bucket/$key" ;;
   "s3 cp")
     if [[ "${positional[0]}" == s3://* ]]; then read -r b k <<< "$(s3uri "${positional[0]}")"; get "$b" "$k" "${positional[1]}"
