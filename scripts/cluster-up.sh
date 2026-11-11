@@ -21,6 +21,8 @@ cd "$(dirname "$0")/.."   # paths below are relative to the repository root
 : "${REGION:=tor1}"
 : "${NODE_SIZE:=s-2vcpu-2gb}"   # smallest size that runs two api pods plus postgres comfortably
 : "${NODE_COUNT:=2}"
+: "${NODE_MIN:=$NODE_COUNT}"      # autoscaling bounds; defaults keep the pool at NODE_COUNT (D13)
+: "${NODE_MAX:=$NODE_COUNT}"
 : "${K8S_MINOR:=1.36}"          # new clusters only: the newest minor cert-manager 1.21 supports (D13)
 : "${LETSENCRYPT_EMAIL:=}"
 : "${SECRETS_FILE:=k8s/base/secrets.yaml}"   # git-ignored copy of secrets.example.yaml with real values
@@ -38,6 +40,8 @@ DATADOG_CHART_VERSION="3.269.1" # https://github.com/DataDog/helm-charts/blob/ma
 
 # 0. Nothing changes until the variables, the tools and the sign-in check out
 validate_env
+[[ "$NODE_MIN" =~ ^[1-9][0-9]*$ && "$NODE_MAX" =~ ^[1-9][0-9]*$ && "$NODE_MIN" -le "$NODE_COUNT" && "$NODE_COUNT" -le "$NODE_MAX" ]] \
+  || die "NODE_MIN <= NODE_COUNT <= NODE_MAX, whole numbers from 1 (NODE_MIN=$NODE_MIN NODE_COUNT=$NODE_COUNT NODE_MAX=$NODE_MAX)"
 require_tools doctl kubectl helm curl
 require_doctl_auth
 if [ "$DRY_RUN" = 1 ]; then echo "DRY_RUN=1: checks run, changes are printed, nothing is changed"; fi
@@ -48,10 +52,13 @@ if [ -z "$version" ]; then
   slug=$(newest_slug "$K8S_MINOR")
   [ -n "$slug" ] || die "DOKS offers no $K8S_MINOR.x version now (doctl kubernetes options versions): update K8S_MINOR and D13"
   echo "Creating cluster $CLUSTER_NAME in $REGION, Kubernetes $slug"
+  # --ha=false is explicit: with --ha omitted the API turns the US$40 a month high-availability control plane on for
+  # Kubernetes 1.36.0 and later, and it cannot be turned off again (DigitalOcean doctl and Terraform references, checked 11 Nov 2026; D13)
   run doctl kubernetes cluster create "$CLUSTER_NAME" \
     --region "$REGION" \
     --version "$slug" \
-    --node-pool "name=default;size=$NODE_SIZE;count=$NODE_COUNT" \
+    --ha=false \
+    --node-pool "name=default;size=$NODE_SIZE;count=$NODE_COUNT;auto-scale=true;min-nodes=$NODE_MIN;max-nodes=$NODE_MAX" \
     --wait
 else
   echo "Cluster $CLUSTER_NAME exists, Kubernetes $version: not recreated"
