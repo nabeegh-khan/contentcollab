@@ -30,7 +30,7 @@ if [ -f "$job" ]; then
   # deploy.yml fills __IMAGE_TAG__ with the commit SHA; any other placeholder
   # would reach the cluster as text, so it fails here
   sed 's/__IMAGE_TAG__/ci/g' "$job" > "$out/migrate-job.yaml"
-  left=$(grep -oE '__[A-Z][A-Z_]*__' "$out/migrate-job.yaml" | sort -u | tr '\n' ' ' || true)
+  left=$(grep -oiE '__[A-Z][A-Z0-9_]*__' "$out/migrate-job.yaml" | sort -u | tr '\n' ' ' || true)
   [ -z "$left" ] || { echo "::error::$job has placeholders the deploy does not fill: $left"; exit 1; }
   bash "$here/ci-kubeconform.sh" "$out/migrate-job.yaml"
   checked=1

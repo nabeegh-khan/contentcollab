@@ -122,7 +122,9 @@ jobs:
         run: |
           for overlay in minikube doks infra migrate-job; do
             [ -f /tmp/$overlay.yaml ] || continue # infra and migrate-job exist once #37 lands
-            stray=$(yq 'select(.kind != "Namespace" and .metadata.namespace != "contentcollab") | .kind + "/" + .metadata.name' /tmp/$overlay.yaml | grep -v '^---$' || true)
+            # yq writes to a file so a yq failure stops the step; in a pipe with `|| true` it read as no strays
+            yq 'select(.kind != "Namespace" and .metadata.namespace != "contentcollab") | .kind + "/" + .metadata.name' /tmp/$overlay.yaml > /tmp/$overlay.stray
+            stray=$(grep -v '^---$' /tmp/$overlay.stray || true)
             [ -z "$stray" ] || { echo "::error::$overlay renders objects outside contentcollab: $stray"; exit 1; }
           done
 
@@ -221,9 +223,8 @@ jobs:
           echo "api did not pick Redis up (last: $body)"; docker logs api-noredis; exit 1
 
   # Builds the web image without pushing it, so a Dockerfile that no longer
-  # builds fails the pull request rather than the first deploy (#47, CON-1,
-  # CON-2, CON-3). Skipped until web/Dockerfile exists. hashFiles cannot be
-  # used in a job-level condition, so each step carries it; the job itself
+  # builds fails the pull request rather than the first deploy (#47, CON-3). Skipped until web/Dockerfile exists. hashFiles
+  # cannot be used in a job-level condition, so each step carries it; the job itself
   # always runs and reports green. The cache has its own scope so the two
   # images do not overwrite each other's layers.
   web:

@@ -1,6 +1,6 @@
 // Tests for ci-k8s-cloud.sh: CI renders the DOKS infra overlay and the
 // migrate Job once they exist, and checks them like the two overlays (INF-5,
-// TST-5, SEC-2; docs/BUILD_LOG.md, 11 Nov). kubectl and kubeconform are stubs;
+// TST-5; docs/BUILD_LOG.md, 11 Nov). kubectl and kubeconform are stubs;
 // the stub kubectl prints a one-line manifest so the output file can be read.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -49,6 +49,7 @@ test('fills the image tag placeholder before validating the migrate Job', () => 
   assert.equal(r.code, 0, r.out);
   assert.equal(r.calls.length, 1);
   assert.match(r.calls[0], /^kubeconform .*migrate-job\.yaml$/);
+  assert.doesNotMatch(r.calls[0], /k8s\/doks\/migrate-job\.yaml/, 'validates the filled render, not the template');
   assert.doesNotMatch(r.written['migrate-job.yaml'], /__IMAGE_TAG__/);
   assert.match(r.written['migrate-job.yaml'], /name: db-migrate-ci$/m);
 });
@@ -58,6 +59,12 @@ test('a placeholder the deploy does not fill fails the check', () => {
   assert.notEqual(r.code, 0);
   assert.match(r.out, /__REGISTRY__/);
   assert.deepEqual(r.calls, []);
+});
+
+test('a placeholder with digits or an underscore-split name is caught too', () => {
+  const r = run({ 'k8s/doks/migrate-job.yaml': JOB.replace('example/api', '__IMAGE_TAG2__/api') });
+  assert.notEqual(r.code, 0);
+  assert.match(r.out, /__IMAGE_TAG2__/);
 });
 
 test('an overlay that does not render fails before kubeconform runs', () => {

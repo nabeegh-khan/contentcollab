@@ -21,7 +21,7 @@ step() {
   echo "::group::migrate $label"
   if ! npm run migrate -- "$@"; then
     echo "::endgroup::"
-    echo "::error::migrate $label failed: the migrations do not survive up, down, up"
+    echo "::error::migrate $label failed (a SQL error, a missing migrate script, no database connection, or a down that leaves objects behind)"
     exit 1
   fi
   echo "::endgroup::"
