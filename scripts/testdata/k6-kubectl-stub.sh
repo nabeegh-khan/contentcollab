@@ -9,14 +9,23 @@ args=" $* "
 # Counts calls matching a pattern, so the second revision read differs
 bump() { local f="$STUB_DIR/$1.n" n; n=$(( $(cat "$f" 2>/dev/null || echo 0) + 1 )); echo "$n" > "$f"; echo "$n"; }
 case "$args" in
-  *" config current-context "*) echo stub-cluster ;;
+  *" config current-context "*)
+    [ "${STUB_NO_CONTEXT:-0}" = 0 ] || { echo "error: current-context is not set" >&2; exit 1; }
+    echo stub-cluster ;;
+  *" get nodes "*)   # name, instance type, allocatable memory; STUB_NODES=1 for one node
+    printf 'node-a %s %s\n' "${STUB_TYPE:-s-2vcpu-4gb}" "${STUB_ALLOC:-3074892Ki}"
+    [ "${STUB_NODES:-2}" = 1 ] || printf 'node-b %s %s\n' "${STUB_TYPE:-s-2vcpu-4gb}" "${STUB_ALLOC_B:-3074892Ki}" ;;
+  *" cluster-autoscaler-status "*)
+    [ "${STUB_NO_CAS:-0}" = 0 ] || { echo 'Error from server (NotFound): configmaps "cluster-autoscaler-status" not found' >&2; exit 1; }
+    printf 'nodeGroups:\n- health:\n    cloudProviderTarget: 1\n    maxSize: %s\n    minSize: %s\n  name: pool-1\n' "${STUB_CAS_MAX:-2}" "${STUB_CAS_MIN:-1}" ;;
   *'kubernetes\.io/revision'*)   # the script escapes the dots for jsonpath
     if [ "$(bump rev)" = 1 ]; then printf '%s' "${STUB_REV_OLD:-3}"; else printf '%s' "${STUB_REV_NEW:-4}"; fi ;;
   *" get deployment api "*) echo 'strategy: {"maxSurge":1,"maxUnavailable":0}  preStop: {"sleep":{"seconds":10}}' ;;
   *" create configmap "*) printf 'apiVersion: v1\nkind: ConfigMap\n' ;;
   *" apply "*) cat >> "$STUB_DIR/applied.yaml" ;;
-  *" top nodes"*)
-    printf 'node-a 200m 10%% 1200Mi %s%%\nnode-b 200m 10%% 1100Mi %s%%\n' "${STUB_NODE_MEM:-60}" "${STUB_NODE_MEM_B:-55}" ;;
+  *" top nodes"*)   # usage in bytes (STUB_USED, STUB_USED_B) and percent (STUB_NODE_MEM, STUB_NODE_MEM_B)
+    printf 'node-a 200m 10%% %s %s%%\n' "${STUB_USED:-1200Mi}" "${STUB_NODE_MEM:-40}"
+    [ "${STUB_NODES:-2}" = 1 ] || printf 'node-b 200m 10%% %s %s%%\n' "${STUB_USED_B:-1100Mi}" "${STUB_NODE_MEM_B:-37}" ;;
   *" get pods "*) printf Running ;;
   *".status.succeeded"*)
     [ "${STUB_JOB_ERR:-0}" = 0 ] || { echo "Error from server (Timeout): the request timed out" >&2; exit 1; }

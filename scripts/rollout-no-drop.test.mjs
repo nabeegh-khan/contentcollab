@@ -124,15 +124,79 @@ test('a revision that is not a number stops with a message, not a shell error', 
   assert.ok(!r.calls.some((c) => /rollout restart|apply/.test(c)), r.calls.join('\n'));
 });
 
-test('nodes above the memory limit: refuses before starting the load or the restart', () => {
-  for (const env of [{ STUB_NODE_MEM: '93' }, { STUB_NODE_MEM_B: '93' }]) {
+test('a node without room for the load generator: refuses before starting the load or the restart', () => {
+  // 2700Mi used of 3074892Ki (3002Mi) leaves 302Mi, under k6's 512Mi limit,
+  // on either node
+  for (const env of [{ STUB_USED: '2700Mi' }, { STUB_USED_B: '2700Mi' }]) {
     const r = rollout(env);
     assert.equal(r.code, 1, JSON.stringify(env));
-    assert.match(r.out, /memory/, JSON.stringify(env));
+    assert.match(r.out, /302 MiB free/, JSON.stringify(env));
     assert.ok(!r.calls.some((c) => /rollout restart|apply/.test(c)), JSON.stringify(env));
   }
-  const ok = rollout({ STUB_NODE_MEM: '85', MAX_NODE_MEMORY_PCT: '90' });
-  assert.equal(ok.code, 0, ok.out);
+});
+
+// The cluster rebuilt on 11 November is not the two 2 GB nodes the first
+// version assumed: the shape, the context and the room on the nodes come from
+// the cluster, in bytes, whatever the node count or size
+
+test('one 4 GB node at 89%: a percentage limit of 90 would pass it, the headroom check does not', () => {
+  const r = rollout({ STUB_NODES: '1', STUB_USED: '2680Mi', STUB_NODE_MEM: '89' });
+  assert.equal(r.code, 1, r.out);
+  assert.match(r.out, /node-a has 322 MiB free/);
+  assert.ok(!r.calls.some((c) => /rollout restart|apply/.test(c)), r.calls.join('\n'));
+});
+
+test('one 4 GB node with room: runs, and prints the node count, size and autoscaler bounds it read', () => {
+  const r = rollout({ STUB_NODES: '1', STUB_USED: '1500Mi' });
+  assert.equal(r.code, 0, r.out);
+  assert.match(r.out, /Cluster: stub-cluster/);
+  assert.match(r.out, /Nodes: 1 \(node-a s-2vcpu-4gb 3002 MiB allocatable\)/);
+  assert.match(r.out, /Node autoscaling: min 1, max 2/);
+  assert.match(r.out, /Least free memory: node-a 1502 MiB \(needs 512\)/);
+});
+
+test('two 2 GB nodes still work: allocatable read in any unit', () => {
+  const r = rollout({ STUB_TYPE: 's-2vcpu-2gb', STUB_ALLOC: '1.6Gi', STUB_ALLOC_B: '1678Mi', STUB_USED: '1000Mi', STUB_USED_B: '1100Mi' });
+  assert.equal(r.code, 0, r.out);
+  assert.match(r.out, /Nodes: 2 \(node-a s-2vcpu-2gb 1638 MiB allocatable, node-b s-2vcpu-2gb 1678 MiB allocatable\)/);
+  assert.match(r.out, /Least free memory: node-b 578 MiB/);
+});
+
+test('the headroom asked for is the k6 pod\'s own memory limit', () => {
+  const r = rollout({});
+  assert.equal(r.code, 0, r.out);
+  assert.match(r.applied, /limits: \{cpu: "1", memory: 512Mi\}/);
+  assert.match(r.out, /\(needs 512\)/);
+  const more = rollout({ MIN_NODE_FREE_MIB: '2000' });
+  assert.equal(more.code, 1, more.out);
+  assert.match(more.out, /MIN_NODE_FREE_MIB=2000/);
+});
+
+test('no kubectl context: stops before anything is applied', () => {
+  const r = rollout({ STUB_NO_CONTEXT: '1' });
+  assert.equal(r.code, 1, r.out);
+  assert.match(r.out, /context/);
+  assert.ok(!r.calls.some((c) => /apply|rollout restart/.test(c)), r.calls.join('\n'));
+});
+
+test('autoscaler status not readable: says so and carries on', () => {
+  const r = rollout({ STUB_NO_CAS: '1' });
+  assert.equal(r.code, 0, r.out);
+  assert.match(r.out, /Node autoscaling: not readable/);
+});
+
+test('MIN_NODE_FREE_MIB that is not a number stops the run before any change', () => {
+  const r = rollout({ MIN_NODE_FREE_MIB: 'lots' });
+  assert.equal(r.code, 1, r.out);
+  assert.match(r.out, /MIN_NODE_FREE_MIB/);
+  assert.ok(!r.calls.some((c) => /apply|rollout restart/.test(c)), r.calls.join('\n'));
+});
+
+test('an allocatable figure in a unit it cannot read is not checked, never guessed', () => {
+  const r = rollout({ STUB_ALLOC_B: '3e9' });
+  assert.equal(r.code, 0, r.out);
+  assert.match(r.out, /not checked/);
+  assert.doesNotMatch(r.out, /Least free memory/);
 });
 
 // Second review round: the checks must fail closed (a pass has to be earned)
@@ -158,12 +222,12 @@ test('a failed load Job stops the run and names the state', () => {
   assert.match(r.out, /Failed/);
 });
 
-test('a node whose memory is unknown is reported as not checked, never as 0%', () => {
-  for (const env of [{ STUB_NODE_MEM_B: '<unknown>' }, { STUB_NODE_MEM: '<unknown>', STUB_NODE_MEM_B: '70' }]) {
+test('a node whose memory is unknown is reported as not checked, never as free', () => {
+  for (const env of [{ STUB_USED_B: '<unknown>' }, { STUB_USED: '<unknown>' }]) {
     const r = rollout(env);
     assert.equal(r.code, 0, r.out);
     assert.match(r.out, /not checked/, JSON.stringify(env));
-    assert.doesNotMatch(r.out, /Highest node memory/, JSON.stringify(env));
+    assert.doesNotMatch(r.out, /Least free memory/, JSON.stringify(env));
   }
 });
 
