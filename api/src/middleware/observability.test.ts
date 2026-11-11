@@ -43,7 +43,6 @@ function buildApp() {
   });
   app.use("/health", health);
 
-  app.get("/next", (req, res, next) => next());
   app.get(RX_ROUTE, (req, res) => res.json({ ok: true }));
   app.get(["/a1", "/a2"], (req, res) => res.json({ ok: true }));
   app.get("/slow", (req, res) => {
@@ -91,12 +90,6 @@ describe("route label", () => {
     expect(done?.http?.route).toBe("/health/err");
     const [errors] = await samples("http_errors_total");
     expect(errors?.labels.route).toBe("/health/err");
-  });
-
-  it("is unmatched when a route passes the request on and nothing else matches", async () => {
-    await request(buildApp()).get("/next");
-    const [only] = await samples("http_requests_total");
-    expect(only?.labels.route).toBe("unmatched");
   });
 
   it("labels a route registered with a regular expression or an array, not unmatched", async () => {

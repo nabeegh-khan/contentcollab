@@ -36,7 +36,10 @@ export function errorHandler(err: unknown, req: Request, res: Response, next: Ne
       method: req.method,
       route: routeLabel(req),
     },
-    error: errorFields(err),
+    // A 4xx error comes from what the client sent, and its message can quote
+    // the body (a JSON parse error does): log only its kind. A server error
+    // is ours, so its message and stack are the evidence.
+    error: clientStatus ? { kind: errorFields(err).kind } : errorFields(err),
   });
   const status = clientStatus ?? HTTP_INTERNAL_ERROR;
   res.status(status).json({ error: STATUS_CODES[status] });

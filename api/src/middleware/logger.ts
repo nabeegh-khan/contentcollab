@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { NextFunction, Request, Response } from "express";
 import { HTTP_CLIENT_ERROR_MIN, HTTP_SERVER_ERROR_MIN } from "../lib/httpStatus.js";
 import { log, type Level } from "../lib/log.js";
-import { routeLabel } from "../lib/routeLabel.js";
+import { routeLabel, trackRoute } from "../lib/routeLabel.js";
 
 // Routes the platform calls every few seconds; a successful answer is logged
 // at debug, so the readiness probe does not fill the log at the default level.
@@ -34,15 +34,29 @@ function levelFor(status: number, route: string): Level {
 export function requestLogger(req: Request, res: Response, next: NextFunction): void {
   const id = requestIdFrom(req.headers["x-request-id"]);
   res.setHeader("X-Request-Id", id);
+  trackRoute(req);
   const started = process.hrtime.bigint();
+  const elapsedMs = (): number =>
+    Number(
+      (Number(process.hrtime.bigint() - started) / NANOSECONDS_PER_MILLISECOND).toFixed(
+        DURATION_DECIMALS,
+      ),
+    );
 
   res.on("finish", () => {
     const route = routeLabel(req);
-    const elapsedNs = Number(process.hrtime.bigint() - started);
-    const durationMs = elapsedNs / NANOSECONDS_PER_MILLISECOND;
     log(levelFor(res.statusCode, route), "request", {
       http: { request_id: id, method: req.method, route, status_code: res.statusCode },
-      duration_ms: Number(durationMs.toFixed(DURATION_DECIMALS)),
+      duration_ms: elapsedMs(),
+    });
+  });
+  // The client went away before the response was complete (a timeout, a
+  // cancelled request): "finish" never fires, so say so instead of dropping it
+  res.on("close", () => {
+    if (res.writableFinished) return;
+    log("warn", "request aborted", {
+      http: { request_id: id, method: req.method, route: routeLabel(req) },
+      duration_ms: elapsedMs(),
     });
   });
   next();

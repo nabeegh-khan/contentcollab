@@ -71,6 +71,7 @@
       "definition": {
         "type": "query_value",
         "title": "5xx responses, last 5 minutes",
+        "time": { "live_span": "5m" },
         "autoscale": true,
         "precision": 0,
         "requests": [
@@ -120,6 +121,7 @@
       "definition": {
         "type": "toplist",
         "title": "5xx responses by route, last hour",
+        "time": { "live_span": "1h" },
         "requests": [
           {
             "formulas": [{ "formula": "q1", "limit": { "count": 10, "order": "desc" } }],
