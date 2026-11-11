@@ -191,9 +191,15 @@ class NamedApiPort(unittest.TestCase):
     def test_container_port_is_named_http(self):
         self.assertIn({"name": "http", "containerPort": 3000}, self.api["ports"])
 
-    def test_service_target_port_is_the_name(self):
+    def test_service_target_port_is_the_number_of_the_named_port(self):
+        # Not the name yet: the pods running on the cluster have an unnamed
+        # port, and a Service that switches to targetPort `http` in the same
+        # apply moves them to an EndpointSlice with no ports before any new
+        # pod is ready, so the API has no routable endpoint for that window
+        # (seen on k3s 1.34, 11 Nov). The name follows once named pods run.
         svc = next(d for d in self.docs if d["kind"] == "Service" and d["metadata"]["name"] == "api")
-        self.assertEqual([p["targetPort"] for p in svc["spec"]["ports"]], ["http"])
+        named = next(p["containerPort"] for p in self.api["ports"] if p.get("name") == "http")
+        self.assertEqual([p["targetPort"] for p in svc["spec"]["ports"]], [named])
 
     def test_both_probes_use_the_name(self):
         self.assertEqual(self.api["readinessProbe"]["httpGet"]["port"], "http")
