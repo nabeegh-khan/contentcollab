@@ -38,6 +38,11 @@ test("flatSection reads quoted and bare values, ignores comments, tolerates CRLF
   assert.equal(flatSection(template, "data"), null);
 });
 
+test("flatSection drops a trailing comment but keeps a # inside quotes", () => {
+  const text = 'stringData:\n  A: REPLACE_ME      # note\n  B: "x # y"  # note\n  C: \'p\'\n';
+  assert.deepEqual(flatSection(text, "stringData"), { A: "REPLACE_ME", B: "x # y", C: "p" });
+});
+
 test("secretReferences finds block references and refuses flow style", () => {
   const refs = secretReferences(deployment("api", envFrom + keyRef("DB_USER")));
   assert.deepEqual(refs.wholeRefs, [{ secret: "app-secrets", via: "envFrom" }]);

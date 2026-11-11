@@ -6,7 +6,12 @@ export const PLACEHOLDER = "REPLACE_ME";
 
 const lines = (text) => text.split(/\r?\n/);
 const indentOf = (line) => line.length - line.trimStart().length;
-const unquote = (v) => v.trim().replace(/^(["'])(.*)\1$/, "$2");
+// A YAML scalar on one line: quotes removed, a trailing `# comment` dropped (a # inside quotes stays)
+const scalar = (raw) => {
+  const value = raw.trim();
+  const quoted = value.match(/^(["'])(.*?)\1(?:\s+#.*)?$/);
+  return quoted ? quoted[2] : value.replace(/\s+#.*$/, "");
+};
 const isBlankOrComment = (line) => line.trim() === "" || line.trim().startsWith("#");
 
 /** Entries of a flat top-level mapping such as `stringData:` or `data:`; null when absent. */
@@ -19,7 +24,7 @@ export function flatSection(text, section) {
     if (isBlankOrComment(line)) continue;
     if (indentOf(line) === 0) break;
     const match = line.trim().match(/^([A-Za-z_][A-Za-z0-9_.-]*):\s*(.*)$/);
-    if (match) entries[match[1]] = unquote(match[2]);
+    if (match) entries[match[1]] = scalar(match[2]);
   }
   return entries;
 }
@@ -48,8 +53,8 @@ function blockAfter(all, index) {
 }
 
 const field = (block, key) => {
-  const hit = block.map((l) => l.trim().match(new RegExp(`^${key}:\\s*(\\S+)`))).find(Boolean);
-  return hit ? unquote(hit[1]) : undefined;
+  const hit = block.map((l) => l.trim().match(new RegExp(`^${key}:\\s*(.+)$`))).find(Boolean);
+  return hit ? scalar(hit[1]) : undefined;
 };
 
 /** Per-key and whole-Secret references in one document. */
@@ -110,7 +115,7 @@ export function problems({ templateText, manifests, configMapText }) {
     for (const { kind, name, keyRefs, wholeRefs } of scanManifest(text)) {
       const who = `${kind}/${name}`;
       if (kind === "Secret") found.push(`${file}: contains a Secret object; only the template may`);
-      for (const { secret, key } of keyRefs.filter((r) => r.secret === SECRET)) {
+      for (const { key } of keyRefs.filter((r) => r.secret === SECRET)) {
         if (!(key in entries)) found.push(`${file}: ${who} reads ${key}, which the template does not define`);
         if (SPACES_KEYS.test(key) && !WHOLE_SECRET_CONSUMERS.includes(who)) {
           found.push(`${file}: ${who} reads ${key}; the storage keys belong to api and worker only (SEC-2)`);
