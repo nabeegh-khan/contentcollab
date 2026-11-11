@@ -353,6 +353,6 @@ A catalog-query checker with 13 checks, scratch databases for isolation, a bad-m
 
 ### What Your Team Did With It
 
-- Replaced the text comparison with a probe on a temporary copy of `shares` inside a rolled-back transaction (four roles accepted, seven other values refused), added type, step, cycle and per-version checks, and grew the change list to 39 rows, each run on #88's migration.
+- Replaced the text comparison with a probe on a temporary copy of `shares` inside a rolled-back transaction (four roles accepted, seven other values refused), added type, step, cycle and per-version checks, and grew the change list to 38 rows, each run on #88's migration.
 - Ran the test on the bad migration first (it failed, listing the six broken lines), then on #88's (43 of 43), and a second review round before opening the draft PR.
 - Kept the one item not fixed (`EXISTS` can never be null, so a null guard has nothing to catch) out of the code and in the log.
