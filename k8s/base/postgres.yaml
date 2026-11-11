@@ -10,6 +10,7 @@ spec:
     app: postgres
   ports:
     - port: 5432
+      targetPort: postgres # the container port's name (INF-10)
 ---
 apiVersion: apps/v1
 kind: StatefulSet
@@ -30,7 +31,8 @@ spec:
         - name: postgres
           image: postgres:18
           ports:
-            - containerPort: 5432
+            - name: postgres # INF-10
+              containerPort: 5432
           env:
             - name: POSTGRES_DB
               valueFrom:
