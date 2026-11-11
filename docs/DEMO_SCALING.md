@@ -98,7 +98,8 @@ To see what the hook changes, run section 2 once before this patch and once afte
 
 ## Not yet verified (first live run)
 
-- Nothing here has been run on the rebuilt cluster. The cluster did not exist when this page was written.
+- Nothing here has been run on the rebuilt cluster. The cluster did not exist when this page was written: the old one was deleted for the rebuild on 11 November and the first attempt to create the new one failed for capacity in tor1, so the node size, and possibly the region, of the cluster that finally exists are not known yet.
+- The create command that failed asked for node autoscaling (2 to 3 nodes). If the new cluster has it, API pods that cannot be scheduled may add a node during the scale-out (watch `kubectl get nodes` in a third terminal), which changes both the replicas reached and the cost.
 - The output shapes come from the scripts and their stub tests. The numbers (replicas reached, time to scale, requests counted, failures) are not measured yet.
 - Whether five API pods fit in memory beside the other workloads. Before the rebuild the two nodes sat at 77 and 83% memory with two API pods, and on 6 November one node reached 89% with five.
 - Whether `/health` fails under load on DOKS with no rollout (a local run saw 1 failure in 4,501 requests), and how many requests fail through the Gateway during a rollout, with and without the drain.
