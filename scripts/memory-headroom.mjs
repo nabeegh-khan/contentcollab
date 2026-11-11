@@ -15,7 +15,7 @@
 // read, AGENT_MI / CLUSTER_AGENT_MI is not a plain number of MiB, or CLUSTER_AGENT_MI is given without AGENT_MI.
 // A pod's request is counted as the scheduler counts it: the larger of its biggest init container and the sum of
 // its containers, plus the pod's overhead (the rule before native sidecars, which add an init container's request
-// instead; none run here). Cordoned or NotReady nodes still count as capacity.
+// instead; none in this repository's manifests, system pods not checked). Cordoned or NotReady nodes still count as capacity.
 
 import { execFileSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
