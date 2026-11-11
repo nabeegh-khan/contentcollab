@@ -40,6 +40,7 @@ get() { # get <bucket> <key> <file>
   [ -f "$store/$1/$2" ] || { echo "An error occurred (NoSuchKey) when calling the GetObject operation: not found" >&2; exit 254; }
   cp "$store/$1/$2" "$3"
   [ "${STUB_CORRUPT:-0}" = 1 ] && echo corrupt >> "$3"
+  [ "${STUB_CORRUPT_BIG:-0}" = 1 ] && [[ "$2" == *big.bin ]] && echo corrupt >> "$3"
   return 0
 }
 s3uri() { local rest=${1#s3://}; echo "${rest%%/*} ${rest#*/}"; }
@@ -53,7 +54,7 @@ case "$service $op" in
     read -r sb sk <<< "${source/\// }"; get "$sb" "$sk" "$STUB_DIR/copy.tmp"
     [ "${STUB_CORRUPT_COPY:-0}" = 1 ] && echo changed >> "$STUB_DIR/copy.tmp"
     put "$bucket" "$key" "$STUB_DIR/copy.tmp" ;;
-  "s3api delete-object") rm -f "$store/$bucket/$key" ;;
+  "s3api delete-object") [ "${STUB_KEEP_AFTER_DELETE:-0}" = 1 ] || rm -f "$store/$bucket/$key" ;;
   "s3 cp")
     if [[ "${positional[0]}" == s3://* ]]; then read -r b k <<< "$(s3uri "${positional[0]}")"; get "$b" "$k" "${positional[1]}"
     else read -r b k <<< "$(s3uri "${positional[1]}")"; put "$b" "$k" "${positional[0]}"; fi ;;

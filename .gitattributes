@@ -1,0 +1,2 @@
+# Shell scripts run under bash, which on Linux, macOS and node-spawned shells does not accept CRLF
+*.sh text eol=lf

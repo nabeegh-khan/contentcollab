@@ -1,6 +1,8 @@
 // Reads the Kubernetes manifests as text, no YAML library: the files are small and flat, and
 // the checks in secret-template.test.mjs only need to know which Secret keys exist and who
-// consumes them (SEC-1, SEC-2, SEC-10). Flow-style references are refused rather than missed.
+// consumes them (SEC-1, SEC-2, SEC-10). It catches the common mistakes and the odd spellings
+// of them that a review found (quoted keys, comments after markers, projected volumes); it is
+// not a YAML parser, and anything it cannot read it refuses (flow style) rather than skips.
 
 export const PLACEHOLDER = "REPLACE_ME";
 
@@ -13,32 +15,41 @@ const scalar = (raw) => {
   return quoted ? quoted[2] : value.replace(/\s+#.*$/, "");
 };
 const isBlankOrComment = (line) => line.trim() === "" || line.trim().startsWith("#");
+// `key:` that opens a block: nothing after the colon but an optional comment, anchor or tag
+const OPENS_BLOCK = String.raw`:\s*(?:[&!]\S+\s*)?(?:#.*)?$`;
 
-/** Entries of a flat top-level mapping such as `stringData:` or `data:`; null when absent. */
-export function flatSection(text, section) {
+/** [[key, value], ...] of a flat top-level mapping such as `stringData:`, duplicates kept; null when absent. */
+function sectionPairs(text, section) {
   const all = lines(text);
-  const start = all.findIndex((l) => l.trimEnd() === `${section}:`);
+  const start = all.findIndex((l) => new RegExp(`^${section}${OPENS_BLOCK}`).test(l));
   if (start === -1) return null;
-  const entries = {};
+  const pairs = [];
   for (const line of all.slice(start + 1)) {
     if (isBlankOrComment(line)) continue;
     if (indentOf(line) === 0) break;
-    const match = line.trim().match(/^([A-Za-z_][A-Za-z0-9_.-]*):\s*(.*)$/);
-    if (match) entries[match[1]] = scalar(match[2]);
+    const match = line.trim().match(/^["']?([A-Za-z_][A-Za-z0-9_.-]*)["']?:\s*(.*)$/);
+    if (match) pairs.push([match[1], scalar(match[2])]);
   }
-  return entries;
+  return pairs;
 }
 
-/** Splits a multi-document file; each document keeps its kind and metadata.name. */
+/** Entries of a flat top-level mapping; null when the section is absent. */
+export function flatSection(text, section) {
+  const pairs = sectionPairs(text, section);
+  return pairs && Object.fromEntries(pairs);
+}
+
+/** Splits a multi-document file; every document is kept, with its kind and metadata.name when it has them. */
 export function documents(text) {
   return text
-    .split(/^---\s*$/m)
+    .split(/^---.*$/m)
+    .filter((body) => body.trim() !== "")
     .map((body) => {
-      const kind = body.match(/^kind:\s*(\S+)/m)?.[1];
-      const name = body.match(/^metadata:\s*\r?\n(?:[ \t]+.*\r?\n)*?[ \t]+name:\s*(\S+)/m)?.[1];
-      return { kind, name, body };
-    })
-    .filter((d) => d.kind);
+      const kind = body.match(/^kind:\s*["']?([A-Za-z]+)["']?/m)?.[1];
+      // metadata.name is indented exactly two spaces; a labels: name is deeper
+      const name = body.match(/^metadata:[^\n]*\n(?:[ \t]+.*\n)*?[ ]{2}name:\s*["']?([^\s"'#]+)/m)?.[1];
+      return { kind: kind ?? "(no kind)", name: name ?? "(no name)", body };
+    });
 }
 
 /** The block of lines indented deeper than the line at `index`. */
@@ -57,30 +68,48 @@ const field = (block, key) => {
   return hit ? scalar(hit[1]) : undefined;
 };
 
+const opener = (word) => new RegExp(`^\\s*(?:-\\s+)?["']?${word}["']?${OPENS_BLOCK}`);
+
 /** Per-key and whole-Secret references in one document. */
 export function secretReferences(body) {
   const all = lines(body);
   const keyRefs = [];
   const wholeRefs = [];
   all.forEach((line, i) => {
-    if (/(secretKeyRef|secretRef):\s*\{/.test(line)) {
+    if (/["']?(secretKeyRef|secretRef)["']?\s*:\s*\{/.test(line)) {
       throw new Error(`flow-style reference not supported, use a block: ${line.trim()}`);
     }
-    if (/^\s*(- )?secretKeyRef:\s*$/.test(line)) {
+    if (opener("secretKeyRef").test(line)) {
       const block = blockAfter(all, i);
       keyRefs.push({ secret: field(block, "name"), key: field(block, "key") });
-    } else if (/^\s*(- )?secretRef:\s*$/.test(line)) {
+    } else if (opener("secretRef").test(line)) {
       wholeRefs.push({ secret: field(blockAfter(all, i), "name"), via: "envFrom" });
-    } else if (/^\s*secretName:\s*\S+/.test(line)) {
-      wholeRefs.push({ secret: line.trim().split(/:\s*/)[1], via: "volume" });
+    } else if (opener("secret").test(line)) {
+      // a projected volume source: `secret:` with a `name:`
+      const name = field(blockAfter(all, i), "name");
+      if (name) wholeRefs.push({ secret: name, via: "projected volume" });
+    } else if (/^\s*secretName\s*:/.test(line)) {
+      wholeRefs.push({ secret: scalar(line.split(/:(.*)/s)[1]), via: "volume" });
     }
   });
   return { keyRefs, wholeRefs };
 }
 
-/** Every workload-or-other object in a manifest file with the Secret references it makes. */
+/** `- name: X` followed by `value: Y` where X names a secret and Y is a literal. */
+function literalSecrets(body) {
+  const found = [];
+  const all = lines(body);
+  all.forEach((line, i) => {
+    const name = line.trim().match(/^-\s+name:\s*["']?([A-Za-z0-9_]*(?:SECRET|PASSWORD|TOKEN|_KEY)[A-Za-z0-9_]*)["']?\s*$/i)?.[1];
+    const value = all[i + 1]?.trim().match(/^value:\s*(.+)$/)?.[1];
+    if (name && value && scalar(value) !== "") found.push(name);
+  });
+  return found;
+}
+
+/** Every object in a manifest file with the Secret references it makes. */
 export function scanManifest(text) {
-  return documents(text).map(({ kind, name, body }) => ({ kind, name, ...secretReferences(body) }));
+  return documents(text).map(({ kind, name, body }) => ({ kind, name, ...secretReferences(body), literals: literalSecrets(body) }));
 }
 
 const SECRET = "app-secrets";
@@ -94,17 +123,22 @@ const SPACES_KEYS = /^SPACES_/;
  */
 export function problems({ templateText, manifests, configMapText }) {
   const found = [];
-  const template = documents(templateText).find((d) => d.kind === "Secret");
-  if (!template || template.name !== SECRET) return [`the template is not the ${SECRET} Secret`];
+  const secrets = documents(templateText).filter((d) => d.kind === "Secret");
+  if (secrets.length === 0 || secrets[0].name !== SECRET) return [`the template is not the ${SECRET} Secret`];
+  if (secrets.length > 1) found.push("the template has more than one Secret document");
 
-  if (flatSection(templateText, "data")) {
+  if (/^data\s*:/m.test(templateText)) {
     found.push("the template has a data: section; base64 hides nothing (SEC-10), use stringData with placeholders");
   }
-  const entries = flatSection(templateText, "stringData") ?? {};
-  if (Object.keys(entries).length === 0) found.push("the template has no stringData keys");
-  for (const [key, value] of Object.entries(entries)) {
+  const pairs = sectionPairs(templateText, "stringData") ?? [];
+  if (pairs.length === 0) found.push("the template has no stringData keys");
+  const seen = new Set();
+  for (const [key, value] of pairs) {
+    if (seen.has(key)) found.push(`${key} appears twice in the template`);
+    seen.add(key);
     if (value !== PLACEHOLDER) found.push(`template key ${key} holds a value other than ${PLACEHOLDER}`);
   }
+  const entries = Object.fromEntries(pairs);
 
   const configKeys = Object.keys(flatSection(configMapText, "data") ?? {});
   for (const key of configKeys.filter((k) => k in entries)) {
@@ -112,9 +146,11 @@ export function problems({ templateText, manifests, configMapText }) {
   }
 
   for (const { file, text } of manifests) {
-    for (const { kind, name, keyRefs, wholeRefs } of scanManifest(text)) {
+    if (/^\s*secretGenerator\s*:/m.test(text)) found.push(`${file}: secretGenerator builds a Secret from literals or files in Git`);
+    for (const { kind, name, keyRefs, wholeRefs, literals } of scanManifest(text)) {
       const who = `${kind}/${name}`;
       if (kind === "Secret") found.push(`${file}: contains a Secret object; only the template may`);
+      for (const env of literals) found.push(`${file}: ${who} sets ${env} to a literal value; read it from the Secret`);
       for (const { key } of keyRefs.filter((r) => r.secret === SECRET)) {
         if (!(key in entries)) found.push(`${file}: ${who} reads ${key}, which the template does not define`);
         if (SPACES_KEYS.test(key) && !WHOLE_SECRET_CONSUMERS.includes(who)) {

@@ -21,6 +21,9 @@ set -euo pipefail
 : "${KUBE_CONTEXT:=}"
 : "${RESTART:=}"
 
+for var in NAMESPACE SECRET_NAME; do
+  [[ "${!var}" =~ ^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$ ]] || { echo "$var must be a Kubernetes name (lower-case letters, digits, - and .)"; exit 1; }
+done
 command -v kubectl >/dev/null || { echo "missing: kubectl"; exit 1; }
 kc() { if [ -n "$KUBE_CONTEXT" ]; then kubectl --context "$KUBE_CONTEXT" "$@"; else kubectl "$@"; fi; }
 
@@ -49,21 +52,25 @@ if ! out=$(kc get namespace "$NAMESPACE" 2>&1); then
 fi
 # Only NotFound means "new": any other error (no permission, no connection) must not end in a
 # freshly generated database password
-if out=$(kc -n "$NAMESPACE" get secret "$SECRET_NAME" -o name 2>&1); then
-  exists=true
-elif printf '%s' "$out" | grep -q NotFound; then
-  exists=false
-else
+if ! out=$(kc -n "$NAMESPACE" get secret "$SECRET_NAME" --ignore-not-found -o name 2>&1); then
   echo "cannot read $SECRET_NAME: $out"
   exit 1
 fi
+if [ -n "$out" ]; then exists=true; else exists=false; fi   # success with no output: absent
 
 # 3. One value per key: environment, then the cluster, then a prompt, then a default
 resolve() { # resolve <KEY> <min length> <user|random24|random32|prompt>
   local key=$1 value="${!1:-}" source="from the environment"
   if [ -z "$value" ]; then
     source="kept (already in the cluster)"
-    if [ "$exists" = true ]; then value=$(kc -n "$NAMESPACE" get secret "$SECRET_NAME" -o "jsonpath={.data.$key}" | base64 -d); fi
+    if [ "$exists" = true ]; then
+      value=$(kc -n "$NAMESPACE" get secret "$SECRET_NAME" -o "jsonpath={.data.$key}" | base64 -d)
+      # A kept value is written back inside double quotes: it must survive that byte for byte.
+      # An absent key must not be regenerated (a new DB_PASSWORD would not match PostgreSQL's).
+      [ -n "$value" ] || [ "$3" = prompt ] || { echo "$key is missing from the existing Secret: set $key in the environment to replace it"; exit 1; }
+      [ "$value" != "REPLACE_ME" ] || { echo "$key in the existing Secret is still the template placeholder (the template was applied unedited): set $key in the environment to replace it"; exit 1; }
+      [[ -z "$value" || "$value" =~ ^[A-Za-z0-9+/=._-]+$ ]] || { echo "$key in the existing Secret has characters other than letters, digits and + / = . _ - : set $key in the environment to replace it"; exit 1; }
+    fi
   fi
   if [ -z "$value" ] && [ "$3" = prompt ] && [ -t 0 ]; then
     read -rsp "$key: " value; echo >&2
@@ -86,6 +93,8 @@ resolve DB_PASSWORD 16 random24
 resolve JWT_SECRET 32 random32
 resolve SPACES_KEY 1 prompt
 resolve SPACES_SECRET 1 prompt
+# Exported values would reach kubectl and any plugin it starts; they are in V_* now
+unset DB_USER DB_PASSWORD JWT_SECRET SPACES_KEY SPACES_SECRET
 
 # 4. Over stdin (printf is a shell builtin), so no value is in a process argument list
 printf 'apiVersion: v1\nkind: Secret\nmetadata:\n  name: %s\n  namespace: %s\ntype: Opaque\nstringData:\n  DB_USER: "%s"\n  DB_PASSWORD: "%s"\n  JWT_SECRET: "%s"\n  SPACES_KEY: "%s"\n  SPACES_SECRET: "%s"\n' \
@@ -93,7 +102,10 @@ printf 'apiVersion: v1\nkind: Secret\nmetadata:\n  name: %s\n  namespace: %s\nty
   | kc apply --server-side --force-conflicts --field-manager=app-secret -f - >/dev/null
 # A Secret first made with client-side apply carries the plain-text copy; remove it
 if [ "$exists" = true ]; then
-  kc -n "$NAMESPACE" annotate secret "$SECRET_NAME" kubectl.kubernetes.io/last-applied-configuration- >/dev/null
+  # The apply has succeeded; a failure here must not stop the restart below
+  if ! kc -n "$NAMESPACE" annotate secret "$SECRET_NAME" kubectl.kubernetes.io/last-applied-configuration- >/dev/null; then
+    echo "WARNING: the plain-text last-applied-configuration annotation could not be removed: kubectl -n $NAMESPACE annotate secret $SECRET_NAME kubectl.kubernetes.io/last-applied-configuration-"
+  fi
 fi
 
 for key in DB_USER DB_PASSWORD JWT_SECRET SPACES_KEY SPACES_SECRET; do

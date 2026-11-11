@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Creates the DigitalOcean project that groups the cluster, the load balancer and the Spaces
 # bucket (#53), or finds it by name. Repeatable: a second run changes nothing (INF-3).
-# A project is a label, not a billable resource. Needs doctl, authenticated with `doctl auth init`.
+# Needs doctl, authenticated with `doctl auth init`.
 set -euo pipefail
 
 : "${PROJECT_NAME:=ContentCollab}"
@@ -18,7 +18,7 @@ doctl account get >/dev/null 2>&1 || { echo "doctl is not authenticated: run \`d
 
 # The exact name, not a prefix: ContentCollab-old is another project
 projects=$(doctl projects list --format ID,Name --no-header)
-id=$(printf '%s\n' "$projects" | awk -v name="$PROJECT_NAME" '$2 == name { print $1; exit }')
+id=$(printf '%s\n' "$projects" | awk -v name="$PROJECT_NAME" '{ id = $1; $1 = ""; sub(/^ +/, ""); if ($0 == name) { print id; exit } }')
 
 if [ -z "$id" ]; then
   id=$(doctl projects create --name "$PROJECT_NAME" --purpose "$PURPOSE" --environment "$ENVIRONMENT" \

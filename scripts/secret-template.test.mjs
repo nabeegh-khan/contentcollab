@@ -87,6 +87,40 @@ test("a Secret object among the manifests is reported", () => {
   assert.deepEqual(found, ["k8s/base/secrets.yaml: contains a Secret object; only the template may"]);
 });
 
+// Valid YAML that an earlier version of the checker let through (security review, 11 November)
+test("template bypasses: quoted key, flow-style data:, duplicate key, second Secret document", () => {
+  const flagged = (text) => problems({ templateText: text, configMapText: configMap, manifests: [] });
+  assert.ok(flagged(template.replace("  DB_USER: REPLACE_ME", '  "DB_USER": hunter2')).some((l) => /DB_USER holds a value/.test(l)));
+  assert.ok(flagged(`${template}data: {DB_USER: YWRtaW4=}\n`).some((l) => /data: section/.test(l)));
+  assert.ok(flagged(`${template}data: # note\n  A: YQ==\n`).some((l) => /data: section/.test(l)));
+  assert.ok(flagged(template.replace("  SPACES_KEY: 'REPLACE_ME'", "  DB_USER: real\n  SPACES_KEY: REPLACE_ME")).some((l) => /DB_USER appears twice/.test(l)));
+  assert.ok(flagged(`${template}---\napiVersion: v1\nkind: Secret\nmetadata:\n  name: other\nstringData:\n  X: real\n`).some((l) => /more than one Secret/.test(l)));
+});
+
+test("consumer bypasses: comment after ---, secretRef with a comment, quoted secretName, projected volume, quoted kind", () => {
+  const web = (body) => [{ file: "w.yaml", text: `kind: Deployment\nmetadata:\n  name: web\nspec:\n${body}` }];
+  const ref = (body) => check(web(body)).join("\n");
+  assert.match(ref("          envFrom:\n            - secretRef: # all\n                name: app-secrets\n"), /Deployment\/web takes every key/);
+  assert.match(ref("      volumes:\n        - name: v\n          secret:\n            secretName: \"app-secrets\" # mount\n"), /takes every key/);
+  assert.match(ref("      volumes:\n        - name: v\n          projected:\n            sources:\n              - secret:\n                  name: app-secrets\n"), /takes every key/);
+  assert.throws(() => ref('          x: {"secretRef": {name: app-secrets}}\n'), /flow-style/);
+  const merged = `kind: Deployment\nmetadata:\n  name: api\n--- # next\nkind: Job\nmetadata:\n  name: migrate\nspec:\n          envFrom:\n            - secretRef:\n                name: app-secrets\n`;
+  assert.match(check([{ file: "m.yaml", text: merged }]).join("\n"), /Job\/migrate takes every key/);
+  assert.deepEqual(check([{ file: "s.yaml", text: 'kind: "Secret" # x\nmetadata:\n  name: z\n' }]), ["s.yaml: contains a Secret object; only the template may"]);
+  assert.match(check([{ file: "nokind.yaml", text: "valuesFrom:\n  secretKeyRef:\n    name: app-secrets\n    key: NOPE\n" }]).join("\n"), /reads NOPE/);
+});
+
+test("a labels: name before metadata.name does not borrow the api allowance", () => {
+  const text = "kind: Job\nmetadata:\n  labels:\n    name: api\n  name: migrate\n          envFrom:\n            - secretRef:\n                name: app-secrets\n";
+  assert.match(check([{ file: "j.yaml", text }]).join("\n"), /Job\/migrate takes every key/);
+});
+
+test("a literal value on a secret-looking env var, and a secretGenerator, are reported", () => {
+  const env = "kind: Deployment\nmetadata:\n  name: api\nspec:\n          env:\n            - name: JWT_SECRET\n              value: hunter2\n";
+  assert.match(check([{ file: "api.yaml", text: env }]).join("\n"), /sets JWT_SECRET to a literal value/);
+  assert.match(check([{ file: "kustomization.yaml", text: "secretGenerator:\n  - name: x\n    literals:\n      - A=b\n" }]).join("\n"), /secretGenerator/);
+});
+
 test("a key in both the ConfigMap and the Secret is reported", () => {
   const found = problems({ templateText: template, configMapText: "data:\n  DB_USER: x\n", manifests: [] });
   assert.match(found[0], /DB_USER is in both the ConfigMap and the Secret/);
@@ -96,7 +130,7 @@ test("a key in both the ConfigMap and the Secret is reported", () => {
 
 const yamlUnderK8s = () =>
   readdirSync(join(root, "k8s"), { recursive: true })
-    .filter((f) => f.endsWith(".yaml") && !f.endsWith("secrets.example.yaml"))
+    .filter((f) => /\.ya?ml$/.test(f) && f.replaceAll("\\", "/") !== "base/secrets.example.yaml")
     .map((f) => ({ file: `k8s/${f.replaceAll("\\", "/")}`, text: readFileSync(join(root, "k8s", f), "utf8") }));
 
 test("k8s/base/secrets.example.yaml and every manifest that uses it pass the checks", () => {
@@ -111,7 +145,7 @@ test("k8s/base/secrets.example.yaml and every manifest that uses it pass the che
 test("Git tracks the template and no filled-in copy; the filled-in copy is ignored", () => {
   const tracked = git("ls-files", "k8s").split("\n");
   assert.ok(tracked.includes("k8s/base/secrets.example.yaml"));
-  assert.deepEqual(tracked.filter((f) => /secret/i.test(f) && !f.endsWith("secrets.example.yaml")), []);
+  assert.deepEqual(tracked.filter((f) => /secret/i.test(f) && f !== "k8s/base/secrets.example.yaml"), []);
   for (const copy of ["k8s/base/secrets.yaml", "k8s/doks/secrets.yaml", "k8s/secret.yaml"]) {
     assert.doesNotThrow(() => git("check-ignore", "-q", copy), `${copy} is not git-ignored`);
   }
@@ -126,7 +160,14 @@ test("no tracked document tells the reader to apply a filled-in secrets.yaml", (
 test("no tracked file under k8s/ or scripts/ other than the template defines a Secret object", () => {
   const offenders = git("ls-files", "k8s", "scripts")
     .split("\n")
-    .filter((f) => !f.endsWith("secrets.example.yaml") && /\.ya?ml$/.test(f))
-    .filter((f) => /^kind:\s*Secret\s*$/m.test(read(f)));
+    .filter((f) => f !== "k8s/base/secrets.example.yaml" && /\.ya?ml$/.test(f))
+    .filter((f) => /^kind:\s*["']?Secret["']?\s*(#.*)?$/m.test(read(f)));
   assert.deepEqual(offenders.map((f) => relative(root, join(root, f))), []);
+});
+
+test("no tracked text file holds the shape of a real token or private key", () => {
+  const shapes = [/dop_v1_[a-f0-9]{32,}/, /\bDO00[A-Z0-9]{16}\b/, /\bAKIA[0-9A-Z]{16}\b/, /-----BEGIN [A-Z ]*PRIVATE KEY-----/, /\bghp_[A-Za-z0-9]{36}\b/];
+  const text = git("ls-files").split("\n").filter((f) => !/\.(png|jpe?g|gif|svg|pdf|ico|woff2?|lock)$|package-lock\.json$/.test(f));
+  const hits = text.filter((f) => shapes.some((s) => s.test(read(f))));
+  assert.deepEqual(hits, []);
 });

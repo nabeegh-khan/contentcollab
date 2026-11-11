@@ -84,6 +84,41 @@ test("FOREIGN_BUCKET that does not exist proves nothing and fails", () => {
   assert.match(r.stdout, /does not exist/);
 });
 
+test("a large file that comes back different fails the multipart step only", () => {
+  const r = run({ STUB_CORRUPT_BIG: "1" });
+  assert.equal(r.status, 1);
+  assert.match(r.stdout, /FAIL +multipart upload round trip/);
+  assert.match(r.stdout, /ok +small object round trip/);
+});
+
+test("an object still there after delete fails the delete step", () => {
+  const r = run({ STUB_KEEP_AFTER_DELETE: "1" });
+  assert.equal(r.status, 1);
+  assert.match(r.stdout, /FAIL +probe objects deleted/);
+});
+
+test("an unreachable bucket stops the run before any upload", () => {
+  const r = run({ STUB_BUCKET: "some-other-name" });
+  assert.equal(r.status, 1);
+  assert.match(r.out, /cannot continue/);
+  assert.ok(!awsCalls().some((c) => c.includes("put-object")));
+});
+
+test("a plain http endpoint is refused unless it is loopback", () => {
+  const refused = run({ SPACES_ENDPOINT: "http://example.com" });
+  assert.equal(refused.status, 1);
+  assert.match(refused.out, /SPACES_ENDPOINT must be https/);
+  assert.equal(awsCalls().length, 0);
+  const local = run({ SPACES_ENDPOINT: "http://127.0.0.1:19000" });
+  assert.equal(local.status, 0, local.out);
+});
+
+test("objects the cleanup could not delete are named, not hidden", () => {
+  const r = run({ STUB_FAIL: "delete-object" });
+  assert.equal(r.status, 1);
+  assert.match(r.out, /left behind in the bucket: probe\/[0-9]+-[0-9]+\/small\.txt/);
+});
+
 test("without FOREIGN_BUCKET the scope check is skipped, and said so", () => {
   const r = run();
   assert.match(r.stdout, /skip +key scope/);

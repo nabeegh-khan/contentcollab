@@ -128,3 +128,47 @@ test("the summary says where each key came from and never prints a value", () =>
   assert.match(r.out, /SPACES_KEY: from the environment/);
   assert.ok(!r.out.includes(SPACES.SPACES_KEY));
 });
+
+test("an existing Secret that lacks DB_PASSWORD stops the run instead of generating a new one", () => {
+  const { STUB_DATA_DB_PASSWORD, ...withoutPassword } = existing;
+  const r = box.run("app-secret.sh", { env: { ...withoutPassword, ...SPACES } });
+  assert.equal(r.status, 1, r.out);
+  assert.match(r.out, /DB_PASSWORD is missing from the existing Secret/);
+  assert.ok(!calls().some((c) => c.includes("apply")));
+});
+
+test("a kept value with characters that would not survive the YAML is refused, not rewritten", () => {
+  const bad = b64('pa"ss\\word0123456789');
+  const r = box.run("app-secret.sh", { env: { ...existing, ...SPACES, STUB_DATA_DB_PASSWORD: bad } });
+  assert.equal(r.status, 1, r.out);
+  assert.match(r.out, /DB_PASSWORD in the existing Secret has characters other than/);
+  assert.ok(!calls().some((c) => c.includes("apply")));
+});
+
+test("a kept template placeholder is refused: the template was applied unedited", () => {
+  const r = box.run("app-secret.sh", { env: { ...existing, ...SPACES, STUB_DATA_DB_PASSWORD: b64("REPLACE_ME") } });
+  assert.equal(r.status, 1, r.out);
+  assert.match(r.out, /DB_PASSWORD in the existing Secret is still the template placeholder/);
+  assert.ok(!calls().some((c) => c.includes("apply")));
+});
+
+test("a failing apply fails the run and says nothing was applied", () => {
+  const r = box.run("app-secret.sh", { env: { ...SPACES, STUB_APPLY_FAIL: "1" } });
+  assert.notEqual(r.status, 0, r.out);
+  assert.doesNotMatch(r.out, /Applied app-secrets/);
+});
+
+test("NAMESPACE and SECRET_NAME must be Kubernetes names", () => {
+  for (const env of [{ NAMESPACE: "a\nb" }, { NAMESPACE: "--all-namespaces" }, { SECRET_NAME: "-x" }, { SECRET_NAME: "UPPER" }]) {
+    const r = box.run("app-secret.sh", { env: { ...SPACES, ...env } });
+    assert.equal(r.status, 1, r.out);
+    assert.match(r.out, /must be a Kubernetes name/);
+  }
+  assert.equal(calls().length, 0);
+});
+
+test("a failed annotation removal is a loud warning and does not hide the applied Secret", () => {
+  const r = box.run("app-secret.sh", { env: { ...existing, ...SPACES, STUB_ANNOTATE_FAIL: "1" } });
+  assert.match(r.out, /WARNING: the plain-text last-applied-configuration annotation could not be removed/);
+  assert.match(r.out, /Applied app-secrets/);
+});

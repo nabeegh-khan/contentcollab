@@ -18,6 +18,14 @@ from_config() { awk -v key="$1:" '$1 == key { gsub(/["\r]/, "", $2); print $2; e
 : "${SPACES_BUCKET:=$(from_config SPACES_BUCKET)}"
 : "${FOREIGN_BUCKET:=}"
 
+for var in SPACES_ENDPOINT SPACES_REGION SPACES_BUCKET; do
+  [ -n "${!var}" ] || { echo "$var is empty: set it, or check k8s/base/configmap.yaml"; exit 1; }
+done
+# With SigV4 the secret is never sent, but the key ID and signatures would be, and a forged 403 could fake the anonymous check
+case "$SPACES_ENDPOINT" in
+  https://*|http://127.0.0.1*|http://localhost*) ;;
+  *) echo "SPACES_ENDPOINT must be https (plain http only for 127.0.0.1 or localhost): $SPACES_ENDPOINT"; exit 1 ;;
+esac
 for tool in aws curl; do command -v "$tool" >/dev/null || { echo "missing: $tool"; exit 1; }; done
 if [ -z "${SPACES_KEY:-}" ] || [ -z "${SPACES_SECRET:-}" ]; then
   echo "set SPACES_KEY and SPACES_SECRET (read -rs SPACES_SECRET && export SPACES_SECRET keeps it out of the history)"
@@ -32,9 +40,13 @@ work=$(mktemp -d)
 if command -v cygpath >/dev/null; then work=$(cygpath -m "$work"); fi
 prefix="probe/$(date +%s)-$$"
 foreign_written=false
-cleanup() {
-  for object in small.txt big.bin copy.txt; do sp s3api delete-object --bucket "$SPACES_BUCKET" --key "$prefix/$object" >/dev/null 2>&1 || true; done
-  if [ "$foreign_written" = true ]; then sp s3api delete-object --bucket "$FOREIGN_BUCKET" --key "$prefix/foreign.txt" >/dev/null 2>&1 || true; fi
+cleanup() { # whatever cannot be deleted is named: a probe object left in a bucket is a cost and, in a real bucket, clutter
+  for object in small.txt big.bin copy.txt; do
+    sp s3api delete-object --bucket "$SPACES_BUCKET" --key "$prefix/$object" >/dev/null 2>&1 || echo "left behind in the bucket: $prefix/$object"
+  done
+  if [ "$foreign_written" = true ]; then
+    sp s3api delete-object --bucket "$FOREIGN_BUCKET" --key "$prefix/foreign.txt" >/dev/null 2>&1 || echo "left behind in $FOREIGN_BUCKET: $prefix/foreign.txt"
+  fi
   rm -rf "$work"
 }
 trap cleanup EXIT

@@ -32,6 +32,18 @@ test("a project whose name only starts with ours does not count", () => {
   assert.equal(calls().filter((c) => c.startsWith("projects create")).length, 1);
 });
 
+test("a project named like ours plus more words is not ours", () => {
+  const r = box.run("do-project.sh", { env: { STUB_PROJECTS: "dddd-4444  ContentCollab Old\n" } });
+  assert.equal(r.status, 0, r.out);
+  assert.equal(calls().filter((c) => c.startsWith("projects create")).length, 1);
+});
+
+test("two projects with the same name give one id, not two lines", () => {
+  const r = box.run("do-project.sh", { env: { STUB_PROJECTS: "aaaa-1111  ContentCollab\nbbbb-2222  ContentCollab\n" } });
+  assert.equal(r.status, 0, r.out);
+  assert.match(r.stdout, /^ContentCollab: aaaa-1111$/m);
+});
+
 test("stops before any change when doctl is not authenticated", () => {
   const r = box.run("do-project.sh", { env: { STUB_UNAUTH: "1" } });
   assert.equal(r.status, 1);
