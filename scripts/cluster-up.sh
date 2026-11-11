@@ -111,10 +111,12 @@ run kubectl apply -f "$SECRETS_FILE"
 sed "s|LETSENCRYPT_EMAIL|$LETSENCRYPT_EMAIL|" k8s/doks/cluster-issuer.yaml | run_stdin kubectl apply -f -
 # 4b. The application, pinned to an image CI built, never :latest (INF-9;
 #     L8 p67, p73). IMAGE_TAG defaults to the newest commit on main that
-#     deploy.yml builds for; the registry is checked before anything applies.
+#     deploy.yml builds for (its on.push.paths: api, worker, k8s and the
+#     workflow); the registry is checked before anything applies.
 if [ -z "${IMAGE_TAG:-}" ]; then
   git fetch -q origin main
-  IMAGE_TAG=$(git log -1 --format=%H origin/main -- api k8s .github/workflows/deploy.yml)
+  IMAGE_TAG=$(git log -1 --format=%H origin/main -- api worker k8s .github/workflows/deploy.yml)
+  [ -n "$IMAGE_TAG" ] || die "no commit on origin/main touches api, worker or k8s: set IMAGE_TAG"
 fi
 rendered=$(kubectl kustomize k8s/doks | sed "s#\(ghcr.io/nabeegh-khan/contentcollab-[a-z]*\):latest#\1:$IMAGE_TAG#g")
 for repo in $(printf '%s\n' "$rendered" | grep -o 'ghcr.io/nabeegh-khan/contentcollab-[a-z]*' | sort -u); do

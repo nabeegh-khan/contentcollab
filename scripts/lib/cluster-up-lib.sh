@@ -43,6 +43,9 @@ validate_env() {
   [[ "$CLUSTER_NAME" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$ ]] || die "CLUSTER_NAME '$CLUSTER_NAME': lowercase letters, digits and -"
   [[ "$REGION" =~ ^[a-z]{3}[0-9]$ ]] || die "REGION '$REGION' is not a DigitalOcean region slug such as tor1"
   [[ "$NODE_COUNT" =~ ^[1-9][0-9]*$ ]] || die "NODE_COUNT '$NODE_COUNT' is not a positive number"
+  # Both go into a --node-pool spec or a sed replacement, where ; # & split them
+  [[ "$NODE_SIZE" =~ ^[a-z0-9-]+$ ]] || die "NODE_SIZE '$NODE_SIZE' is not a droplet size slug such as s-2vcpu-2gb"
+  [[ -z "${IMAGE_TAG:-}" || "$IMAGE_TAG" =~ ^[A-Za-z0-9_.-]+$ ]] || die "IMAGE_TAG '$IMAGE_TAG' is not an image tag (letters, digits, _ . -)"
   [[ "$K8S_MINOR" =~ ^1\.[0-9]+$ ]] || die "K8S_MINOR '$K8S_MINOR' is not a Kubernetes minor version such as 1.36"
   [[ "$CERT_TIMEOUT" =~ ^[1-9][0-9]*$ ]] || die "CERT_TIMEOUT '$CERT_TIMEOUT' is not a number of seconds"
   case "$DRY_RUN" in 0|1) ;; *) die "DRY_RUN '$DRY_RUN' must be 0 or 1" ;; esac
@@ -80,7 +83,10 @@ minor_of() {
 # Chart version of an installed Helm release (v1.19.2); empty when absent
 installed_chart_version() {  # release namespace
   local json
-  json=$(helm list -n "$2" --filter "^$1\$" -o json 2>/dev/null) || true
+  # --all: a release stuck in pending-upgrade or failed still counts. A
+  # failed listing must not read as "not installed" (that would skip steps)
+  json=$(helm list -n "$2" --all --filter "^$1\$" -o json) \
+    || die "helm list -n $2 failed, so the installed $1 version is unknown"
   printf '%s' "$json" | sed -n "s/.*\"chart\":\"$1-v\{0,1\}\([0-9][0-9.]*\)\".*/v\1/p"
 }
 
@@ -91,8 +97,11 @@ cert_manager_steps() {  # installed target step...
   local installed=$1 target=$2 v prev
   shift 2
   if [ -z "$installed" ]; then echo "$target"; return; fi
-  [ "$(minor_of "$installed")" -le "$(minor_of "$target")" ] \
-    || die "cert-manager $installed is newer than the pinned $target"
+  # Newer by any part, patch included, is refused: Helm would downgrade it
+  if [ "$installed" != "$target" ] \
+    && [ "$(printf '%s\n%s\n' "$installed" "$target" | sort -V | tail -n 1)" = "$installed" ]; then
+    die "cert-manager $installed is newer than the pinned $target: update CERT_MANAGER_VERSION and D13"
+  fi
   prev=$(minor_of "$installed")
   for v in "$@" "$target"; do
     [ "$(minor_of "$v")" -gt "$prev" ] || [ "$v" = "$target" ] || continue
