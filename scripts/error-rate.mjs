@@ -18,8 +18,13 @@
 //
 // Reads the "request" lines, and counts "request aborted" lines (the client went away before the answer) in a
 // separate column: they are not 5xx and do not change the share. A successful /health or /metrics is logged at
-// debug (D16), so for those routes the log holds failures only: MIN_REQUESTS does not apply to them, and any
-// failing probe is an alert.
+// debug (D16), so at the default LOG_LEVEL=info the log holds their failures only: MIN_REQUESTS does not apply to
+// them, and any failing probe is an alert.
+//
+// Two cases read as failures that may not be: at LOG_LEVEL=warn or error no successful request is logged, so every
+// route's share comes from its errors alone (run the API at info or debug for this check); and a readiness probe
+// that reaches a new pod before it has connected to Redis answers 503, so a scale-up or a rollout inside the window
+// can show a /health failure or two. Read the count, and the pods' ages, before acting on a probe alert.
 
 import { readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";

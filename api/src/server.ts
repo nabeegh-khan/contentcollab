@@ -6,6 +6,7 @@ import { requestMetrics } from "./middleware/metrics.js";
 import { connectRedis } from "./lib/redis.js";
 import { pool } from "./lib/db.js";
 import { HTTP_NOT_FOUND } from "./lib/httpStatus.js";
+import { logListening, logRedisGaveUp } from "./lib/startup.js";
 import healthRoutes from "./routes/health.js";
 import metricsRoutes from "./routes/metrics.js";
 
@@ -27,7 +28,7 @@ const isEntry = process.argv[1] !== undefined && fileURLToPath(import.meta.url) 
 
 if (isEntry) {
   const port = Number(process.env.PORT ?? 3000);
-  const server = app.listen(port, () => console.log(`api listening on ${port}`));
+  const server = app.listen(port, () => logListening(port));
 
   // Listen first, then connect to Redis in the background (#65). If Redis is
   // down when the pod starts, the process stays up: /health answers 503 at
@@ -41,10 +42,7 @@ if (isEntry) {
     try {
       await connectRedis();
     } catch (err) {
-      console.error(
-        "redis: client stopped retrying; /health reports Redis down until the API restarts:",
-        (err as Error).message,
-      );
+      logRedisGaveUp(err);
     }
   };
   void connectInBackground();

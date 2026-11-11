@@ -113,7 +113,7 @@ export function headroom({ nodes, pods, topNodes, topApi, hpa, agentMi, clusterA
     throw new Error(`no API pods (app=api) in namespace ${namespace}: the extra pods at the maximum would count as 0 MiB`);
   }
   const apiUse = [...topMemoryByName(topApi).values()];
-  const perPodRequest = apiPods.length ? sum(apiPods.map(podRequest)) / apiPods.length : 0;
+  const perPodRequest = sum(apiPods.map(podRequest)) / apiPods.length;
   // No reading for the API pods: their request stands in for their use, and the result says so
   const apiUseMeasured = apiUse.length > 0;
   const perPodUse = apiUseMeasured ? sum(apiUse) / apiUse.length : perPodRequest;
@@ -177,6 +177,9 @@ function main() {
   const hpaName = process.env.HPA ?? "api";
   const agentMi = readMi("AGENT_MI");
   const clusterAgentMi = readMi("CLUSTER_AGENT_MI");
+  if (clusterAgentMi !== undefined && agentMi === undefined) {
+    throw new Error("CLUSTER_AGENT_MI needs AGENT_MI: placement puts the node agent first");
+  }
   const result = headroom({
     nodes: JSON.parse(kubectl(["get", "nodes", "-o", "json"])),
     pods: JSON.parse(kubectl(["get", "pods", "-A", "-o", "json"])),
