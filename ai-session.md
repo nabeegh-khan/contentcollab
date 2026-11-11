@@ -356,3 +356,18 @@ A catalog-query checker with 13 checks, scratch databases for isolation, a bad-m
 - Replaced the text comparison with a probe on a temporary copy of `shares` inside a rolled-back transaction (four roles accepted, seven other values refused), added type, step, cycle and per-version checks, and grew the change list to 38 rows, each run on #88's migration.
 - Ran the test on the bad migration first (it failed, listing the six broken lines), then on #88's (43 of 43), and a second review round before opening the draft PR.
 - Kept the one item not fixed (`EXISTS` can never be null, so a null guard has nothing to catch) out of the code and in the log.
+
+## CI checks for the migration, the web image and the cloud manifests (part of #70, PR #99), 11 November 2026
+
+### Prompt
+
+The reviews of #88 and #86 promised four CI additions: kubeconform at a supported Kubernetes version, a migration up/down/up step, a web image build and a render check for the infra overlay and migrate Job. We asked for them as small scripts with tests written first, each shown failing on a deliberately broken input, and an independent review before pushing.
+
+### AI Response
+
+Three shell scripts with stub-driven tests (17), workflow changes that skip while the inputs are missing, and local runs against a real Postgres 18 and the real files from #88 and #86. A fresh reviewer then found that the workflow wiring was untested (7 of 7 changed copies passed), that a `yq | grep || true` hid a yq failure, and that the placeholder check missed digits.
+
+### What Your Team Did With It
+
+- Added a test that pins the workflow wiring and killed all of those changes, moved yq output to a file, widened the placeholder check, and re-ran everything.
+- Showed the checks red then green on a runner with a throwaway branch (closed afterwards), and wrote the limits into the PR and the build log: skips that never expire, no check that `down 0` empties the history, a build-only web job.

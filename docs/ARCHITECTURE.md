@@ -129,6 +129,44 @@ Datadog files, committed to be imported by hand, never applied with an API key f
 
 **Limits.** Latency is shown as an average (`.sum` divided by `.count`): a p95 needs the histogram buckets submitted as distributions, which is a change to the check's annotation in `k8s/base/api.yaml`, not part of this change. The route label has two more limits: a router mounted on a path with a parameter would put the parameter's value in the label, so routers are mounted on literal paths and parameters stay in the route; and a route that calls `next()` and falls through to the 404 handler keeps its own label. A request the client abandons before the response is complete is written as one `request aborted` line (level `warn`) and is not counted in the metrics. The agent is not installed on the cluster yet (#27), so the metric names, the tags and the log parsing are checked against the documentation and by tests on the API, not against a running Datadog.
 
+### D18. Monitoring that fits two 2 GB nodes: provider metrics and alerts, `/metrics`, JSON logs; no agent in the cluster (decided 11 November, #55)
+
+Supersedes the agent part of D17 and D6. D17's reasoning (one stack, no extra cost, Datadog over Prometheus and Grafana) stands; what changes is that the Datadog agent is not installed, because it does not fit.
+
+**What the course requires.** The handout lists monitoring as required for all projects, not as an advanced feature: "Integrate monitoring using provider tools (e.g., DigitalOcean metrics/alerts for CPU, memory, disk ...)" and "Set up basic alerts or dashboards for key metrics" ([project handout](https://www.eecg.utoronto.ca/~cying/courses/ece1779-cloud/project/handout/), read 11 November 2026). The provider tools alone meet it.
+
+**What the cluster has left.** Measured on the running cluster on 11 November 2026 at 18:37 UTC (two s-2vcpu-2gb nodes, 1,464.6 MiB allocatable each, 2,929 MiB in all; `kubectl describe nodes`, `kubectl top`). The rebuild without the high-availability control plane (COST_PLAN) keeps the same node size and the same pods, so these numbers are expected to carry over; they are re-measured with `scripts/memory-headroom.mjs` once the rebuilt cluster is up.
+
+| | Node A | Node B | Both |
+|---|---|---|---|
+| Memory requested by pods | 974 MiB (66%) | 1,166 MiB (79%) | 2,140 MiB |
+| Unrequested | 490.6 MiB | 298.6 MiB | 789 MiB |
+| In use now | 1,217 MiB (83%) | 1,126 MiB (76%) | 2,343 MiB |
+| Not in use now | 247.6 MiB | 338.6 MiB | 586 MiB |
+
+The autoscaler is allowed five API pods (128 MiB requested each, about 138 MiB in use each). Three more pods take 384 MiB of requests and about 414 MiB of real memory, so with the API at its maximum **405 MiB are unrequested and about 172 MiB are not in use**. On 6 November a node reached 93% memory with five pods and the load test stops at 95% (LOG), so that margin is real. Cilium alone uses about 410 MiB on each node and cannot be reduced here.
+
+**Options.**
+
+| | Requests | Fits with the API at five pods? |
+|---|---|---|
+| (c) Datadog agent and cluster agent (D6) | 768 MiB | No: 405 MiB unrequested. A third node (about US$0.73 a day with tax, COST_PLAN) would be needed. Halving the requests to 384 MiB leaves 21 MiB of requests and none of the real memory. Datadog's own Kubernetes example gives the Agent container a 256 MiB request, and it warns that a 100 MiB limit may lead it to be killed for memory ([Kubernetes distributions](https://docs.datadoghq.com/containers/kubernetes/distributions/), read 11 November 2026), so going lower is outside what the vendor shows. |
+| (b) One Prometheus pod with short retention, and Grafana | about 192 to 384 MiB (an estimate: Prometheus 128 to 256 MiB, Grafana 64 to 128 MiB; the official pages give no memory figure per series, only the retention flags `--storage.tsdb.retention.time` and `--storage.tsdb.retention.size`, [Storage](https://prometheus.io/docs/prometheus/latest/storage/), read 11 November 2026) | Not with room to spare. The requests fit 405 MiB only at the low end, and the 172 MiB of real memory left at five API pods is less than either pod would use. `/metrics` has 153 series, so the data is small; the baseline of the two processes is the cost. |
+| (a) DigitalOcean metrics and alerts, `/metrics` shown live, JSON logs through `kubectl logs`, no agent | 0 | Yes |
+
+**Decision: (a).** It meets the handout, costs nothing, and leaves the memory to the HPA.
+
+- **Provider dashboards:** the cluster's Insights tab shows CPU usage, load average, memory, disk and disk I/O for the cluster, the node pool and each node, from the DigitalOcean metrics agent that every DOKS cluster runs ([basic metrics](https://docs.digitalocean.com/products/kubernetes/how-to/monitor-basic/), read 11 November 2026). Its memory graph leaves out reclaimable memory, so it reads lower than `kubectl top` ([autoscaling guide](https://docs.digitalocean.com/products/kubernetes/how-to/set-up-autoscaling/), read 11 November 2026).
+- **Provider alerts:** policies for CPU, memory and disk above 80% for five minutes, assigned by the cluster's tag (worker nodes are recycled, so the docs recommend tags), created by `scripts/alerts.sh` (#62). Resource alerts are free ([manage resource alerts](https://docs.digitalocean.com/products/monitoring/how-to/manage-resource-alerts/), [features](https://docs.digitalocean.com/products/monitoring/details/features/), read 11 November 2026).
+- **Application metrics:** `/metrics` (D16: `method`, `route` and `status_class` labels, 153 series) read live through a port-forward; the Gateway never routes it.
+- **Logs:** the JSON request log (D16) through `kubectl logs`, with the request ID followed from the browser's `X-Request-Id` header to its line.
+- **Error rate per endpoint:** `scripts/error-rate.mjs` reads the request log and prints the 5xx share per route over the window, exiting 1 above 2% (the threshold in the failure table), with a minimum request count so one failure on a quiet route does not alert. Stopping Redis makes it fail within the window. This is the "monitor firing" of the demo; it is run by hand, not by an agent.
+- **Kept, not installed:** the Datadog dashboard and monitor files (`k8s/doks/datadog/`, validated against Datadog's schemas), the agent values (`k8s/doks/datadog-values.yaml`) and the optional install step in `scripts/cluster-up.sh` (skipped without `DATADOG_API_KEY`). They are used only if a third node is ever added; nothing in the demo depends on them.
+
+**What is given up.** No history beyond the provider's retention and the pods' own logs (a pod's log is gone with the pod); no alert on the application's error rate that sends a message; no p95 latency graph. The first is accepted for a project that runs for weeks, the second is covered by running the error-rate check by hand in the demo, and the third was already out of reach (D16). If the rubric credits an alert on an application metric, the next step is not an agent: `scripts/error-rate.mjs` can run in a CronJob that mails or posts to a webhook, a small pod that exists only while it runs; that is not built and its memory is not measured.
+
+**Not claimed.** That the rebuilt cluster has the same headroom (re-measured after the rebuild); that Insights shows what `kubectl top` shows; any Datadog result, since the agent was never installed.
+
 ### D0. Service model
 
 Lecture 1 splits cloud services into IaaS (you manage the OS), PaaS (the provider manages the hosts, you ship containers or code) and FaaS (functions run on events). Assignment 1 was IaaS: a droplet, Nginx, PostgreSQL installed by hand. The project is not that. We use managed Kubernetes, where DigitalOcean runs the control plane and the worker nodes' OS and we run containers (PaaS-style on top of the provider's IaaS), object storage as a service for files, and the provider's metrics and alerts. A DigitalOcean Function is an option for one small event-driven job (a thumbnail when a file lands in Spaces) if we want the serverless advanced feature; it is not in the core path. The point for the proposal: we manage containers and data, not machines.
@@ -183,6 +221,8 @@ Stretch goals, presented as completed only if they are:
 6. **External services** (Eyrika): email on share and on @-mention through a transactional email API.
 
 ### D6. Monitoring
+
+**The Datadog agent described here is not installed: see D18.**
 
 DigitalOcean droplet and cluster metrics with alert policies (CPU, memory, disk at 80%) are mandatory and free. The API exposes `/metrics` with `prom-client` (request count, latency histogram, error count, and the Node.js process defaults; upload bytes and connected sockets are not exported yet). Datadog collects those metrics, the container logs of the `contentcollab` namespace (not cert-manager, the gateway or kube-system, decided 10 November) and the Kubernetes state (restarts, pending pods, autoscaler replicas) through its agent, and holds the dashboard (#27, decided 8 November; the proposal's monitoring row already named it). It beat Prometheus and Grafana in the cluster, the handout's optional route: the account came with the GitHub Student Developer Pack (24 October minutes), logs outlive the pod that wrote them, and the two small nodes carry one agent each plus one cluster agent, instead of a metrics store and a dashboard server. The chart's operator, service discovery and APM containers are switched off. The cost is a vendor account, an API key kept outside the repository, and 400m CPU and 768 MiB of memory requested (agent 100m and 256 MiB on each node, cluster agent 200m and 256 MiB), against 2 GiB allocatable to pods on the two nodes (BUILD_LOG.md, 8 November). `scripts/cluster-up.sh` installs the agent last, from the chart pinned there, after checking the key against the account's Datadog site. The API pods are scraped by an autodiscovery annotation in `k8s/base/api.yaml`. The presentation shows one alert firing and one dashboard.
 
@@ -241,6 +281,8 @@ In: upload, versions, revert, share by user or link, roles, comments, annotation
 - PDF annotation in the browser: pdf.js with our own overlay, or pins anchored to page number and coordinates only.
 
 ### D17. Monitoring stack reconsidered: Datadog stays, Prometheus and Grafana not added (decided 11 November, #100)
+
+**Superseded in part by D18 (11 November):** the Datadog agent is not installed because it does not fit on the two nodes; the reasoning below for keeping one stack and for Datadog over Prometheus and Grafana stands.
 
 **Question.** At the 11 November design review we asked whether to replace Datadog (D6) with Prometheus and Grafana in the cluster, to have one metrics stack, zero extra cost and Prometheus visible in the demo.
 
