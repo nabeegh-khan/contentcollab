@@ -62,8 +62,21 @@ spec:
               value: "false"
             - name: GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES
               value: "false"
+            # Grafana 13 otherwise downloads about 19 preinstalled plugins from
+            # grafana.com at every start (about 175 MB, one process for each
+            # backend plugin); the core Prometheus data source needs none
+            - name: GF_PLUGINS_PREINSTALL_DISABLED
+              value: "true"
             - name: GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH
               value: /etc/grafana/dashboards/contentcollab.json
+          # The first start runs database migrations and loads plugins: about
+          # 60 s at one CPU (11 Nov 2026). Liveness waits until this passes.
+          startupProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            periodSeconds: 10
+            failureThreshold: 30
           readinessProbe:
             httpGet:
               path: /api/health
@@ -73,16 +86,17 @@ spec:
             httpGet:
               path: /api/health
               port: http
-            initialDelaySeconds: 30
             periodSeconds: 15
-          # Requests from the D19 budget; replaced by the measured figure
+          # Grafana's stated minimum is 512 MB of memory and one core. Measured
+          # 11 Nov 2026: OOMKilled at a 192 MiB limit; 259 MiB in use, 264 MiB
+          # at peak, once started at 512 MiB
           resources:
             requests:
-              cpu: 50m
-              memory: 96Mi
+              cpu: 100m
+              memory: 256Mi
             limits:
-              cpu: 500m
-              memory: 192Mi
+              cpu: "1"
+              memory: 512Mi
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true

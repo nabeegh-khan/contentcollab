@@ -71,8 +71,10 @@ else
   # 24 random bytes as 48 hex characters; never echoed. A finite read, so
   # no SIGPIPE under pipefail (tr on /dev/urandom piped to head exits 141)
   password="$(od -An -tx1 -N24 /dev/urandom | tr -d ' \n')"
-  kubectl -n "$NS" create secret generic grafana-admin \
-    --from-literal=admin-password="$password" >/dev/null
+  # Piped as a manifest, so the value is never in a command line (which
+  # every process on the machine can read); works with Windows kubectl too
+  printf 'apiVersion: v1\nkind: Secret\nmetadata:\n  name: grafana-admin\n  namespace: %s\ntype: Opaque\nstringData:\n  admin-password: "%s"\n' \
+    "$NS" "$password" | kubectl apply -f - >/dev/null
   unset password
   echo "Secret grafana-admin created"
 fi
@@ -80,7 +82,8 @@ fi
 run kubectl apply -k "$ROOT/k8s/observability"
 
 for d in prometheus kube-state-metrics grafana; do
-  run kubectl -n "$NS" rollout status "deploy/$d" --timeout=180s
+  # Grafana's first start takes about a minute; its startup probe allows five
+  run kubectl -n "$NS" rollout status "deploy/$d" --timeout=330s
 done
 
 cat <<EOF

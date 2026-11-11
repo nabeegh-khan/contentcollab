@@ -1,5 +1,5 @@
 # kube-state-metrics, cut down to what the dashboard reads: the api HPA's
-# current and desired replicas, Deployments, and node allocatable memory
+# current, desired and maximum replicas, and node allocatable memory
 # (ARCHITECTURE D19, #109). Container and probe settings follow the
 # project's own example (examples/standard/deployment.yaml at v2.20.0).
 apiVersion: v1
@@ -14,9 +14,6 @@ metadata:
 rules:
   - apiGroups: [autoscaling]
     resources: [horizontalpodautoscalers]
-    verbs: [list, watch]
-  - apiGroups: [apps]
-    resources: [deployments]
     verbs: [list, watch]
   - apiGroups: [""]
     resources: [nodes]
@@ -71,7 +68,7 @@ spec:
         - name: kube-state-metrics
           image: registry.k8s.io/kube-state-metrics/kube-state-metrics:v2.20.0
           args:
-            - --resources=horizontalpodautoscalers,deployments,nodes
+            - --resources=horizontalpodautoscalers,nodes
             - --namespaces=contentcollab
           ports:
             - name: http-metrics

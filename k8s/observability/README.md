@@ -13,8 +13,9 @@ kubectl -n observability port-forward svc/prometheus 9090:9090   # http://localh
 |---|---|
 | `prometheus/prometheus.yml` | Scrape jobs: `api` (EndpointSlices of the api Service), `kubelet-resource` and `kubelet-cadvisor` (HTTPS, cluster CA, kept to the metrics the dashboard reads), `kube-state-metrics`. Checked by `promtool check config` in CI |
 | `prometheus/prometheus.yaml` | Deployment (24 h, 1 GB, emptyDir), Service, read-only ClusterRole (no `nodes/proxy`, no Secrets) |
-| `kube-state-metrics.yaml` | Only HPAs, Deployments (namespace `contentcollab`) and nodes |
-| `grafana/` | Deployment, provisioned data source (uid `prometheus`), dashboard provider, `dashboards/contentcollab.json` |
+| `kube-state-metrics.yaml` | Only HPAs (namespace `contentcollab`) and nodes |
+| `prometheus/dashboard.test.yml` | `promtool test rules` cases for every dashboard query, on series labelled as `prometheus.yml` labels them; run in CI |
+| `grafana/` | Deployment (256 MiB requested, 512 MiB limit: it was OOMKilled at 192 MiB; plugin downloads off; a startup probe allowing five minutes), provisioned data source (uid `prometheus`), dashboard provider, `dashboards/contentcollab.json` |
 | `observability.test.mjs` | The rendered objects and the dashboard against D19: `node --test k8s/observability/*.test.mjs` (needs kubectl and yq 4) |
 
-Nothing here is routed by the Gateway. The dashboard's panels: request rate per route, 5xx share per route with the 2% line, p95 latency per route, the HPA's current, desired and maximum replicas, and node memory in use against allocatable.
+Nothing here is routed by the Gateway. The dashboard's panels: request rate per route (without `/metrics` and `/health`), 5xx share per route with the 2% line (0 before a route's first error), p95 latency per route, the HPA's current, desired and maximum replicas, and node memory in use against allocatable.

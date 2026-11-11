@@ -1,0 +1,2 @@
+# No recording or alerting rules; dashboard.test.yml needs a rule file to load
+groups: []

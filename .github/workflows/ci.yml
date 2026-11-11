@@ -132,7 +132,7 @@ jobs:
       - name: Render and validate
         run: |
           kubectl kustomize k8s/observability > /tmp/observability.yaml
-          for v in 1.33.0 1.36.0; do
+          for v in 1.33.0 1.36.0 1.37.0; do
             kubeconform -strict -summary -kubernetes-version $v /tmp/observability.yaml
           done
       - name: promtool check config
@@ -145,6 +145,9 @@ jobs:
             -v "$PWD/k8s/observability/prometheus:/cfg:ro" \
             -v "$sa:/var/run/secrets/kubernetes.io/serviceaccount:ro" \
             --entrypoint promtool prom/prometheus:v3.16.0 check config /cfg/prometheus.yml
+      - name: promtool test rules (the dashboard's queries)
+        run: |
+          docker run --rm -v "$PWD/k8s/observability/prometheus:/cfg:ro" -w /cfg \n            --entrypoint promtool prom/prometheus:v3.16.0 test rules dashboard.test.yml
       - name: Rendered objects and dashboard
         # yq 4 is preinstalled on the Ubuntu runner
         run: node --test k8s/observability/*.test.mjs

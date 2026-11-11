@@ -1,0 +1,98 @@
+# Unit tests for the dashboard's queries (grafana/dashboards/contentcollab.json),
+# run by `promtool test rules` in CI. The input series carry the labels the
+# scrape configuration in prometheus.yml produces (job, node, namespace, pod),
+# so a change to a relabel rule or a query that breaks the panel fails here.
+# observability.test.mjs checks that every dashboard query appears below.
+rule_files:
+  - no-rules.yml
+
+evaluation_interval: 15s
+
+# rate() extrapolates, so 1 comes back as 0.9999999999999999; compare with
+# a small tolerance rather than bit for bit
+fuzzy_compare: true
+
+tests:
+  - interval: 15s
+    input_series:
+      # 1 request a second to /documents, plus probe and scrape traffic
+      - series: 'http_requests_total{job="api",namespace="contentcollab",pod="api-a",method="GET",route="/documents",status_class="2xx"}'
+        values: '0+15x20'
+      - series: 'http_requests_total{job="api",namespace="contentcollab",pod="api-a",method="GET",route="/health",status_class="2xx"}'
+        values: '0+3x20'
+      - series: 'http_requests_total{job="api",namespace="contentcollab",pod="api-a",method="GET",route="/metrics",status_class="2xx"}'
+        values: '0+1x20'
+      # /comments: 1 request a second, of which 0.2 a second are 5xx
+      - series: 'http_requests_total{job="api",namespace="contentcollab",pod="api-a",method="POST",route="/comments",status_class="2xx"}'
+        values: '0+12x20'
+      - series: 'http_requests_total{job="api",namespace="contentcollab",pod="api-a",method="POST",route="/comments",status_class="5xx"}'
+        values: '0+3x20'
+      - series: 'http_errors_total{job="api",namespace="contentcollab",pod="api-a",method="POST",route="/comments",status_class="5xx"}'
+        values: '0+3x20'
+      # Latency: every /documents request between 50 and 100 ms
+      - series: 'http_request_duration_seconds_bucket{job="api",namespace="contentcollab",pod="api-a",method="GET",route="/documents",le="0.05"}'
+        values: '0+0x20'
+      - series: 'http_request_duration_seconds_bucket{job="api",namespace="contentcollab",pod="api-a",method="GET",route="/documents",le="0.1"}'
+        values: '0+15x20'
+      - series: 'http_request_duration_seconds_bucket{job="api",namespace="contentcollab",pod="api-a",method="GET",route="/documents",le="+Inf"}'
+        values: '0+15x20'
+      # kube-state-metrics: the api HPA, and another HPA that must not show
+      - series: 'kube_horizontalpodautoscaler_status_current_replicas{job="kube-state-metrics",namespace="contentcollab",horizontalpodautoscaler="api"}'
+        values: '3x20'
+      - series: 'kube_horizontalpodautoscaler_status_desired_replicas{job="kube-state-metrics",namespace="contentcollab",horizontalpodautoscaler="api"}'
+        values: '4x20'
+      - series: 'kube_horizontalpodautoscaler_spec_max_replicas{job="kube-state-metrics",namespace="contentcollab",horizontalpodautoscaler="api"}'
+        values: '5x20'
+      - series: 'kube_horizontalpodautoscaler_status_current_replicas{job="kube-state-metrics",namespace="contentcollab",horizontalpodautoscaler="web"}'
+        values: '1x20'
+      # Node memory: kubelet working set (node label from relabelling) over allocatable
+      - series: 'node_memory_working_set_bytes{job="kubelet-resource",instance="10.108.0.3:10250",node="node-a"}'
+        values: '1500000000x20'
+      - series: 'kube_node_status_allocatable{job="kube-state-metrics",instance="kube-state-metrics.observability.svc:8080",node="node-a",resource="memory",unit="byte"}'
+        values: '3000000000x20'
+      - series: 'kube_node_status_allocatable{job="kube-state-metrics",instance="kube-state-metrics.observability.svc:8080",node="node-a",resource="cpu",unit="core"}'
+        values: '2x20'
+    promql_expr_test:
+      - expr: 'sum by (route) (rate(http_requests_total{job="api",route!~"/metrics|/health"}[1m]))'
+        eval_time: 4m
+        exp_samples:
+          - labels: '{route="/documents"}'
+            value: 1
+          - labels: '{route="/comments"}'
+            value: 1
+      - expr: '(sum by (route) (rate(http_errors_total{job="api"}[5m])) or 0 * sum by (route) (rate(http_requests_total{job="api"}[5m]))) / sum by (route) (rate(http_requests_total{job="api"}[5m]))'
+        eval_time: 4m
+        exp_samples:
+          - labels: '{route="/comments"}'
+            value: 0.2
+          - labels: '{route="/documents"}'
+            value: 0
+          - labels: '{route="/health"}'
+            value: 0
+          - labels: '{route="/metrics"}'
+            value: 0
+      - expr: 'histogram_quantile(0.95, sum by (le, route) (rate(http_request_duration_seconds_bucket{job="api"}[5m])))'
+        eval_time: 4m
+        exp_samples:
+          - labels: '{route="/documents"}'
+            value: 0.0975
+      - expr: 'kube_horizontalpodautoscaler_status_current_replicas{namespace="contentcollab",horizontalpodautoscaler="api"}'
+        eval_time: 4m
+        exp_samples:
+          - labels: 'kube_horizontalpodautoscaler_status_current_replicas{job="kube-state-metrics",namespace="contentcollab",horizontalpodautoscaler="api"}'
+            value: 3
+      - expr: 'kube_horizontalpodautoscaler_status_desired_replicas{namespace="contentcollab",horizontalpodautoscaler="api"}'
+        eval_time: 4m
+        exp_samples:
+          - labels: 'kube_horizontalpodautoscaler_status_desired_replicas{job="kube-state-metrics",namespace="contentcollab",horizontalpodautoscaler="api"}'
+            value: 4
+      - expr: 'kube_horizontalpodautoscaler_spec_max_replicas{namespace="contentcollab",horizontalpodautoscaler="api"}'
+        eval_time: 4m
+        exp_samples:
+          - labels: 'kube_horizontalpodautoscaler_spec_max_replicas{job="kube-state-metrics",namespace="contentcollab",horizontalpodautoscaler="api"}'
+            value: 5
+      - expr: 'sum by (node) (node_memory_working_set_bytes{job="kubelet-resource"}) / on (node) sum by (node) (kube_node_status_allocatable{resource="memory",unit="byte"})'
+        eval_time: 4m
+        exp_samples:
+          - labels: '{node="node-a"}'
+            value: 0.5
