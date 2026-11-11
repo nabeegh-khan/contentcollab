@@ -418,3 +418,20 @@ A page map between the two lecture 9 files (two slides are split over two pages 
 
 - Checked each new row against the manifests and scripts before writing where it applies, and dropped lecture 1 citations the slides did not support (for "demo live", "pay for what you use" as a reason to destroy resources, and contribution read from Git history).
 - Had the change checked by reviewers who had not written it, a new one each round, and fixed what they found (a migration Job described as existing when it is only planned, a script listed as calling kubectl that does not, a row still placing the cluster in Toronto after the move to nyc3) before committing.
+
+## Two more review passes on the request log and the monitoring scripts (#55, PR #102), 11 November 2026
+
+### Prompt
+
+PR #102 (JSON request logs, bounded metric labels, the error-rate check and the memory-headroom script) had one review. Before it can merge we asked for two more independent passes, the second by a reviewer who had not seen the first: every test shown failing without its change, the error paths (no data, bad input, crash), the log format and label bounds, and every claim in the PR and in D18. Each fault fixed test-first; nothing pushed until the second pass was clean.
+
+### AI Response
+
+The first pass found about thirty items. The most serious were silent all-clears: a node with no reading counted as 0 MiB used, a failing probe below the minimum reported as fine, unreadable lines dropped, a late server error logged as the client aborting. It also found tests that passed with the feature removed and a CRLF README. The second pass found no code fault that blocked a push, but it did find plain-text startup lines, untested bounds, environment-dependent tests and several doc claims that were wrong or stale.
+
+### What Your Team Did With It
+
+- Wrote a failing test for each finding before the fix, in five rounds, and added checks that would have caught the late faults: line endings read from git's index, `--tail=-1` in every documented command, and the logger's output parsed by the check itself.
+- Brought the error bodies in line with our own API contract (`code`), made both scripts exit 2 instead of reporting all clear on bad input, and ran the real server with Redis paused to see the alert fire.
+- Corrected D16, D18, RESEARCH and the demo page where they had gone stale after the cluster rebuild. Left the architecture diagram and the submitted proposal's Datadog line unchanged.
+- Rejected one suggestion: counting aborted requests as failures. They get their own column instead, because a closed browser tab is not a server error.
