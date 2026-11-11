@@ -126,7 +126,9 @@ for repo in $(printf '%s\n' "$rendered" | grep -o 'ghcr.io/nabeegh-khan/contentc
   [ "$code" = "200" ] || die "no image $repo:$IMAGE_TAG in the registry (HTTP $code); set IMAGE_TAG to a commit deploy.yml built"
 done
 printf '%s\n' "$rendered" | run_stdin kubectl apply -f -
-if [ "$DRY_RUN" = 0 ]; then kubectl -n contentcollab rollout status deployment/api --timeout=180s; fi
+if [ "$DRY_RUN" = 0 ]; then
+  for d in api worker; do kubectl -n contentcollab rollout status "deployment/$d" --timeout=180s; done
+fi
 
 # 5. Where the world reaches it. The Gateway's address is the load balancer;
 #    an A record for the domain at the registrar points there. The certificate

@@ -125,8 +125,12 @@ reached_address() {
 # Waits for cert-manager to issue the certificate; on failure prints its
 # certificate, order and challenge status, where the reason is
 wait_certificate() {  # namespace name seconds
-  kubectl -n "$1" wait --for=create "certificate/$2" --timeout=60s >/dev/null \
-    && kubectl -n "$1" wait --for=condition=Ready "certificate/$2" --timeout="${3}s" && return 0
+  # cert-manager creates the Certificate from the Gateway's annotation
+  if ! kubectl -n "$1" wait --for=create "certificate/$2" --timeout=60s >/dev/null; then
+    echo "cert-manager did not create certificate/$2 within 60 s: check the Gateway's cert-manager.io/cluster-issuer annotation and the cert-manager logs (kubectl -n cert-manager logs deployment/cert-manager)" >&2
+    return 1
+  fi
+  kubectl -n "$1" wait --for=condition=Ready "certificate/$2" --timeout="${3}s" && return 0
   echo "certificate $2 not issued within $3 s. cert-manager's status:" >&2
   kubectl -n "$1" get certificate,certificaterequest,order,challenge -o wide >&2 || true
   kubectl -n "$1" describe challenge >&2 || true
