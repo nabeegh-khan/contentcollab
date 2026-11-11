@@ -129,3 +129,32 @@ test("THRESHOLD and MIN_REQUESTS come from the environment", () => {
   assert.equal(run(input, { THRESHOLD: "0.05", MIN_REQUESTS: "30" }).status, 0);
   assert.equal(run(input, { THRESHOLD: "0.05", MIN_REQUESTS: "10" }).status, 1);
 });
+
+test("a route with exactly the minimum number of requests is judged", () => {
+  const entries = parseRequestLines(lines(...repeat(9, line("/a", 200)), line("/a", 500)));
+  const [row] = evaluate(entries, { threshold: 0.02, minRequests: 10 });
+  assert.equal(row.total, 10);
+  assert.equal(row.state, "ALERT");
+});
+
+test("the defaults are 2% and 10 requests", () => {
+  assert.equal(run(lines(...repeat(97, line("/a", 200)), ...repeat(3, line("/a", 500)))).status, 1);
+  assert.equal(run(lines(...repeat(98, line("/a", 200)), ...repeat(2, line("/a", 500)))).status, 0);
+  // 1 failure in 9 requests is below the default minimum of 10: few, not an alert
+  assert.equal(run(lines(...repeat(8, line("/a", 200)), line("/a", 500))).status, 0);
+});
+
+test("a request line with no route is counted under unmatched", () => {
+  const noRoute = JSON.stringify({ msg: "request", http: { method: "GET", status_code: 404 } });
+  assert.deepEqual(parseRequestLines(lines(noRoute)), [{ route: "unmatched", status: 404 }]);
+});
+
+test("MIN_REQUESTS must be a whole number", () => {
+  assert.equal(run(lines(line("/a", 200)), { MIN_REQUESTS: "1.5" }).status, 2);
+});
+
+test("the output names each route's requests, 5xx count and share", () => {
+  const r = run(lines(...repeat(96, line("/a", 200)), ...repeat(4, line("/a", 500))));
+  assert.match(r.stdout, /\/a\s+100\s+4\s+4\.00%\s+ALERT/);
+  assert.match(r.stdout, /threshold 2% with at least 10 requests; 100 requests read/);
+});

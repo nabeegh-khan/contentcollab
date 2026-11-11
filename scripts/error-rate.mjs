@@ -2,8 +2,11 @@
 // The 5xx share per route over a window, read from the API's JSON request log (#55, ARCHITECTURE D18).
 // This is the error-rate check of the demo: no agent in the cluster, only the log.
 //
-//   kubectl -n contentcollab logs -l app=api --since=5m --prefix | node scripts/error-rate.mjs
+//   kubectl -n contentcollab logs -l app=api --since=5m --tail=-1 --prefix | node scripts/error-rate.mjs
 //   THRESHOLD=0.05 MIN_REQUESTS=20 node scripts/error-rate.mjs < saved.log
+//
+// --tail=-1 matters: with a selector (-l) kubectl logs returns only the last 10 lines of each pod unless told otherwise,
+// and the share would be computed from that sample, not from the window.
 //
 // THRESHOLD is a share between 0 and 1 (default 0.02, the alert level in the failure table of ARCHITECTURE);
 // MIN_REQUESTS is the fewest requests a route needs before its share can raise an alert (default 10), so one
@@ -99,4 +102,12 @@ function main() {
   process.exit(rows.some((r) => r.state === "ALERT") ? 1 : 0);
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main();
+// A crash must not look like an alert: node exits 1 on an uncaught error, which is this script's ALERT code
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  try {
+    main();
+  } catch (err) {
+    console.error(`error-rate failed: ${err.message}`);
+    process.exit(2);
+  }
+}

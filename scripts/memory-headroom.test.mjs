@@ -72,3 +72,52 @@ test("says whether an agent of a given size fits at the API maximum", () => {
   assert.equal(result.fits.inUse, false);
   assert.equal(headroom({ nodes, pods, topNodes, topApi, hpa, agentMi: 100 }).fits.requests, true);
 });
+
+test("parses decimal and exponent quantities too, and refuses what it cannot read instead of counting 0", () => {
+  assert.equal(parseMemory("256M"), (256 * 1000 * 1000) / (1024 * 1024));
+  assert.equal(parseMemory("1G"), (1000 * 1000 * 1000) / (1024 * 1024));
+  assert.equal(parseMemory("1Ti"), 1024 * 1024);
+  assert.equal(parseMemory("129e6"), 129e6 / (1024 * 1024));
+  assert.throws(() => parseMemory("100m"), /memory quantity/);
+  assert.throws(() => parseMemory("lots"), /memory quantity/);
+});
+
+test("sums the requests of every container in a pod, and ignores a pod that failed", () => {
+  const two = {
+    ...pod("two", "a", "0Mi"),
+    spec: {
+      nodeName: "a",
+      containers: [
+        { name: "x", resources: { requests: { memory: "100Mi" } } },
+        { name: "y", resources: { requests: { memory: "50Mi" } } },
+      ],
+    },
+  };
+  const failed = { ...pod("failed", "a", "999Mi"), status: { phase: "Failed" } };
+  const more = { items: [...pods.items, two, failed] };
+  const { nodes: rows } = headroom({ nodes, pods: more, topNodes, topApi, hpa });
+  assert.equal(rows[0].requestedMi, 974 + 150);
+});
+
+test("an agent exactly as large as what is left fits", () => {
+  const { atMax } = headroom({ nodes, pods, topNodes, topApi, hpa });
+  const exact = headroom({ nodes, pods, topNodes, topApi, hpa, agentMi: atMax.freeRequestedMi });
+  assert.equal(exact.fits.requests, true);
+  const over = headroom({ nodes, pods, topNodes, topApi, hpa, agentMi: atMax.freeRequestedMi + 1 });
+  assert.equal(over.fits.requests, false);
+});
+
+test("packing: an agent on each node leaves room for a cluster agent on neither (256 MiB each)", () => {
+  const r = headroom({ nodes, pods, topNodes, topApi, hpa, agentMi: 256, clusterAgentMi: 256 });
+  assert.deepEqual(r.packing, { agentOnEachNode: true, clusterAgentFits: false });
+});
+
+test("packing: a smaller cluster agent fits on the node with the most room", () => {
+  const r = headroom({ nodes, pods, topNodes, topApi, hpa, agentMi: 256, clusterAgentMi: 200 });
+  assert.deepEqual(r.packing, { agentOnEachNode: true, clusterAgentFits: true });
+});
+
+test("packing: an agent too big for the fuller node is reported", () => {
+  const r = headroom({ nodes, pods, topNodes, topApi, hpa, agentMi: 400, clusterAgentMi: 1 });
+  assert.equal(r.packing.agentOnEachNode, false);
+});
