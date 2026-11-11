@@ -25,7 +25,7 @@ flowchart TB
   LLM["Language-model API"]
   MAIL["Email service"]
   CI["GitHub Actions · tests, image build · GHCR"]
-  M["DO alerts, Datadog · /metrics, logs"]
+  M["DO alerts and Insights · /metrics, JSON logs"]
   U -- "HTTPS, WebSocket" --> GW
   GW --> W
   GW --> A
@@ -151,7 +151,7 @@ The autoscaler is allowed five API pods (128 MiB requested each, about 138 MiB i
 
 | | Requests | Fits with the API at five pods? |
 |---|---|---|
-| (c) Datadog agent and cluster agent (D6) | 768 MiB | No: 405 MiB unrequested. A third node (about US$0.73 a day with tax, COST_PLAN) would be needed. Halving the requests to 384 MiB leaves 21 MiB of requests and none of the real memory. Datadog's own Kubernetes example gives the Agent container a 256 MiB request, and it warns that a 100 MiB limit may lead it to be killed for memory ([Kubernetes distributions](https://docs.datadoghq.com/containers/kubernetes/distributions/), read 11 November 2026), so going lower is outside what the vendor shows. |
+| (c) Datadog agent and cluster agent (D6) | 768 MiB | No: 405 MiB unrequested, and by placement it fails today: an agent of 256 MiB on each node leaves 234.6 and 42.6 MiB, so the 256 MiB cluster agent fits on neither (`AGENT_MI=256 CLUSTER_AGENT_MI=256 node scripts/memory-headroom.mjs`). A third node (about US$0.73 a day with tax, COST_PLAN) would be needed. Halving the requests to 384 MiB leaves 21 MiB of requests and none of the real memory. Datadog's Kubernetes example for GKE Autopilot gives the Agent container a 256 MiB request, and it warns that Autopilot's default limit of 100 MiB may lead it to be killed for memory, depending on the environment ([Kubernetes distributions](https://docs.datadoghq.com/containers/kubernetes/distributions/), read 11 November 2026), so going lower is outside what the vendor shows. |
 | (b) One Prometheus pod with short retention, and Grafana | about 192 to 384 MiB (an estimate: Prometheus 128 to 256 MiB, Grafana 64 to 128 MiB; the official pages give no memory figure per series, only the retention flags `--storage.tsdb.retention.time` and `--storage.tsdb.retention.size`, [Storage](https://prometheus.io/docs/prometheus/latest/storage/), read 11 November 2026) | Not with room to spare. The requests fit 405 MiB only at the low end, and the 172 MiB of real memory left at five API pods is less than either pod would use. `/metrics` has 153 series, so the data is small; the baseline of the two processes is the cost. |
 | (a) DigitalOcean metrics and alerts, `/metrics` shown live, JSON logs through `kubectl logs`, no agent | 0 | Yes |
 
@@ -166,7 +166,7 @@ The autoscaler is allowed five API pods (128 MiB requested each, about 138 MiB i
 
 **What is given up.** No history beyond the provider's retention and the pods' own logs (a pod's log is gone with the pod); no alert on the application's error rate that sends a message; no p95 latency graph. The first is accepted for a project that runs for weeks, the second is covered by running the error-rate check by hand in the demo, and the third was already out of reach (D16). If the rubric credits an alert on an application metric, the next step is not an agent: `scripts/error-rate.mjs` can run in a CronJob that mails or posts to a webhook, a small pod that exists only while it runs; that is not built and its memory is not measured.
 
-**Not claimed.** That the rebuilt cluster has the same headroom (re-measured after the rebuild); that Insights shows what `kubectl top` shows; any Datadog result, since the agent was never installed.
+**Not claimed.** That the rebuilt cluster has the same headroom (the rebuild had not started on 11 November; it is re-measured after it); that stopping Redis turns the error-rate check red on the cluster (checked against the code and a local run, not yet run there); that Insights shows what `kubectl top` shows; any Datadog result, since the agent was never installed.
 
 ### D0. Service model
 
