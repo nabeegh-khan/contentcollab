@@ -1,6 +1,5 @@
 import { describe, expect, it } from "@jest/globals";
 import { readFileSync } from "node:fs";
-import { MetricType } from "prom-client";
 import { registry } from "./metrics.js";
 
 // The Datadog files are imported by hand, so nothing else checks them. These
@@ -42,7 +41,7 @@ async function exportedDatadogMetrics(): Promise<Map<string, string[]>> {
       .labelNames;
     const base = metric.name.replace(TOTAL_SUFFIX, "");
     const suffixes =
-      metric.type === MetricType.Histogram ? [".sum", ".count", ".bucket"] : [".count"];
+      String(metric.type) === "histogram" ? [".sum", ".count", ".bucket"] : [".count"];
     return suffixes.map((suffix): [string, string[]] => [`${NAMESPACE}.${base}${suffix}`, labels]);
   });
   return new Map(entries);

@@ -52,7 +52,7 @@ describe("errorHandler", () => {
     expect(line?.error?.message).toBe("kaboom");
     expect(typeof line?.error?.stack).toBe("string");
     expect(line?.http?.request_id).toBe(res.headers["x-request-id"]);
-    expect(line?.http?.route).toBe("unmatched");
+    expect(line?.http?.route).toBe("/fail");
   });
 
   it("answers an error that carries a 4xx status with that status, not a 500", async () => {
