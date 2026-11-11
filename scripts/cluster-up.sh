@@ -9,23 +9,24 @@
 #
 # Needs: doctl (signed in with `doctl auth init`), kubectl, helm, curl; gh to
 # check the CI token.
-# Creates billable resources: two US$18 nodes and one US$12 load balancer,
-# about US$48 a month for the cluster alone; US$54 with Spaces and the database
-# volume (docs/ARCHITECTURE.md). Each node the autoscaler adds above NODE_COUNT
-# (up to NODE_MAX) bills at the node size's price while it runs.
-# Run `scripts/cluster-down.sh` after grading (INF-7).
+# Creates billable resources: one s-2vcpu-4gb node (US$24 a month, `doctl
+# compute size list`, 11 Nov 2026), a second while the autoscaler needs it (up
+# to NODE_MAX), a load balancer and the database volume; totals in
+# docs/COST_PLAN.md. Run `scripts/cluster-down.sh` after grading (INF-7).
 set -euo pipefail
 cd "$(dirname "$0")/.."   # paths below are relative to the repository root
 # shellcheck source=scripts/lib/cluster-up-lib.sh
 . scripts/lib/cluster-up-lib.sh
 
 : "${CLUSTER_NAME:=contentcollab}"
-: "${REGION:=tor1}"
-: "${NODE_SIZE:=s-2vcpu-2gb}"   # smallest size that runs two api pods plus postgres comfortably
-: "${NODE_COUNT:=2}"
-: "${NODE_MIN:=$NODE_COUNT}"      # autoscaling bounds; defaults keep the pool at NODE_COUNT (D13)
-: "${NODE_MAX:=$NODE_COUNT}"
-: "${K8S_MINOR:=1.36}"          # new clusters only: the newest minor cert-manager 1.21 supports (D13)
+# Node pool, region and version of the 11 November rebuild (D13). They apply
+# only to a create; an existing cluster's region is read from doctl
+: "${REGION:=nyc3}"             # tor1 had no capacity on 11 November
+: "${NODE_SIZE:=s-2vcpu-4gb}"   # one 4 GB node holds what two 2 GB nodes held
+: "${NODE_COUNT:=1}"
+: "${NODE_MIN:=1}"              # autoscaling bounds
+: "${NODE_MAX:=2}"
+: "${K8S_MINOR:=1.37}"          # newest slug of this minor; 1.36 is the newest cert-manager 1.21 supports
 : "${LETSENCRYPT_EMAIL:=}"
 : "${SECRETS_FILE:=k8s/base/secrets.yaml}"   # git-ignored copy of secrets.example.yaml with real values
 : "${CERT_TIMEOUT:=300}"                      # seconds to wait for the certificate once DNS points here
@@ -38,6 +39,7 @@ DOMAIN=contentcollab.app                      # the hostname in k8s/doks/gateway
 NGF_VERSION="v2.8.1"            # https://docs.nginx.com/nginx-gateway-fabric/install/helm/
 CERT_MANAGER_VERSION="v1.21.3"  # https://cert-manager.io/docs/releases/
 CERT_MANAGER_STEPS="v1.20.5"    # latest patch of each minor between an older install and the pin
+CERT_MANAGER_K8S_MAX="1.36"     # newest Kubernetes minor cert-manager v1.21 supports
 DATADOG_CHART_VERSION="3.269.1" # https://github.com/DataDog/helm-charts/blob/main/charts/datadog/Chart.yaml (8 Nov 2026)
 
 # 0. Nothing changes until the variables, the tools and the sign-in check out
@@ -47,11 +49,17 @@ require_doctl_auth
 if [ "$DRY_RUN" = 1 ]; then echo "DRY_RUN=1: checks run, changes are printed, nothing is changed"; fi
 
 # 1. Cluster: created once, at a pinned version; later runs find it and move on
-version=$(cluster_version "$CLUSTER_NAME")
+info=$(cluster_info "$CLUSTER_NAME")
+version="" cluster_region=""
+[ -z "$info" ] || read -r version cluster_region <<< "$info"
 if [ -z "$version" ]; then
   slug=$(newest_slug "$K8S_MINOR")
   [ -n "$slug" ] || die "DOKS offers no $K8S_MINOR.x version now (doctl kubernetes options versions): update K8S_MINOR and D13"
+  cluster_region=$REGION
   echo "Creating cluster $CLUSTER_NAME in $REGION, Kubernetes $slug"
+  if [ "$(minor_of "$slug")" -gt "$(minor_of "$CERT_MANAGER_K8S_MAX")" ]; then
+    echo "warning: Kubernetes $slug is above $CERT_MANAGER_K8S_MAX, the newest minor cert-manager $CERT_MANAGER_VERSION supports (D13)"
+  fi
   # --ha=false is explicit: with --ha omitted the API turns the US$40 a month high-availability control plane on for
   # Kubernetes 1.36.0 and later, and it cannot be turned off again (DigitalOcean doctl reference and HA how-to, checked 11 Nov 2026; D13)
   run doctl kubernetes cluster create "$CLUSTER_NAME" \
@@ -61,16 +69,23 @@ if [ -z "$version" ]; then
     --node-pool "name=default;size=$NODE_SIZE;count=$NODE_COUNT;auto-scale=true;min-nodes=$NODE_MIN;max-nodes=$NODE_MAX" \
     --wait
 else
-  echo "Cluster $CLUSTER_NAME exists, Kubernetes $version: not recreated"
-  if [ "$(minor_of "$version")" -gt "$(minor_of "$K8S_MINOR")" ]; then
-    echo "warning: Kubernetes $version is above $K8S_MINOR, the newest minor cert-manager $CERT_MANAGER_VERSION supports; kept (D13)"
+  [[ "$cluster_region" =~ ^[a-z]{3}[0-9]$ ]] \
+    || die "could not read the region of $CLUSTER_NAME from doctl kubernetes cluster list (got '$cluster_region')"
+  echo "Cluster $CLUSTER_NAME exists in $cluster_region, Kubernetes $version: not recreated"
+  if [ "$REGION" != "$cluster_region" ]; then
+    echo "REGION $REGION ignored: $CLUSTER_NAME is in $cluster_region"
+  fi
+  if [ "$(minor_of "$version")" -gt "$(minor_of "$CERT_MANAGER_K8S_MAX")" ]; then
+    echo "warning: Kubernetes $version is above $CERT_MANAGER_K8S_MAX, the newest minor cert-manager $CERT_MANAGER_VERSION supports; kept (D13)"
   fi
 fi
 # Reading the cluster needs its credentials, which a dry run has only when
-# the cluster already exists
+# the cluster already exists. The context is named after the cluster's own
+# region, so a run never acts on whatever context happened to be current
 can_read=1
 if [ -n "$version" ] || [ "$DRY_RUN" = 0 ]; then
   doctl kubernetes cluster kubeconfig save "$CLUSTER_NAME"   # local kubeconfig only
+  kubectl config use-context "do-$cluster_region-$CLUSTER_NAME"
   kubectl get nodes
 else
   can_read=0
@@ -78,7 +93,19 @@ fi
 
 # 2. Gateway API CRDs (standard channel, the bundle NGF ships) and the NGINX
 #    controller. Creating a Gateway later makes the controller provision a
-#    DigitalOcean load balancer in front of it.
+#    DigitalOcean load balancer in front of it. DOKS 1.37 installs its own
+#    Gateway API CRDs and its admission policy doks-gateway-api-crd-protection
+#    refuses changes to them, so each one first gets DigitalOcean's opt-out
+#    (https://docs.digitalocean.com/products/kubernetes/how-to/use-gateway-api/,
+#    checked 11 Nov 2026; D13)
+if [ "$can_read" = 1 ]; then
+  gw_crds=$(gateway_api_crds)
+  for crd in $gw_crds; do
+    run kubectl annotate --overwrite crd "$crd" doks.digitalocean.com/install-policy=external
+  done
+else
+  echo "DRY-RUN: kubectl annotate --overwrite crd <each gateway.networking.k8s.io CRD on the new cluster> doks.digitalocean.com/install-policy=external"
+fi
 kubectl kustomize "https://github.com/nginx/nginx-gateway-fabric/config/crd/gateway-api/standard?ref=$NGF_VERSION" \
   | run_stdin kubectl apply -f -
 run helm upgrade --install ngf oci://ghcr.io/nginx/charts/nginx-gateway-fabric \

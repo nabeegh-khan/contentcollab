@@ -41,7 +41,7 @@ validate_env() {
   [[ "$LETSENCRYPT_EMAIL" =~ ^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$ ]] \
     || die "LETSENCRYPT_EMAIL '$LETSENCRYPT_EMAIL' is not an email address"
   [[ "$CLUSTER_NAME" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$ ]] || die "CLUSTER_NAME '$CLUSTER_NAME': lowercase letters, digits and -"
-  [[ "$REGION" =~ ^[a-z]{3}[0-9]$ ]] || die "REGION '$REGION' is not a DigitalOcean region slug such as tor1"
+  [[ "$REGION" =~ ^[a-z]{3}[0-9]$ ]] || die "REGION '$REGION' is not a DigitalOcean region slug such as nyc3"
   [[ "$NODE_COUNT" =~ ^[1-9][0-9]*$ ]] || die "NODE_COUNT '$NODE_COUNT' is not a positive number"
   # Autoscaling bounds also go into the --node-pool spec
   [[ "$NODE_MIN" =~ ^[1-9][0-9]*$ && "$NODE_MAX" =~ ^[1-9][0-9]*$ && "$NODE_MIN" -le "$NODE_COUNT" && "$NODE_COUNT" -le "$NODE_MAX" ]] \
@@ -60,11 +60,20 @@ require_doctl_auth() {
   doctl account get >/dev/null 2>&1 || die "doctl is not signed in: run doctl auth init"
 }
 
-# Kubernetes version slug of the named cluster; empty when there is none
-cluster_version() {
+# "version region" of the named cluster; empty when there is none
+cluster_info() {
   local list
-  list=$(doctl kubernetes cluster list --format Name,Version --no-header) || die "could not list clusters"
-  printf '%s\n' "$list" | awk -v name="$1" '$1 == name { print $2 }'
+  list=$(doctl kubernetes cluster list --format Name,Version,Region --no-header) || die "could not list clusters"
+  printf '%s\n' "$list" | awk -v name="$1" '$1 == name { print $2, $3 }'
+}
+
+# Names of the Gateway API CRDs on the cluster. DOKS 1.37 installs its own
+# and protects them until they carry its opt-out annotation (D13)
+gateway_api_crds() {
+  local list
+  list=$(kubectl get crd -o name) || die "could not list CRDs (kubectl get crd)"
+  printf '%s\n' "$list" \
+    | sed -n 's#^customresourcedefinition\.apiextensions\.k8s\.io/\([a-z0-9.-]*\.gateway\.networking\.k8s\.io\)$#\1#p'
 }
 
 # Newest DOKS slug for a minor version: 1.36 -> 1.36.10-do.1. The command
