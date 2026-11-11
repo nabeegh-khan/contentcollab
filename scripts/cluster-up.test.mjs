@@ -52,12 +52,14 @@ function bringUp(env = {}) {
         IMAGE_TAG: 'abc123',
         DATADOG_API_KEY: '',
         CLUSTER_NAME: 'contentcollab',
-        REGION: 'tor1',
+        REGION: 'nyc3',
+        NODE_SIZE: 's-2vcpu-2gb',
         NODE_COUNT: '2',
         NODE_MIN: '1',
         NODE_MAX: '3',
+        K8S_MINOR: '1.36',
         DRY_RUN: '0',
-        STUB_CLUSTER: 'contentcollab 1.36.5-do.3',
+        STUB_CLUSTER: 'contentcollab 1.36.5-do.3 nyc3', // cluster list: Name Version Region
         STUB_CM_INSTALLED: 'v1.21.3',
         STUB_GW_ADDR: '203.0.113.10',
         STUB_DNS_IP: '203.0.113.10',
@@ -78,7 +80,7 @@ function bringUp(env = {}) {
 // Calls that change DigitalOcean or the cluster
 const changes = (calls) =>
   calls.filter((c) =>
-    /^doctl kubernetes cluster (create|delete)|^helm (upgrade|install|uninstall)|^kubectl .*\b(apply|delete|patch|rollout restart)\b/.test(c),
+    /^doctl kubernetes cluster (create|delete)|^helm (upgrade|install|uninstall)|^kubectl .*\b(apply|delete|patch|annotate|rollout restart)\b/.test(c),
   );
 const certManagerVersions = (calls) =>
   calls
@@ -110,11 +112,71 @@ test('rejects autoscaling bounds that do not bracket NODE_COUNT before any call'
   }
 });
 
-test('autoscaling bounds default to NODE_COUNT, so the pool keeps its size', () => {
-  const r = bringUp({ NODE_MIN: '', NODE_MAX: '', STUB_CLUSTER: '', STUB_CM_INSTALLED: '' });
+test('defaults create the cluster the 11 November rebuild made (D13)', () => {
+  const unset = { REGION: '', NODE_SIZE: '', NODE_COUNT: '', NODE_MIN: '', NODE_MAX: '', K8S_MINOR: '' };
+  const r = bringUp({ ...unset, STUB_CLUSTER: '', STUB_CM_INSTALLED: '' });
   const create = r.calls.filter((c) => /^doctl kubernetes cluster create /.test(c));
   assert.equal(create.length, 1, r.out);
-  assert.match(create[0], /count=2;auto-scale=true;min-nodes=2;max-nodes=2/);
+  assert.match(create[0], / --region nyc3 /);
+  assert.match(create[0], / --version 1\.37\.0-do\.3 /);
+  assert.match(create[0], /size=s-2vcpu-4gb;count=1;auto-scale=true;min-nodes=1;max-nodes=2/);
+});
+
+// DOKS 1.37 installs its own Gateway API CRDs and its admission policy
+// doks-gateway-api-crd-protection refuses changes to them until each carries
+// DigitalOcean's opt-out annotation (D13)
+const GW_CRDS = ['gateways', 'gatewayclasses', 'httproutes', 'grpcroutes', 'referencegrants', 'tlsroutes'];
+const crdList = [...GW_CRDS.map((n) => `${n}.gateway.networking.k8s.io`), 'ciliumnetworkpolicies.cilium.io']
+  .map((n) => `customresourcedefinition.apiextensions.k8s.io/${n}`)
+  .join('\n');
+
+test('opts every Gateway API CRD out of DOKS management before applying the bundle', () => {
+  const r = bringUp({ STUB_CRDS: crdList });
+  assert.equal(r.code, 0, r.out);
+  const annotated = r.calls.filter((c) => /^kubectl annotate /.test(c));
+  assert.equal(annotated.length, GW_CRDS.length, annotated.join('\n'));
+  for (const n of GW_CRDS) {
+    assert.ok(
+      annotated.some((c) => c.includes(`${n}.gateway.networking.k8s.io`) && / doks\.digitalocean\.com\/install-policy=external\b/.test(c) && / --overwrite\b/.test(c)),
+      n,
+    );
+  }
+  assert.ok(!annotated.some((c) => c.includes('cilium.io')));
+  const lastAnnotate = r.calls.findLastIndex((c) => /^kubectl annotate /.test(c));
+  const crdApply = r.calls.findIndex((c) => /^kubectl apply /.test(c));
+  assert.ok(lastAnnotate < crdApply, 'annotations come before the first apply');
+});
+
+test('a failed CRD listing stops the run before any apply', () => {
+  const r = bringUp({ STUB_CRD_LIST_RC: '1' });
+  assert.notEqual(r.code, 0);
+  assert.match(r.out, /could not list CRDs/);
+  assert.equal(r.calls.filter((c) => /^kubectl (apply|annotate) /.test(c)).length, 0);
+});
+
+test('DRY_RUN=1 prints the CRD annotations and makes none', () => {
+  const r = bringUp({ DRY_RUN: '1', STUB_CRDS: crdList });
+  assert.equal(r.code, 0, r.out);
+  assert.deepEqual(changes(r.calls), []);
+  assert.match(r.out, /DRY-RUN: kubectl annotate --overwrite crd httproutes\.gateway\.networking\.k8s\.io doks\.digitalocean\.com\/install-policy=external/);
+});
+
+test("an existing cluster's own region picks the context; a different REGION is ignored", () => {
+  const r = bringUp({ REGION: 'tor1', STUB_CLUSTER: 'contentcollab 1.37.0-do.3 nyc3' });
+  assert.equal(r.code, 0, r.out);
+  assert.equal(r.calls.filter((c) => / cluster create /.test(c)).length, 0);
+  assert.match(r.out, /REGION tor1 ignored: contentcollab is in nyc3/);
+  const save = r.calls.findIndex((c) => /kubeconfig save contentcollab/.test(c));
+  const use = r.calls.findIndex((c) => c === 'kubectl config use-context do-nyc3-contentcollab');
+  const firstRead = r.calls.findIndex((c, i) => i > save && /^kubectl (get|apply|annotate) /.test(c));
+  assert.ok(save >= 0 && use > save && use < firstRead, r.calls.join('\n'));
+});
+
+test('a cluster list without a region stops the run', () => {
+  const r = bringUp({ STUB_CLUSTER: 'contentcollab 1.37.0-do.3' });
+  assert.notEqual(r.code, 0);
+  assert.match(r.out, /region/);
+  assert.deepEqual(changes(r.calls), []);
 });
 
 test('rejects a NODE_COUNT that is not a positive number before any call', () => {
@@ -153,7 +215,7 @@ test('DRY_RUN=1 changes nothing and prints each change it would make', () => {
 });
 
 test('DRY_RUN=1 on the running cluster reads its state and still changes nothing', () => {
-  const r = bringUp({ DRY_RUN: '1', STUB_CLUSTER: 'contentcollab 1.37.0-do.2', STUB_CM_INSTALLED: 'v1.19.2' });
+  const r = bringUp({ DRY_RUN: '1', STUB_CLUSTER: 'contentcollab 1.37.0-do.2 nyc3', STUB_CM_INSTALLED: 'v1.19.2' });
   assert.equal(r.code, 0, r.out);
   assert.deepEqual(changes(r.calls), []);
   assert.ok(r.calls.some((c) => /^helm list -n cert-manager/.test(c)));
@@ -163,7 +225,7 @@ test('DRY_RUN=1 on the running cluster reads its state and still changes nothing
 });
 
 test('re-run on the running 1.37 cluster: no create, cert-manager one minor at a time', () => {
-  const r = bringUp({ STUB_CLUSTER: 'contentcollab 1.37.0-do.2', STUB_CM_INSTALLED: 'v1.19.2' });
+  const r = bringUp({ STUB_CLUSTER: 'contentcollab 1.37.0-do.2 nyc3', STUB_CM_INSTALLED: 'v1.19.2' });
   assert.equal(r.code, 0, r.out);
   assert.equal(r.calls.filter((c) => / cluster create /.test(c)).length, 0);
   assert.deepEqual(certManagerVersions(r.calls), ['v1.20.5', 'v1.21.3']);
@@ -219,7 +281,7 @@ test('CI token missing: prints the gh command that sets it, and still exits 0', 
 });
 
 test('a cluster with a similar name is not this cluster', () => {
-  const r = bringUp({ STUB_CLUSTER: 'contentcollab-old 1.36.5-do.3', STUB_CM_INSTALLED: '' });
+  const r = bringUp({ STUB_CLUSTER: 'contentcollab-old 1.36.5-do.3 nyc3', STUB_CM_INSTALLED: '' });
   assert.equal(r.code, 0, r.out);
   assert.equal(r.calls.filter((c) => /^doctl kubernetes cluster create contentcollab /.test(c)).length, 1);
 });
@@ -240,7 +302,7 @@ test('waits for both the api and the worker rollouts', () => {
 });
 
 test('DRY_RUN=1 with a Datadog key changes nothing either', () => {
-  const r = bringUp({ DRY_RUN: '1', DATADOG_API_KEY: 'abc123', STUB_CLUSTER: 'contentcollab 1.37.0-do.2' });
+  const r = bringUp({ DRY_RUN: '1', DATADOG_API_KEY: 'abc123', STUB_CLUSTER: 'contentcollab 1.37.0-do.2 nyc3' });
   assert.equal(r.code, 0, r.out);
   assert.deepEqual(changes(r.calls), []);
   assert.match(r.out, /DRY-RUN: helm upgrade --install datadog-agent/);

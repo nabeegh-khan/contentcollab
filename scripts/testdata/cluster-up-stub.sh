@@ -20,6 +20,9 @@ case "$tool" in
     esac ;;
   kubectl)
     case "$args" in
+      *" get crd "*)
+        [ "${STUB_CRD_LIST_RC:-0}" = 0 ] || { echo "Error: the server could not find the requested resource" >&2; exit 1; }
+        [ -z "${STUB_CRDS:-}" ] || printf '%s\n' "$STUB_CRDS" ;;
       *" apply "*) cat >> "$STUB_DIR/applied.yaml" ;;
       *" kustomize https://"*) printf 'kind: CustomResourceDefinition\n' ;;
       *" kustomize "*) printf 'kind: Deployment\nspec:\n  template:\n    spec:\n      containers:\n        - image: ghcr.io/nabeegh-khan/contentcollab-api:latest\n' ;;
