@@ -188,17 +188,24 @@ test('autoscaler status not readable: says so and carries on', () => {
 });
 
 test('MIN_NODE_FREE_MIB that is not a number stops the run before any change', () => {
-  const r = rollout({ MIN_NODE_FREE_MIB: 'lots' });
-  assert.equal(r.code, 1, r.out);
-  assert.match(r.out, /MIN_NODE_FREE_MIB/);
-  assert.ok(!r.calls.some((c) => /apply|rollout restart/.test(c)), r.calls.join('\n'));
+  // The script's own check, not a later shell error; a number too big for
+  // bash's arithmetic is refused the same way
+  for (const v of ['lots', '99999999999999999999']) {
+    const r = rollout({ MIN_NODE_FREE_MIB: v, ALLOW_UNCHECKED_MEMORY: '1', STUB_USED: '<unknown>', STUB_USED_B: '<unknown>' });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /MIN_NODE_FREE_MIB '[^']*' is not a number of MiB/, v);
+    assert.ok(!r.calls.some((c) => /apply|rollout restart/.test(c)), r.calls.join('\n'));
+  }
 });
 
 test('an allocatable figure in a unit it cannot read is not checked, never guessed', () => {
   const r = rollout({ STUB_ALLOC_B: '3e9' });
-  assert.equal(r.code, 0, r.out);
+  assert.equal(r.code, 1, r.out);
   assert.match(r.out, /node-b: memory not readable, not checked/);
-  assert.match(r.out, /Least free memory: node-a/);
+  assert.match(r.out, /ALLOW_UNCHECKED_MEMORY/);
+  const ok = rollout({ STUB_ALLOC_B: '3e9', ALLOW_UNCHECKED_MEMORY: '1' });
+  assert.equal(ok.code, 0, ok.out);
+  assert.match(ok.out, /Least free memory: node-a/);
 });
 
 // Review round on the cluster-shape change: every readable node is checked,
@@ -215,10 +222,30 @@ test('a full node is refused even when another node has no metrics yet', () => {
 });
 
 test('a node listed by get nodes but missing from kubectl top is not checked, never counted as empty', () => {
+  // Unchecked means the load or the surge pod could land there: refused
+  // unless the operator says so
   const r = rollout({ STUB_TOP_MISSING_B: '1' });
-  assert.equal(r.code, 0, r.out);
+  assert.equal(r.code, 1, r.out);
   assert.match(r.out, /node-b: memory not readable, not checked/);
-  assert.doesNotMatch(r.out, /node-b 3002 MiB/);
+  assert.match(r.out, /ALLOW_UNCHECKED_MEMORY/);
+  assert.ok(!r.calls.some((c) => /rollout restart|apply/.test(c)), r.calls.join('\n'));
+  const ok = rollout({ STUB_TOP_MISSING_B: '1', ALLOW_UNCHECKED_MEMORY: '1' });
+  assert.equal(ok.code, 0, ok.out);
+  assert.doesNotMatch(ok.out, /node-b 3002 MiB/);
+});
+
+test('only ALLOW_UNCHECKED_MEMORY=1 lets an unchecked run go ahead', () => {
+  for (const v of ['yes', 'true', '0', '']) {
+    const r = rollout({ STUB_NODES: '1', STUB_USED: '<unknown>', ALLOW_UNCHECKED_MEMORY: v });
+    assert.equal(r.code, 1, `ALLOW_UNCHECKED_MEMORY=${v}: ${r.out}`);
+  }
+});
+
+test('the api memory limit is rounded up and read from the container named api', () => {
+  const r = rollout({ STUB_API_LIMIT: '300.5Mi' });
+  assert.equal(r.code, 0, r.out);
+  assert.match(r.out, /\(needs 813\)/);
+  assert.ok(r.calls.some((c) => /containers\[\?\(@\.name=="api"\)\]\.resources\.limits\.memory/.test(c)), r.calls.join('\n'));
 });
 
 test('no node readable at all: refuses unless ALLOW_UNCHECKED_MEMORY=1', () => {
@@ -298,10 +325,11 @@ test('a failed load Job stops the run and names the state', () => {
 
 test('a node whose memory is unknown is reported as not checked, never as free', () => {
   for (const [env, node] of [[{ STUB_USED_B: '<unknown>' }, 'node-b'], [{ STUB_USED: '<unknown>' }, 'node-a']]) {
-    const r = rollout(env);
+    const r = rollout({ ...env, ALLOW_UNCHECKED_MEMORY: '1' });
     assert.equal(r.code, 0, r.out);
     assert.match(r.out, new RegExp(`${node}: memory not readable, not checked`), JSON.stringify(env));
     assert.doesNotMatch(r.out, new RegExp(`Least free memory: ${node}`), JSON.stringify(env));
+    assert.equal(rollout(env).code, 1, JSON.stringify(env));
   }
 });
 
