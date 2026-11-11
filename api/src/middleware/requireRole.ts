@@ -1,5 +1,6 @@
 import type { RequestHandler } from "express";
 import { pool } from "../lib/db.js";
+import { HttpError } from "../lib/httpError.js";
 
 export type DocumentRole = "owner" | "editor" | "commenter" | "viewer";
 
@@ -10,20 +11,16 @@ export function requireRole(...allowedRoles: DocumentRole[]): RequestHandler {
 
     // Verify Token First
     if (!userId) {
-      res.status(401).json({
-        error: "Unauthorized",
-        code: "UNAUTHORIZED",
-      });
-      return;
+      throw new HttpError(401, "UNAUTHORIZED", "Unauthorized");
     }
 
     if (typeof documentId !== "string") {
-      res.status(400).json({
-        error: "Invalid Document ID",
-        code: "VALIDATION",
-        details: [{ field: "documentId", message: "required" }],
-      });
-      return;
+      throw new HttpError(
+        400,
+        "VALIDATION",
+        "Invalid Document ID",
+        [{ field: "documentId", message: "required" }]
+      );
     }
 
     const result = await pool.query<{ role: DocumentRole }>(
@@ -39,19 +36,11 @@ export function requireRole(...allowedRoles: DocumentRole[]): RequestHandler {
     const share = result.rows[0];
 
     if (!share) {
-      res.status(404).json({
-        error: "Document Not Found",
-        code: "NOT_FOUND",
-      });
-      return;
+      throw new HttpError(404, "NOT_FOUND", "Document Not Found");
     }
 
     if (!allowedRoles.includes(share.role)) {
-      res.status(403).json({
-        error: "Forbidden",
-        code: "FORBIDDEN",
-      });
-      return;
+      throw new HttpError(403, "FORBIDDEN", "Forbidden");
     }
 
     res.locals.documentShareRole = share.role;

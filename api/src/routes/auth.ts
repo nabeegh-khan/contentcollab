@@ -4,6 +4,7 @@ import jwt from "jsonwebtoken";
 import { z } from "zod";
 import { pool } from "../lib/db.js";
 import { jwtSecret, requireAuth } from "../middleware/requireAuth.js";
+import { HttpError } from "../lib/httpError.js";
 
 const router = Router();
 
@@ -50,8 +51,15 @@ function validationError(error: z.ZodError) {
 router.post("/register", async (req, res) => {
   const parsed = registerSchema.safeParse(req.body);
   if (!parsed.success) {
-    res.status(400).json(validationError(parsed.error));
-    return;
+    throw new HttpError(
+      400,
+      "VALIDATION",
+      "Invalid Request",
+      parsed.error.issues.map((issue) => ({
+        field: issue.path.join("."),
+        message: issue.message,
+      })),
+    );
   }
 
   const { email, password, displayName } = parsed.data;
@@ -69,13 +77,8 @@ router.post("/register", async (req, res) => {
   } catch (error) {
     // PostgreSQL unique_violation, for example an email UNIQUE constraint.
     if (typeof error === "object" && error !== null && "code" in error && error.code === "23505") {
-      res.status(409).json({
-        error: "Email Already Registered",
-        code: "CONFLICT",
-      });
-      return;
+      throw new HttpError(409, "CONFLICT", "Email Already Registered");
     }
-
     throw error;
   }
 });
@@ -84,8 +87,15 @@ router.post("/register", async (req, res) => {
 router.post("/login", async (req, res) => {
   const parsed = loginSchema.safeParse(req.body);
   if (!parsed.success) {
-    res.status(400).json(validationError(parsed.error));
-    return;
+    throw new HttpError(
+      400,
+      "VALIDATION",
+      "Invalid Request",
+      parsed.error.issues.map((issue) => ({
+        field: issue.path.join("."),
+        message: issue.message,
+      })),
+    );
   }
 
   const { email, password } = parsed.data;
@@ -100,11 +110,7 @@ router.post("/login", async (req, res) => {
   const passwordMatches = user ? await bcrypt.compare(password, user.password_hash) : false;
 
   if (!user || !passwordMatches) {
-    res.status(401).json({
-      error: "Invalid Email or Password",
-      code: "UNAUTHORIZED",
-    });
-    return;
+    throw new HttpError(401, "UNAUTHORIZED", "Invalid Email or Password");
   }
 
   const token = jwt.sign({}, jwtSecret(), {
@@ -126,11 +132,7 @@ router.get("/me", requireAuth, async (_req, res) => {
 
   const user = result.rows[0];
   if (!user) {
-    res.status(401).json({
-      error: "Unauthorized",
-      code: "UNAUTHORIZED",
-    });
-    return;
+    throw new HttpError(401, "UNAUTHORIZED", "Unauthorized");
   }
 
   res.status(200).json(publicUser(user));
