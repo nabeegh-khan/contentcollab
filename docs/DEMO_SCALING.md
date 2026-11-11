@@ -69,7 +69,7 @@ ACTION=undo bash scripts/rollout-no-drop.sh      # roll it back under the same l
 
 The script prints the context, the nodes (count, size, allocatable memory), the node autoscaler's minimum and maximum, the strategy and the hook it is running with (`maxUnavailable` 0 and the 10-second `preStop`), the node with the least free memory, the time the rollout starts and finishes, k6's totals, and the last line `PASS: no request failed during the rollout`, or `FAIL: N of M requests failed` and exit code 1. A pass also means the Deployment really got a new revision and the load was still running when the rollout finished. To keep the output: add `| tee docs/evidence/$(date -u +%F)-rollout-restart.txt`.
 
-What it shows: new pods start beside the old ones (`maxSurge: 1`), an old pod leaves only after a new one is ready (`maxUnavailable: 0`, the readiness probe on `/health`), and a pod that is stopping keeps serving for 10 seconds while it is removed from the Service (the `preStop` sleep), then finishes its in-flight requests and exits.
+What it is designed to do: new pods start beside the old ones (`maxSurge: 1`), an old pod leaves only after a new one is ready (`maxUnavailable: 0`, the readiness probe on `/health`), and a pod that is stopping keeps serving for 10 seconds while it is removed from the Service (the `preStop` sleep), then finishes its in-flight requests and exits.
 
 The load goes to the API Service's `/metrics`, inside the cluster. `/health` is not used for the count because it answers 503 whenever PostgreSQL or Redis misses a check, and the Redis ping gives up after 500 ms, so it can fail under load with no rollout at all (D14).
 
@@ -118,16 +118,17 @@ First live run, nyc3, one `s-2vcpu-4gb` node (autoscaling 1 to 2), api image `08
 | Control, no rollout | laptop through the Gateway, `/health`, 50 req/s for 120 s | 4 | about 6,000 | 0 | p50 60 ms, p95 96 ms |
 | Restart halfway, with the drain | same | 4 | about 6,000 | 28 (0.47%) | all `UND_ERR_SOCKET`, in four bursts 8 to 12 s apart while the four old pods were replaced |
 
-- **Scale-out:** the k6 load inside the cluster scaled the HPA during both restart runs: 2 to 4 at 21:49:24Z and to 5 at 21:49:39Z in the first, 2 to 3 at 22:03:10Z and to 4 at 22:03:25Z in the second (the second is also in the watch file). So the stepped load test (50 then 150 req/s, 150 s each, 21:50:22 to 21:55:25) ran at 5 replicas from the start: 0 failures, p95 113 ms at both steps, HPA CPU 28 to 36% at 50 req/s and 51 to 66% at 150 req/s, never past the 70% target.
-- **Scale-back:** 5 to 3 at 22:00:25Z and to 2 at 22:00:40Z, 5 minutes after the last high CPU samples (66% at 21:55:25, 40% at 21:55:40), as the HPA's 5-minute downscale window says.
+- **Scale-out:** the k6 load inside the cluster scaled the HPA during both restart runs: 2 to 4 at 21:49:24Z and to 5 at 21:49:39Z in the first, 2 to 3 at 22:03:10Z and to 4 at 22:03:25Z in the second (the second is also in the watch file). So the stepped load test (50 then 150 req/s, 150 s each, 21:50:22 to 21:55:25) ran at 5 replicas from the start: 0 failures, p95 113 ms at both steps, HPA CPU 28 to 36% at 50 req/s after the first sample (10%, a lagging reading) and 51 to 66% at 150 req/s, never past the 70% target.
+- **Scale-back:** 5 to 3 at 22:00:25Z and to 2 at 22:00:40Z, 5 minutes after the last samples that recommended 5 and 3 replicas (66% at 21:55:25, 40% at 21:55:40), as the HPA's 5-minute downscale window says.
 - **Nodes:** one node throughout. Five API pods fitted beside everything else (peak 67% node memory during the stepped load; 69% with four pods and a surge pod during the public rollout run). The cluster autoscaler reported no scale-up (`2026-11-11-cluster-autoscaler-status.yaml`), so the second node was never added.
 - **The drain:** inside the cluster both restarts dropped nothing, with and without the hook, so this run does not show the hook's effect on that path. Through the public URL a restart with the hook lost 28 requests where the control lost none. The two paths also differ in endpoint, replica count, client and route, so where the drops happen is not established.
-- The drain was added to the live Deployment with `kubectl patch` (revision 5); it stays until the next `kubectl apply` of the manifests or until the pull request merges. `kubectl rollout undo` warned that the `last-applied-configuration` annotation is not updated by a rollback.
+- The drain was added to the live Deployment with `kubectl patch` (revision 5); it is not in the `last-applied-configuration` annotation, so a later `kubectl apply -k` (as `deploy.yml` runs) most likely leaves it in place rather than removing it; that is not checked. It stays until removed by hand or until the pull request puts it in the manifests. `kubectl rollout undo` warned that the `last-applied-configuration` annotation is not updated by a rollback.
 
 ## Not yet verified
 
 - A scale-out from 2 to 5 under the stepped load alone (section 1 started at 5 replicas), and the cluster autoscaler adding the second node.
 - A restart through the public URL without the drain, so the drain's effect on that path is not measured; why requests fail there during a rollout, and what removes those failures.
-- A clean before-and-after inside the cluster: the run before the drain changed replica count during its load and dropped 64 k6 iterations.
+- A clean before-and-after inside the cluster: in both restart runs the HPA scaled out after the rollout finished, while the k6 load was still on (to 5 in the first, to 4 in the second); what separates them is the 64 iterations k6 could not send before the drain (4,437 of 4,501) and p95 30 ms against 9 ms.
+- Memory during the rollout runs: the check sizes the room for k6 and one surge pod (768 MiB; the first run started with 773 free), but the k6 load itself scaled the HPA by up to three more API pods, which the check does not size for. It fitted (67% at the next measured peak), but no memory figure was taken during those runs.
 - The undo at two replicas (it ran at four).
 - The public-URL latencies include the distance from the laptop to nyc3.
