@@ -98,7 +98,7 @@ A link share grants its role to anyone with the token until `expiresAt`. Writes 
 |---|---|---|---|
 | GET | `/documents/:documentId/versions/:versionId/comments` | `?resolved=` | `200` page of `Comment`, oldest first, threads flattened with `parentId` |
 | POST | `/documents/:documentId/versions/:versionId/comments` | `{ body, anchor?, parentId? }` | `201 Comment` |
-| PATCH | `/documents/:documentId/comments/:commentId` | `{ body?, resolved? }` | `200 Comment`; PATCH returns root value, `comment:updated` carries the `Comment`, author resolves own thread |
+| PATCH | `/documents/:documentId/comments/:commentId` | `{ body?, resolved? }` | `200 Comment`; `resolved` is stored on thread root; PATCH w/a `resolved` reply sets it on the root and returns the root `Comment`; `comment:updated` carries the root. Allowed for author of thread root; `body` can only be changed by the comment's author. |
 | DELETE | `/documents/:documentId/comments/:commentId` | | `204`; author or owner |
 
 `@displayName` in a body is a mention; the API resolves it to users who have a share on the document and emits a notification event.
