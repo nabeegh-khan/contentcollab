@@ -2,7 +2,7 @@
 
 Design review, Wednesday 11 November 2026. Each core requirement, how ContentCollab meets it, the evidence we show, and where the work stands. Work counted for the presentation is what is complete by 24 November; our slot is Wednesday 2 December, 1:15pm.
 
-Rule: the tooling serves the architecture, with one metrics stack. DigitalOcean alert policies cover node CPU, memory and disk (the handout's required provider monitoring). The dashboard tool (Prometheus and Grafana replacing Datadog, or an extra node) is decided in #100: the two nodes run at 74% and 82% memory on 11 November.
+Rule: the tooling serves the architecture, with one metrics stack. DigitalOcean alert policies cover node CPU, memory and disk (the handout's required provider monitoring). Dashboards, monitors and logs are in Datadog, which scrapes our Prometheus-format `/metrics` endpoint (ARCHITECTURE.md D6, reconsidered and kept in D17 on 11 November).
 
 | Requirement | How we meet it | Evidence shown | Status 11 Nov | Issue / PR |
 |---|---|---|---|---|
@@ -17,3 +17,4 @@ Gaps, in order of points at risk: JSON request logs and the error-rate monitor; 
 
 
 Advanced features for the 24 November cutoff (handout: at least two): auto-scaling and high availability (#69) and CI/CD (#70, #82). Both are finished and demonstrated by the cutoff, not presented as plans. Presentation slides are due 24 November, 11:59pm.
+

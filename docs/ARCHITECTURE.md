@@ -239,3 +239,20 @@ In: upload, versions, revert, share by user or link, roles, comments, annotation
 - Confirm D1 (Kubernetes) and D3 (review, not editing).
 - DigitalOcean billing: nobody has credit left from Assignment 1; one account hosts the cluster and the cost is split. The GitHub Student Developer Pack no longer includes DigitalOcean credit: the offer ended 31 July 2026 and redeemed credit expired 1 August 2026 ([Capital & Compute, checked 16 September 2026](https://capitalandcompute.net/blog/github-student-developer-pack-2026/)), so the budget in [RESEARCH.md](RESEARCH.md) assumes paid usage from the start.
 - PDF annotation in the browser: pdf.js with our own overlay, or pins anchored to page number and coordinates only.
+
+### D17. Monitoring stack reconsidered: Datadog stays, Prometheus and Grafana not added (decided 11 November, #100)
+
+**Question.** At the 11 November design review we asked whether to replace Datadog (D6) with Prometheus and Grafana in the cluster, to have one metrics stack, zero extra cost and Prometheus visible in the demo.
+
+**Decision.** Keep D6. The API stays instrumented in the Prometheus format (`/metrics`, prom-client), Datadog's OpenMetrics check scrapes it, and Datadog holds the dashboard, the error-rate monitor and the container logs. The demo shows the Prometheus endpoint itself (`curl` from inside the cluster) and the same series on the Datadog dashboard. No Prometheus server or Grafana is installed.
+
+**Why, checked 11 November 2026.**
+- Cost: Datadog is free for us. The GitHub Student Developer Pack gives a Datadog Pro account for up to 10 hosts for two years ([GitHub Education pack](https://education.github.com/pack), [Datadog student offer](https://www.datadoghq.com/blog/datadog-github-student-developer-pack/)); our two nodes are two hosts. Neither option costs money; replacing Datadog saves nothing.
+- Memory: the cluster runs at 74% and 82% memory used on its two s-2vcpu-2gb nodes (`kubectl top nodes`, 11 November). Our Datadog values request 768 MiB in total (D6). The community Prometheus chart sets no requests by default; a sized Prometheus server is typically given 512 MiB and Grafana 128 MiB ([prometheus-community values](https://github.com/prometheus-community/helm-charts/blob/main/charts/prometheus/values.yaml)), plus a volume for the time-series data. The footprints are about the same, so the switch does not relieve the memory limit either.
+- Coverage: Datadog gives metrics, Kubernetes state (restarts, pending pods, HPA replicas) and container logs from one agent. Prometheus and Grafana give metrics and dashboards only; logs would need a third component (Loki and an agent), which is more memory, not less. The JSON request logs and per-route error rate in D16 were designed for Datadog's log pipeline on the same day.
+- Scope: the handout requires provider metrics and alerts (done with DigitalOcean alert policies, #62) and does not name Prometheus or Grafana; monitoring is a core requirement, not one of the advanced features, so a second stack earns no rubric credit that the first does not.
+- Consistency: the submitted proposal names Datadog for dashboards and logs (monitoring row, section 2). Keeping it means no change to explain.
+
+**Option it beat.** Prometheus and Grafana in the cluster (kube-prometheus-stack or the separate charts). It would be fully open source, keep data inside the cluster and avoid a vendor account, and it is the common choice when a team cannot use a SaaS. It would win if the Datadog account were lost or the team needed metrics without internet egress.
+
+**What would change this.** The student account ending or failing to ingest during the 14 November checkpoint; then Prometheus and Grafana replace Datadog using the same `/metrics` endpoint, with no change to the API.
