@@ -11,14 +11,14 @@
 # DURATION (90s of load), WARMUP (10 s of load before the rollout),
 # MIN_NODE_FREE_MIB (default: the k6 pod's memory limit, 512, plus maxSurge
 # times the api container's memory limit, both read from the Deployment: what
-# the run can add to one node), ALLOW_UNCHECKED_MEMORY (1 to run when no
-# node's memory can be read), TARGET (the API Service's /metrics).
+# the run can add to one node), ALLOW_UNCHECKED_MEMORY (1 to run when
+# a node's memory cannot be read), TARGET (the API Service's /metrics).
 #
 # Every node whose memory can be read must have MIN_NODE_FREE_MIB free, or the
 # run stops before it changes anything. A node with no reading (for example
 # one the autoscaler has just added, before metrics-server reports it) is
-# named as not checked; if no node can be read the run stops unless
-# ALLOW_UNCHECKED_MEMORY=1. When MIN_NODE_FREE_MIB is set the Deployment is
+# named as not checked, and the run stops unless ALLOW_UNCHECKED_MEMORY=1:
+# the load or the surge pod could land on it. When MIN_NODE_FREE_MIB is set the Deployment is
 # not read for it.
 #
 # Nothing about the cluster is assumed: it prints the kubectl context, the
@@ -58,7 +58,7 @@ case "$ACTION" in restart|undo) ;; *) die "ACTION '$ACTION' must be restart or u
 [[ "$K6_IMAGE" =~ ^[A-Za-z0-9._/:@-]+$ ]] || die "K6_IMAGE '$K6_IMAGE' is not an image reference"
 [[ "$RATE" =~ ^[1-9][0-9]*$ ]] || die "RATE '$RATE' is not a number of requests per second"
 [[ "$WARMUP" =~ ^[0-9]+$ ]] || die "WARMUP '$WARMUP' is not a number of seconds"
-[[ -z "$MIN_NODE_FREE_MIB" || "$MIN_NODE_FREE_MIB" =~ ^[0-9]+$ ]] || die "MIN_NODE_FREE_MIB '$MIN_NODE_FREE_MIB' is not a number of MiB"
+[[ -z "$MIN_NODE_FREE_MIB" || "$MIN_NODE_FREE_MIB" =~ ^[0-9]{1,9}$ ]] || die "MIN_NODE_FREE_MIB '$MIN_NODE_FREE_MIB' is not a number of MiB"
 total=$(seconds_of "$DURATION")
 command -v kubectl >/dev/null || die "kubectl is required"
 
@@ -72,7 +72,7 @@ revision() {
 }
 old=$(revision)
 [[ "$old" =~ ^[0-9]+$ ]] || die "cannot read the api Deployment's revision (got '$old'): is NAMESPACE=$NAMESPACE right?"
-kubectl -n "$NAMESPACE" get deployment api -o jsonpath='strategy: {.spec.strategy.rollingUpdate}  preStop: {.spec.template.spec.containers[0].lifecycle.preStop}{"\n"}'
+kubectl -n "$NAMESPACE" get deployment api -o jsonpath='strategy: {.spec.strategy.rollingUpdate}  preStop: {.spec.template.spec.containers[?(@.name=="api")].lifecycle.preStop}{"\n"}'
 
 # A load generator on a node without room for it risks evicting API pods. In
 # MiB, not percent: 10% of a 4 GB node is under k6's own limit. The rollout
@@ -80,7 +80,7 @@ kubectl -n "$NAMESPACE" get deployment api -o jsonpath='strategy: {.spec.strateg
 if [ -n "$MIN_NODE_FREE_MIB" ]; then
   why="set by MIN_NODE_FREE_MIB"
 else
-  api_limit=$(kubectl -n "$NAMESPACE" get deployment api -o 'jsonpath={.spec.template.spec.containers[0].resources.limits.memory}' || true)
+  api_limit=$(kubectl -n "$NAMESPACE" get deployment api -o 'jsonpath={.spec.template.spec.containers[?(@.name=="api")].resources.limits.memory}' || true)
   surge=$(kubectl -n "$NAMESPACE" get deployment api -o 'jsonpath={.spec.strategy.rollingUpdate.maxSurge}' || true)
   api_mib=$(quantity_mib "$api_limit")
   [[ -n "$api_mib" && "$surge" =~ ^[0-9]+$ ]] \
@@ -89,11 +89,12 @@ else
   why="k6 $K6_MEMORY_LIMIT_MI MiB + $surge surge api pod(s) of $api_mib MiB"
 fi
 report=$(node_free_report || true)
-checked=0 least_name="" least_free=""
+checked=0 unchecked=0 least_name="" least_free=""
 while read -r state name free; do
   [ -n "$state" ] || continue
   if [ "$state" != ok ]; then
     echo "warning: $name: memory not readable, not checked"
+    unchecked=$((unchecked + 1))
     continue
   fi
   checked=$((checked + 1))
@@ -101,12 +102,15 @@ while read -r state name free; do
     || die "$name has $free MiB free, under MIN_NODE_FREE_MIB=$MIN_NODE_FREE_MIB ($why): the run could get API pods evicted"
   if [ -z "$least_free" ] || [ "$free" -lt "$least_free" ]; then least_name=$name least_free=$free; fi
 done <<< "$report"
-if [ "$checked" -gt 0 ]; then
-  echo "Least free memory: $least_name $least_free MiB (needs $MIN_NODE_FREE_MIB)"
-elif [ "$ALLOW_UNCHECKED_MEMORY" = 1 ]; then
-  echo "warning: no node's memory could be read (kubectl get nodes, kubectl top nodes); not checked, as ALLOW_UNCHECKED_MEMORY=1 asks"
-else
-  die "no node's memory could be read (kubectl get nodes, kubectl top nodes), so the run cannot be shown not to evict API pods; wait for metrics, or set ALLOW_UNCHECKED_MEMORY=1"
+[ "$checked" -eq 0 ] || echo "Least free memory: $least_name $least_free MiB (needs $MIN_NODE_FREE_MIB)"
+if [ "$checked" -eq 0 ] || [ "$unchecked" -gt 0 ]; then
+  what="$unchecked node(s) not checked (named above)"
+  [ "$checked" -gt 0 ] || what="no node's memory could be read (kubectl get nodes, kubectl top nodes)"
+  if [ "$ALLOW_UNCHECKED_MEMORY" = 1 ]; then
+    echo "warning: $what; going ahead, as ALLOW_UNCHECKED_MEMORY=1 asks"
+  else
+    die "$what: the load or the surge pod could land there and evict API pods; wait for metrics (kubectl top nodes), or set ALLOW_UNCHECKED_MEMORY=1"
+  fi
 fi
 
 k6_start "$NAMESPACE" k6-rollout scripts/k6/steady.js "TARGET=$TARGET" "RATE=$RATE" "DURATION=$DURATION"
