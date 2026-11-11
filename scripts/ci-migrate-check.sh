@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Runs the migrations up, all the way down, and up again against the database
-# the PG* variables point at (the API job's Postgres service in CI), and fails
+# the PG* variables point at (the test job's Postgres service in CI), and fails
 # on any error. A migration whose `down` leaves an object behind fails the
 # second `up` ("already exists"); a missing `migrate` script or a SQL error
 # fails the first. It ends on `up`, so Jest then runs against a migrated schema.

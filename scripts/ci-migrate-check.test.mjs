@@ -1,5 +1,5 @@
 // Tests for ci-migrate-check.sh: migrations must survive up, down, up against
-// the API job's Postgres before Jest runs (DB-9, TST-1, TST-5; docs/BUILD_LOG.md,
+// the test job's Postgres before Jest runs (DB-9, TST-1, TST-5; docs/BUILD_LOG.md,
 // 11 Nov). npm is a stub; nothing touches a database.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
