@@ -43,6 +43,9 @@ validate_env() {
   [[ "$CLUSTER_NAME" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$ ]] || die "CLUSTER_NAME '$CLUSTER_NAME': lowercase letters, digits and -"
   [[ "$REGION" =~ ^[a-z]{3}[0-9]$ ]] || die "REGION '$REGION' is not a DigitalOcean region slug such as tor1"
   [[ "$NODE_COUNT" =~ ^[1-9][0-9]*$ ]] || die "NODE_COUNT '$NODE_COUNT' is not a positive number"
+  # Autoscaling bounds also go into the --node-pool spec
+  [[ "$NODE_MIN" =~ ^[1-9][0-9]*$ && "$NODE_MAX" =~ ^[1-9][0-9]*$ && "$NODE_MIN" -le "$NODE_COUNT" && "$NODE_COUNT" -le "$NODE_MAX" ]] \
+    || die "NODE_MIN <= NODE_COUNT <= NODE_MAX, whole numbers from 1 (NODE_MIN=$NODE_MIN NODE_COUNT=$NODE_COUNT NODE_MAX=$NODE_MAX)"
   # Both go into a --node-pool spec or a sed replacement, where ; # & split them
   [[ "$NODE_SIZE" =~ ^[a-z0-9-]+$ ]] || die "NODE_SIZE '$NODE_SIZE' is not a droplet size slug such as s-2vcpu-2gb"
   [[ -z "${IMAGE_TAG:-}" || "$IMAGE_TAG" =~ ^[A-Za-z0-9_.-]+$ ]] || die "IMAGE_TAG '$IMAGE_TAG' is not an image tag (letters, digits, _ . -)"

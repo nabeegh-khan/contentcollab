@@ -11,7 +11,9 @@
 # check the CI token.
 # Creates billable resources: two US$18 nodes and one US$12 load balancer,
 # about US$48 a month for the cluster alone; US$54 with Spaces and the database
-# volume (docs/ARCHITECTURE.md). Run `scripts/cluster-down.sh` after grading (INF-7).
+# volume (docs/ARCHITECTURE.md). Each node the autoscaler adds above NODE_COUNT
+# (up to NODE_MAX) bills at the node size's price while it runs.
+# Run `scripts/cluster-down.sh` after grading (INF-7).
 set -euo pipefail
 cd "$(dirname "$0")/.."   # paths below are relative to the repository root
 # shellcheck source=scripts/lib/cluster-up-lib.sh
@@ -40,8 +42,6 @@ DATADOG_CHART_VERSION="3.269.1" # https://github.com/DataDog/helm-charts/blob/ma
 
 # 0. Nothing changes until the variables, the tools and the sign-in check out
 validate_env
-[[ "$NODE_MIN" =~ ^[1-9][0-9]*$ && "$NODE_MAX" =~ ^[1-9][0-9]*$ && "$NODE_MIN" -le "$NODE_COUNT" && "$NODE_COUNT" -le "$NODE_MAX" ]] \
-  || die "NODE_MIN <= NODE_COUNT <= NODE_MAX, whole numbers from 1 (NODE_MIN=$NODE_MIN NODE_COUNT=$NODE_COUNT NODE_MAX=$NODE_MAX)"
 require_tools doctl kubectl helm curl
 require_doctl_auth
 if [ "$DRY_RUN" = 1 ]; then echo "DRY_RUN=1: checks run, changes are printed, nothing is changed"; fi
@@ -53,7 +53,7 @@ if [ -z "$version" ]; then
   [ -n "$slug" ] || die "DOKS offers no $K8S_MINOR.x version now (doctl kubernetes options versions): update K8S_MINOR and D13"
   echo "Creating cluster $CLUSTER_NAME in $REGION, Kubernetes $slug"
   # --ha=false is explicit: with --ha omitted the API turns the US$40 a month high-availability control plane on for
-  # Kubernetes 1.36.0 and later, and it cannot be turned off again (DigitalOcean doctl and Terraform references, checked 11 Nov 2026; D13)
+  # Kubernetes 1.36.0 and later, and it cannot be turned off again (DigitalOcean doctl reference and HA how-to, checked 11 Nov 2026; D13)
   run doctl kubernetes cluster create "$CLUSTER_NAME" \
     --region "$REGION" \
     --version "$slug" \

@@ -106,8 +106,15 @@ test('rejects autoscaling bounds that do not bracket NODE_COUNT before any call'
     const r = bringUp(env);
     assert.notEqual(r.code, 0, r.out);
     assert.match(r.out, /NODE_MIN <= NODE_COUNT <= NODE_MAX/);
-    assert.equal(r.calls.filter((c) => / cluster create /.test(c)).length, 0);
+    assert.deepEqual(r.calls, []);
   }
+});
+
+test('autoscaling bounds default to NODE_COUNT, so the pool keeps its size', () => {
+  const r = bringUp({ NODE_MIN: '', NODE_MAX: '', STUB_CLUSTER: '', STUB_CM_INSTALLED: '' });
+  const create = r.calls.filter((c) => /^doctl kubernetes cluster create /.test(c));
+  assert.equal(create.length, 1, r.out);
+  assert.match(create[0], /count=2;auto-scale=true;min-nodes=2;max-nodes=2/);
 });
 
 test('rejects a NODE_COUNT that is not a positive number before any call', () => {
