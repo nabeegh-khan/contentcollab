@@ -1,8 +1,11 @@
-# Runs on every merge to main. Builds the api and worker images, tags them with
-# the commit SHA and pushes them to the GitHub Container Registry; then, once
-# KUBECONFIG is set as a repository secret, rolls both Deployments to that tag
-# and waits for each (proposal section 2.7). The rollout step has not run yet:
-# no cluster credentials exist in the repository; #76 replaces this check.
+# Runs on every merge to main (#70, proposal section 2.7):
+# 1. the same checks as every pull request (ci.yml), so nothing untested ships;
+# 2. builds the api and worker images and pushes them to the GitHub Container
+#    Registry, tagged with the commit SHA (INF-5, INF-9);
+# 3. once the DIGITALOCEAN_ACCESS_TOKEN secret exists, pins both Deployments to
+#    that SHA, applies the overlay once and undoes any Deployment whose rollout
+#    never turns ready (INF-9); then, once the SMOKE_URL variable is
+#    set, checks /health and undoes both if it does not answer ok (L8 p53-55).
 name: deploy
 
 on:
@@ -19,7 +22,11 @@ env:
   REGISTRY: ghcr.io/nabeegh-khan
 
 jobs:
+  checks:
+    uses: ./.github/workflows/ci.yml
+
   build:
+    needs: checks
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -49,32 +56,97 @@ jobs:
   rollout:
     needs: build
     runs-on: ubuntu-latest
+    # One rollout at a time. A merge waits for the running one; a newer merge
+    # replaces a rollout still waiting, so usually the newest commit deploys
+    # (GitHub does not guarantee the order in which waiting runs start)
+    concurrency:
+      group: rollout
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v5
-      # Until stage 3 the secret is empty and the job stops here, green
+      # Until the secret exists the job stops here, green
       - name: Check for a cluster
         id: cluster
         env:
-          KUBECONFIG_B64: ${{ secrets.KUBECONFIG }}
+          DO_TOKEN: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+          SMOKE_URL: ${{ vars.SMOKE_URL }}
         run: |
-          if [ -z "$KUBECONFIG_B64" ]; then
-            echo "No KUBECONFIG secret: image pushed, no rollout"
+          if [ -z "$DO_TOKEN" ]; then
+            msg="No DIGITALOCEAN_ACCESS_TOKEN secret: images pushed, cluster not changed"
+            echo "::warning title=No rollout::$msg"
+            echo "$msg" >> "$GITHUB_STEP_SUMMARY"
             echo "present=false" >> "$GITHUB_OUTPUT"
           else
-            echo "$KUBECONFIG_B64" | base64 -d > "$RUNNER_TEMP/kubeconfig"
+            [ -n "$SMOKE_URL" ] || echo "::warning title=No smoke check::SMOKE_URL is not set, so a release that starts but does not serve is not rolled back"
             echo "present=true" >> "$GITHUB_OUTPUT"
           fi
+      # DigitalOcean's documented pattern: doctl from the official action and a
+      # kubeconfig whose credentials expire after ten minutes, so no long-lived
+      # cluster credential is stored in GitHub (docs.digitalocean.com, "How to
+      # Enable Push-to-Deploy on DigitalOcean Kubernetes Using GitHub Actions")
+      - uses: digitalocean/action-doctl@v2
+        if: steps.cluster.outputs.present == 'true'
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
       - uses: azure/setup-kubectl@v4
         if: steps.cluster.outputs.present == 'true'
+      - name: Short-lived cluster credentials
+        if: steps.cluster.outputs.present == 'true'
+        run: doctl kubernetes cluster kubeconfig save --expiry-seconds 600 contentcollab
       - name: Roll the Deployments to this commit
         if: steps.cluster.outputs.present == 'true'
-        env:
-          KUBECONFIG: ${{ runner.temp }}/kubeconfig
         run: |
-          kubectl apply -k k8s/doks
+          # Pin both images to this commit in the overlay, then apply once:
+          # one rollout per merge, and the manifest that is applied names the
+          # image that was built (INF-9)
+          cd k8s/doks
           for svc in api worker; do
-            kubectl -n contentcollab set image deployment/$svc $svc=$REGISTRY/contentcollab-$svc:${{ github.sha }}
+            kustomize edit set image $REGISTRY/contentcollab-$svc=$REGISTRY/contentcollab-$svc:${{ github.sha }}
           done
-          # Fails the job, and so the run, if the new pods never become ready
-          kubectl -n contentcollab rollout status deployment/api --timeout=180s
-          kubectl -n contentcollab rollout status deployment/worker --timeout=180s
+          cd ../..
+          kubectl apply -k k8s/doks
+          # A rollout that never turns ready is rolled back here, not by hand,
+          # and the job still fails so the run is not green (INF-9). A failed
+          # undo is reported and the next Deployment is still checked.
+          failed=0
+          for svc in api worker; do
+            # A renamed image would leave set image matching nothing and the
+            # old image running with every check green
+            image=$(kubectl -n contentcollab get deployment/$svc -o jsonpath='{.spec.template.spec.containers[0].image}') \
+              || image="(unreadable)"   # a bare failing assignment would end the step under bash -e
+            case "$image" in
+              *:${{ github.sha }}) ;;
+              *) echo "::error::deployment/$svc runs $image, not this commit"; failed=1; continue ;;
+            esac
+            kubectl -n contentcollab rollout status deployment/$svc --timeout=180s \
+              || { kubectl -n contentcollab rollout undo deployment/$svc \
+                     || echo "::error::undo of deployment/$svc failed: the cluster may run mixed versions"; failed=1; }
+          done
+          exit $failed
+      # Skipped until SMOKE_URL is set, so deploys do not roll back before DNS
+      # and TLS exist
+      - name: Smoke check, roll back on failure
+        if: steps.cluster.outputs.present == 'true' && vars.SMOKE_URL != ''
+        env:
+          SMOKE_URL: ${{ vars.SMOKE_URL }}
+        run: |
+          # Reads the body, not just the status: both dependencies must be up.
+          # No -f, so a 503's body (which dependency is down) reaches the log
+          for _ in $(seq 1 12); do
+            body=$(curl -sS --max-time 5 "$SMOKE_URL/health" || true)
+            if echo "$body" | grep -q '"status":"ok"'; then echo "smoke ok: $body"; exit 0; fi
+            sleep 5
+          done
+          echo "::error::Smoke check failed (last body: $body): rolling back"
+          # The ten-minute credentials may have run out during two rollouts and
+          # the smoke wait; fetch fresh ones so the rollback is not refused
+          doctl kubernetes cluster kubeconfig save --expiry-seconds 600 contentcollab \
+            || echo "::warning::could not refresh cluster credentials; trying the rollback with the current ones"
+          # Both images come from this commit, so both go back together; one
+          # failed undo does not stop the other
+          for svc in api worker; do
+            { kubectl -n contentcollab rollout undo deployment/$svc \
+                && kubectl -n contentcollab rollout status deployment/$svc --timeout=180s; } \
+              || echo "::error::rollback of deployment/$svc failed: the cluster may run mixed versions"
+          done
+          exit 1
