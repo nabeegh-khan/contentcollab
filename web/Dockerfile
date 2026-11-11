@@ -1,4 +1,6 @@
-FROM node:24
+FROM node:24 AS build
+
+COPY --from=build /web/dist /usr/share/nginx/html
 
 WORKDIR /web
 
