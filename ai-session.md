@@ -403,3 +403,18 @@ A rewritten API-4 and seven new rows from all 98 pages of lecture 9. It found th
 
 - Had the change checked by a new reviewer each round, one who had not written it or seen the earlier rounds, until a round came back clean. Each round checked the slides, the handouts, the manifests and the DigitalOcean and Kubernetes documentation. They found a blank line that broke the API table, a wrong cause for volume loss on cluster teardown (the `--dangerous` flag in `cluster-down.sh`, not the reclaim policy), planned work worded as done, an unsupported A2 citation, and a sentence about the cluster that went stale while the change was being checked. All were fixed before the commit.
 - Left out of this change, and logged as open: an inconsistency inside `docs/API.md` (the API slice's file) and two older rows that no longer agree with the contract.
+
+## PRACTICES rows for lectures 1, 7 and 9, page numbers rechecked (#105, #106), 11 November 2026
+
+### Prompt
+
+The lecture 9 rows had been cited against the 98-page note-taking PDF, while the team keeps the full slides. Lecture 7 had no rows and lecture 1 only two. We asked for every page of the three decks to be read, the lecture 9 citations to be checked against the full slides, rows to be added with page citations, and one issue to be opened for each real gap, with no code changes.
+
+### AI Response
+
+A page map between the two lecture 9 files (two slides are split over two pages in the full version, so citations after p9 move by one, and after p37 by two), corrected citations, six new rows (INF-18 to INF-21, PRC-5, PRC-6) and lecture 1 and 7 pages added to existing rows. It found two gaps: migrations are not required to keep the old API version working during a rolling update (#105), and local scripts do not check the kubectl context (#106).
+
+### What Your Team Did With It
+
+- Checked each new row against the manifests and scripts before writing where it applies, and dropped lecture 1 citations the slides did not support (for "demo live", "pay for what you use" as a reason to destroy resources, and contribution read from Git history).
+- Had the change checked by reviewers who had not written it, a new one each round, and fixed what they found (a migration Job described as existing when it is only planned, a script listed as calling kubectl that does not, a row still placing the cluster in Toronto after the move to nyc3) before committing.

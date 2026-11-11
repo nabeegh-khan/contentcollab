@@ -1,6 +1,6 @@
 # Cost plan
 
-Written Wednesday 11 November 2026. **Status, 11 November evening: the rebuild is done (section 9): HA off, region nyc3, one s-2vcpu-4gb node with autoscaling to two. Sections 1 to 8 are the plan as written before it.** Evidence and sources are in [RESEARCH.md](RESEARCH.md), "Cluster cost: why HA is on, what a rebuild changes, what the node pool can do". All money is US dollars with 13% HST unless it says CAD.
+Written Wednesday 11 November 2026. **Status, 11 November 19:31 UTC: the rebuild is done and the site answers (section 9): HA off, region nyc3, one s-2vcpu-4gb node with autoscaling to two, running on one. Sections 1 to 8 are the plan as written before it.** Evidence and sources are in [RESEARCH.md](RESEARCH.md), "Cluster cost: why HA is on, what a rebuild changes, what the node pool can do". All money is US dollars with 13% HST unless it says CAD.
 
 ## The short version
 
@@ -132,11 +132,11 @@ Nabeegh's go came on 11 November; the runbook in section 6 was followed with thr
 | Part | Rate per hour, before tax | Per day with tax |
 |---|---|---|
 | One s-2vcpu-4gb node (US$24 a month) | 0.0357 | 0.97 |
-| Load balancer (assumed US$15 a month, as in tor1) | 0.0223 | 0.60 |
+| Load balancer (assumed US$15 a month, as in tor1) | 0.0223 | 0.61 |
 | 5 GiB volume | 0.0007 | 0.02 |
-| **Total, one node** | **0.0587** | **1.59** |
-| **Total, two nodes** | **0.0944** | **2.56** |
+| **Total, one node** | **0.0588** | **1.59** |
+| **Total, two nodes** | **0.0945** | **2.56** |
 
-The HA control plane line (US$1.61 a day) is gone. The autoscaler added a second node during bring-up; until it scales back to one, the cluster runs at the two-node rate. Check on the next invoice preview that no "High Availability Control Plane" hours appear and that the load balancer rate in nyc3 matches.
+Rows are rounded; the totals come from the hourly sum. The HA control plane line (US$1.61 a day) is gone. The autoscaler added a second node during bring-up and removed it at 19:24 UTC, so the cluster runs at the one-node rate. This adopts the single 4 GB node that section 2 did not recommend; what that costs the demo (no drain or cross-node spread without adding a node on purpose) is in ARCHITECTURE D13. Check on the next invoice preview that no "High Availability Control Plane" hours appear, which is the only proof that HA is off since the cluster JSON shows no `ha` field, and that the load balancer rate in nyc3 matches.
 
-Not done in the rebuild: the A record (Nabeegh, name.com, to 138.197.57.149), the certificate and smoke check (after DNS), `alerts.sh` (needs a verified address), the restart test (`scripts/restart-test.sh` is on no branch), and the Spaces key (Nabeegh reruns `spaces_setup.py`).
+Done after the rebuild (checked 19:31 UTC): the A record points to 138.197.57.149, the certificate `contentcollab-tls` is Ready, and `https://contentcollab.app/health` answers 200 `{"status":"ok","postgres":"ok","redis":"ok"}`. Not done: `alerts.sh` (needs a verified address), the restart test (`scripts/restart-test.sh` is not on the remote yet, #68), and the Spaces key (Nabeegh reruns `spaces_setup.py`).
