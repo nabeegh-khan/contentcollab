@@ -1,6 +1,6 @@
 # Cost plan
 
-Written Wednesday 11 November 2026. **Status: a plan. Nothing on the account or the cluster has been changed, and the rebuild below waits for Nabeegh's go.** Evidence and sources are in [RESEARCH.md](RESEARCH.md), "Cluster cost: why HA is on, what a rebuild changes, what the node pool can do". All money is US dollars with 13% HST unless it says CAD.
+Written Wednesday 11 November 2026. **Status, 11 November evening: the rebuild is done (section 9): HA off, region nyc3, one s-2vcpu-4gb node with autoscaling to two. Sections 1 to 8 are the plan as written before it.** Evidence and sources are in [RESEARCH.md](RESEARCH.md), "Cluster cost: why HA is on, what a rebuild changes, what the node pool can do". All money is US dollars with 13% HST unless it says CAD.
 
 ## The short version
 
@@ -124,3 +124,19 @@ Risks: the outage runs from step 3 to step 8; a failed certificate order still c
 - The projection assumes the invoice-preview hourly rates hold and that 13% HST applies to the whole cluster cost. The invoice preview applies the tax after a US$1.81 trial credit ("Inference Cloud Trial"); that credit is not counted, and the balance figure of US$23.15 cannot be rebuilt from the listed lines (they stop at 11 November 00:00 UTC; the balance is read at 06:15 UTC). The effect on any plan is under CAD 1. It excludes traffic and snapshot charges.
 - The `doctl` page and the autoscaler page disagree on whether a pool can scale to zero; a minimum of 1 sidesteps it.
 - A rebuild's duration is an estimate; the Let's Encrypt count (one known use) cannot see failed orders made elsewhere.
+
+## 9. Rebuild done, 11 November
+
+Nabeegh's go came on 11 November; the runbook in section 6 was followed with three changes, recorded in ARCHITECTURE D13: region **nyc3** (tor1 returned "insufficient capacity" for every size tried, request ids in D13), nodes **s-2vcpu-4gb with autoscaling 1 to 2** (one 4 GB node in place of two 2 GB nodes), and Kubernetes **1.37.0-do.3** with `--ha=false`. The Gateway API CRDs had to be opted out of DOKS management before `cluster-up.sh` could install NGINX Gateway Fabric (D13).
+
+| Part | Rate per hour, before tax | Per day with tax |
+|---|---|---|
+| One s-2vcpu-4gb node (US$24 a month) | 0.0357 | 0.97 |
+| Load balancer (assumed US$15 a month, as in tor1) | 0.0223 | 0.60 |
+| 5 GiB volume | 0.0007 | 0.02 |
+| **Total, one node** | **0.0587** | **1.59** |
+| **Total, two nodes** | **0.0944** | **2.56** |
+
+The HA control plane line (US$1.61 a day) is gone. The autoscaler added a second node during bring-up; until it scales back to one, the cluster runs at the two-node rate. Check on the next invoice preview that no "High Availability Control Plane" hours appear and that the load balancer rate in nyc3 matches.
+
+Not done in the rebuild: the A record (Nabeegh, name.com, to 138.197.57.149), the certificate and smoke check (after DNS), `alerts.sh` (needs a verified address), the restart test (`scripts/restart-test.sh` is on no branch), and the Spaces key (Nabeegh reruns `spaces_setup.py`).

@@ -371,3 +371,35 @@ Three shell scripts with stub-driven tests (17), workflow changes that skip whil
 
 - Added a test that pins the workflow wiring and killed all of those changes, moved yq output to a file, widened the placeholder check, and re-ran everything.
 - Showed the checks red then green on a runner with a throwaway branch (closed afterwards), and wrote the limits into the PR and the build log: skips that never expire, no check that `down 0` empties the history, a build-only web job.
+
+## A rolling update that drains its pods, and a check that counts failed requests (#69, PR #103), 11 November 2026
+
+### Prompt
+
+Issue #69: prove that the API scales under load and that a rolling update drops no requests. Check the current Kubernetes documentation for the autoscaler, rolling updates, disruption budgets and pod shutdown, record the decision in ARCHITECTURE.md first, then add what is missing, a script that restarts the API under load and counts failed requests, and prove it on a cluster. The local cluster run was stopped for lack of memory, so the proof moves to the DOKS cluster after the rebuild.
+
+### AI Response
+
+The autoscaler, the disruption budget, `maxUnavailable: 0` and the readiness probe were already in the base manifest. The gap is shutdown: the endpoint removal runs alongside SIGTERM, and the API refuses new connections on SIGTERM. Proposed a 10-second `preStop` sleep (the built-in sleep handler, stable since Kubernetes 1.34) as a kustomize component, and a script that runs k6 inside the cluster. A local run showed `/health` fails under load with no rollout, so the script targets `/metrics`.
+
+### What Your Team Did With It
+
+- Wrote the decision into ARCHITECTURE D14 before the code, and corrected it when the plan changed (no local run) and when a review showed two of its claims were wrong: the 25% defaults already come to 0 and 1 for two replicas, and the memory risk was understated.
+- Pushed each batch of tests before the code that satisfies it, so CI showed them failing: 4, 5 and then 6 cases. One case passed on the runner for the wrong reason (it matched bash's wording of an error) and was rewritten to check behaviour.
+- An independent review found three ways the script could report a pass by mistake; each got a failing test first, then a fix.
+- Did not run anything on the cluster: it does not exist yet. The demo page says so and lists what is unverified, and the pull request stays a draft until the numbers are in.
+
+## PRACTICES alignment with the API contract, and lecture 9 rows (#104), 11 November 2026
+
+### Prompt
+
+`docs/PRACTICES.md` API-4 still described offset pagination with a `total`, while `docs/API.md` defines cursor pagination, and a review on #93 had promised to bring the row into line. Lecture 9 had just been posted. We asked for the row to match API.md with an honest source, for one row per lecture 9 practice with page citations, and for a list of what the manifests and code now miss, with no code changes.
+
+### AI Response
+
+A rewritten API-4 and seven new rows from all 98 pages of lecture 9. It found that no lecture or assignment sets a pagination scheme, so the old A1 citation was wrong. It also found one gap: the database volume's Delete reclaim policy, which it opened as #104.
+
+### What Your Team Did With It
+
+- Had the change checked by a new reviewer each round, one who had not written it or seen the earlier rounds, until a round came back clean. Each round checked the slides, the handouts, the manifests and the DigitalOcean and Kubernetes documentation. They found a blank line that broke the API table, a wrong cause for volume loss on cluster teardown (the `--dangerous` flag in `cluster-down.sh`, not the reclaim policy), planned work worded as done, an unsupported A2 citation, and a sentence about the cluster that went stale while the change was being checked. All were fixed before the commit.
+- Left out of this change, and logged as open: an inconsistency inside `docs/API.md` (the API slice's file) and two older rows that no longer agree with the contract.
