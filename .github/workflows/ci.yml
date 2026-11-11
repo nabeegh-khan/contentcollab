@@ -128,6 +128,20 @@ jobs:
       - run: npm run format:check
       - run: npm run typecheck
 
+  # Node's built-in test runner over the operational scripts (no
+  # dependencies), e.g. the HPA readiness check the load test relies on (#69)
+  scripts:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read # reads the repo, writes nothing
+    timeout-minutes: 5 # the suite takes under a second; a hang fails fast
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - run: node --test scripts/*.test.mjs
+
   # Builds the API image exactly as the deploy workflow will, without pushing it,
   # so a Dockerfile that no longer builds fails the pull request rather than
   # the first deploy. The image is built in a container (same base image as
