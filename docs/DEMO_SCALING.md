@@ -21,7 +21,7 @@ kubectl -n kube-system get configmap cluster-autoscaler-status -o jsonpath='{.da
 kubectl top nodes                                                # memory used on each node
 ```
 
-If `hpa-ready.mjs` fails, the HPA cannot scale: run `bash scripts/metrics-server.sh` first. The rollout script refuses to start unless every node it can read has room for what the run adds: the k6 pod's 512 MiB memory limit plus one more API pod during the rollout (`maxSurge` times the api container's memory limit, both read from the Deployment: 768 MiB on 11 November), measured as allocatable minus use, whatever the node count or size. A node with no metrics yet (for example one the autoscaler has just added, before metrics-server reports it) is named as not checked; if no node can be read, the script stops unless `ALLOW_UNCHECKED_MEMORY=1`. Five API pods may not fit on the nodes there are when the load starts; with node autoscaling, pods that cannot be scheduled make the autoscaler add a node; how long that takes here is not measured yet (see "Not yet verified").
+If `hpa-ready.mjs` fails, the HPA cannot scale: run `bash scripts/metrics-server.sh` first. The rollout script refuses to start unless every node it can read has room for what the run adds: the k6 pod's 512 MiB memory limit plus one more API pod during the rollout (`maxSurge` times the api container's memory limit, both read from the Deployment: 768 MiB on 11 November), measured as allocatable minus use, whatever the node count or size. A node with no metrics yet (for example one the autoscaler has just added, before metrics-server reports it) is named as not checked, and the script stops unless `ALLOW_UNCHECKED_MEMORY=1`, because the load or the surge pod could land on it. Five API pods may not fit on the nodes there are when the load starts; with node autoscaling, pods that cannot be scheduled make the autoscaler add a node; how long that takes here is not measured yet (see "Not yet verified").
 
 ## 1. Scale out and back
 
@@ -100,7 +100,7 @@ To see what the hook changes, run section 2 once before this patch and once afte
 ## If something goes wrong
 
 - A node has less free memory than the run can add (768 MiB on 11 November): `rollout-no-drop.sh` refuses to start and names the node and the figures. Stop other work on the cluster, or wait for the HPA to scale back to 2. `MIN_NODE_FREE_MIB` changes the threshold; lowering it below what the run adds risks evictions.
-- `warning: <node>: memory not readable, not checked`: that node had no metrics; the other nodes were still checked. Run again once `kubectl top nodes` lists it if the warning is for the node the load may land on.
+- `warning: <node>: memory not readable, not checked`: that node had no metrics, so the run stopped before changing anything. Run again once `kubectl top nodes` lists it, or set `ALLOW_UNCHECKED_MEMORY=1` to go ahead without that node checked.
 - Pods stuck `Pending` while scaling: the nodes are out of memory or CPU. `kubectl -n contentcollab describe pod <name>` says which. With node autoscaling, the autoscaler adds a node up to its maximum (`kubectl get nodes -w`); at the maximum, pods stay `Pending`.
 - A rollout that never finishes: `kubectl -n contentcollab rollout undo deployment/api`.
 - The k6 Job is removed an hour after it finishes (`ttlSecondsAfterFinished`), but its ConfigMap, which holds the k6 script, is not. After a run: `kubectl -n contentcollab delete job/k6-rollout configmap/k6-rollout --ignore-not-found`.
