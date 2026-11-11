@@ -9,6 +9,11 @@
 // "Unrequested" is allocatable memory minus the memory requests of the pods on the node (what the scheduler can
 // still place). "Not in use" is allocatable minus what the node's pods actually use (what stops a node running
 // out of memory under load). With the API at its maximum, each extra pod adds one API pod's request and use.
+//
+// Exit 0 with the report; 2 when kubectl fails, a node has no `kubectl top` reading (metrics-server has not
+// scraped it yet: wait a minute after a rebuild), or AGENT_MI / CLUSTER_AGENT_MI is not a number of MiB.
+// A pod's request is counted as the scheduler counts it: the larger of its biggest init container and the sum of
+// its containers, plus the pod's overhead. Cordoned or NotReady nodes still count as capacity.
 
 import { execFileSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
@@ -56,6 +61,15 @@ function topMemoryByName(text) {
 }
 
 const sum = (values) => values.reduce((a, b) => a + b, 0);
+const memoryRequest = (container) => parseMemory(container.resources?.requests?.memory);
+
+// The scheduler's view of a pod: init containers run one at a time before the others, so the larger of the two
+// counts, and the RuntimeClass overhead is added on top
+function podRequest(pod) {
+  const containers = sum((pod.spec.containers ?? []).map(memoryRequest));
+  const init = Math.max(0, ...(pod.spec.initContainers ?? []).map(memoryRequest));
+  return Math.max(containers, init) + parseMemory(pod.spec.overhead?.memory);
+}
 const round = (n) => Math.round(n * 10 ** DECIMALS) / 10 ** DECIMALS;
 
 /**
@@ -66,14 +80,14 @@ const round = (n) => Math.round(n * 10 ** DECIMALS) / 10 ** DECIMALS;
 export function headroom({ nodes, pods, topNodes, topApi, hpa, agentMi, clusterAgentMi }) {
   const used = topMemoryByName(topNodes);
   const live = pods.items.filter((p) => !["Succeeded", "Failed"].includes(p.status?.phase));
-  const requestOf = (p) =>
-    sum(p.spec.containers.map((c) => parseMemory(c.resources?.requests?.memory)));
 
   const rows = nodes.items.map((n) => {
     const name = n.metadata.name;
     const allocatableMi = parseMemory(n.status.allocatable.memory);
-    const requestedMi = sum(live.filter((p) => p.spec.nodeName === name).map(requestOf));
-    const usedMi = used.get(name) ?? 0;
+    const requestedMi = sum(live.filter((p) => p.spec.nodeName === name).map(podRequest));
+    const usedMi = used.get(name);
+    // Counting a node with no reading as 0 MiB in use would report its whole allocatable memory as free
+    if (usedMi === undefined) throw new Error(`no memory reading for node ${name} in kubectl top nodes`);
     return {
       name,
       allocatableMi,
@@ -94,11 +108,14 @@ export function headroom({ nodes, pods, topNodes, topApi, hpa, agentMi, clusterA
 
   const apiPods = live.filter((p) => p.metadata.labels?.app === "api");
   const apiUse = [...topMemoryByName(topApi).values()];
-  const perPodRequest = apiPods.length ? sum(apiPods.map(requestOf)) / apiPods.length : 0;
-  const perPodUse = apiUse.length ? sum(apiUse) / apiUse.length : perPodRequest;
+  const perPodRequest = apiPods.length ? sum(apiPods.map(podRequest)) / apiPods.length : 0;
+  // No reading for the API pods: their request stands in for their use, and the result says so
+  const apiUseMeasured = apiUse.length > 0;
+  const perPodUse = apiUseMeasured ? sum(apiUse) / apiUse.length : perPodRequest;
   const extraPods = Math.max(0, (hpa?.spec?.maxReplicas ?? apiPods.length) - apiPods.length);
   const atMax = {
     extraPods,
+    apiUseMeasured,
     freeRequestedMi: total.freeRequestedMi - extraPods * perPodRequest,
     freeUsedMi: total.freeUsedMi - extraPods * perPodUse,
   };
@@ -125,29 +142,42 @@ function kubectl(args) {
   return execFileSync("kubectl", args, { encoding: "utf8", maxBuffer: 64 * BYTES_PER_MI });
 }
 
+// A size in MiB from the environment: unset or empty means not asked; anything but a number >= 0 is refused
+function readMi(name) {
+  const raw = process.env[name];
+  if (raw === undefined || raw === "") return undefined;
+  const value = raw.trim() === "" ? Number.NaN : Number(raw);
+  if (!Number.isFinite(value) || value < 0) {
+    throw new Error(`${name}=${JSON.stringify(raw)} is not a number of MiB (write 768, not 768Mi)`);
+  }
+  return value;
+}
+
+function currentContext() {
+  try {
+    return kubectl(["config", "current-context"]).trim();
+  } catch {
+    // In-cluster or service-account configuration has no current context; the numbers are still right
+    return "(unknown)";
+  }
+}
+
 function main() {
   const namespace = process.env.NAMESPACE ?? "contentcollab";
   const hpaName = process.env.HPA ?? "api";
-  const agentMi = process.env.AGENT_MI === undefined ? undefined : Number(process.env.AGENT_MI);
-  const clusterAgentMi =
-    process.env.CLUSTER_AGENT_MI === undefined ? undefined : Number(process.env.CLUSTER_AGENT_MI);
-  let result;
-  try {
-    result = headroom({
-      nodes: JSON.parse(kubectl(["get", "nodes", "-o", "json"])),
-      pods: JSON.parse(kubectl(["get", "pods", "-A", "-o", "json"])),
-      topNodes: kubectl(["top", "nodes", "--no-headers"]),
-      topApi: kubectl(["-n", namespace, "top", "pods", "-l", "app=api", "--no-headers"]),
-      hpa: JSON.parse(kubectl(["-n", namespace, "get", "hpa", hpaName, "-o", "json"])),
-      agentMi,
-      clusterAgentMi,
-    });
-  } catch (err) {
-    console.error(`failed: ${String(err.stderr ?? err.message).trim()}`);
-    process.exit(2);
-  }
+  const agentMi = readMi("AGENT_MI");
+  const clusterAgentMi = readMi("CLUSTER_AGENT_MI");
+  const result = headroom({
+    nodes: JSON.parse(kubectl(["get", "nodes", "-o", "json"])),
+    pods: JSON.parse(kubectl(["get", "pods", "-A", "-o", "json"])),
+    topNodes: kubectl(["top", "nodes", "--no-headers"]),
+    topApi: kubectl(["-n", namespace, "top", "pods", "-l", "app=api", "--no-headers"]),
+    hpa: JSON.parse(kubectl(["-n", namespace, "get", "hpa", hpaName, "-o", "json"])),
+    agentMi,
+    clusterAgentMi,
+  });
   const mi = (n) => `${round(n)} MiB`;
-  console.log(`measured ${new Date().toISOString()} (kubectl context ${kubectl(["config", "current-context"]).trim()})`);
+  console.log(`measured ${new Date().toISOString()} (kubectl context ${currentContext()})`);
   for (const r of result.nodes) {
     console.log(
       `${r.name}: allocatable ${mi(r.allocatableMi)}, requested ${mi(r.requestedMi)} (unrequested ${mi(r.freeRequestedMi)}), ` +
@@ -158,6 +188,9 @@ function main() {
   console.log(
     `API at its maximum (+${result.atMax.extraPods} pods): unrequested ${mi(result.atMax.freeRequestedMi)}, not in use ${mi(result.atMax.freeUsedMi)}`,
   );
+  if (!result.atMax.apiUseMeasured) {
+    console.log("  (no kubectl top reading for the API pods: each extra pod counted at its request, not its use)");
+  }
   if (result.fits) {
     console.log(
       `an agent of ${agentMi} MiB: ${result.fits.requests ? "fits" : "does NOT fit"} by requests, ${result.fits.inUse ? "fits" : "does NOT fit"} by memory in use (totals, API at its maximum)`,
@@ -171,4 +204,12 @@ function main() {
   }
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main();
+// Any failure exits 2 with its reason, never a stack trace and the default exit code 1
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  try {
+    main();
+  } catch (err) {
+    console.error(`memory-headroom failed: ${String(err?.stderr || err?.message || err).trim()}`);
+    process.exit(2);
+  }
+}
