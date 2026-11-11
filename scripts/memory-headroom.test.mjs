@@ -289,3 +289,12 @@ test("CLUSTER_AGENT_MI without AGENT_MI is refused, not silently ignored", () =>
   assert.equal(r.status, 2);
   assert.match(r.stderr, /CLUSTER_AGENT_MI needs AGENT_MI/);
 });
+
+test("a Pending API pod is not counted as placed: its request is in no node yet", () => {
+  const pending = { ...pod("api-3", undefined, "128Mi", { app: "api" }), status: { phase: "Pending" } };
+  const withPending = { items: [...pods.items, pending] };
+  const { atMax } = headroom({ nodes, pods: withPending, topNodes, topApi, hpa });
+  // Two placed pods: the maximum of five still adds three requests, as without the Pending pod
+  assert.equal(atMax.extraPods, 3);
+  assert.equal(Math.round(atMax.freeRequestedMi * 10) / 10, 405.2);
+});

@@ -29,6 +29,8 @@ const REJECTED_BODIES = 2;
 
 let out: ReturnType<typeof captureStdout>;
 beforeEach(() => {
+  // These tests read warn lines: expect the default level, whatever the shell exported
+  delete process.env.LOG_LEVEL;
   out = captureStdout();
   registry.resetMetrics();
 });

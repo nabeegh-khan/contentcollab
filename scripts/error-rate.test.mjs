@@ -259,3 +259,8 @@ test("only plain decimal settings are read: hex or exponents are refused", () =>
   assert.equal(run(lines(line("/a", 200)), { MIN_REQUESTS: "1e1" }).status, 2);
   assert.equal(run(lines(line("/a", 200)), { THRESHOLD: "0.05", MIN_REQUESTS: "10" }).status, 0);
 });
+
+test("the threshold is printed as people write it, not with float noise", () => {
+  const r = run(lines(...repeat(20, line("/a", 200))), { THRESHOLD: "0.07" });
+  assert.match(r.stdout, /threshold 7% with at least 10 requests/);
+});
