@@ -43,6 +43,11 @@ function codeFor(status: number): string {
   return CODES[status] ?? name.replace(NOT_ALPHANUMERIC, "_").toUpperCase();
 }
 
+// The body of every error answer, in the shape of docs/API.md: `{ error, code }`
+export function errorBody(status: number): { error: string; code: string } {
+  return { error: STATUS_CODES[status] ?? "Error", code: codeFor(status) };
+}
+
 // An error is the client's mistake only when it carries a 4xx status and says
 // its message may be shown (`expose`, which body-parser and http-errors set
 // for a malformed body or one over the size limit). It answers with that
@@ -84,7 +89,7 @@ export function errorHandler(err: unknown, req: Request, res: Response, next: Ne
     return;
   }
   const status = clientStatus ?? HTTP_INTERNAL_ERROR;
-  res.status(status).json({ error: STATUS_CODES[status], code: codeFor(status) });
+  res.status(status).json(errorBody(status));
   // `next` is part of the error-handler signature Express looks for; nothing follows this handler
   void next;
 }
