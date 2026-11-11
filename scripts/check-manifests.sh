@@ -43,7 +43,7 @@ check INF-8 "$workload | .metadata.name as \$n | .spec.template.metadata.labels 
   | \$n + \": selector \" + .key + \"=\" + .value + \" is not a pod template label\""
 check INF-8 "$workload | select(.spec.selector.matchLabels == null) | .metadata.name + \": no matchLabels in the selector\""
 apps=$(lines "$workload | .spec.template.metadata.labels.app")
-while IFS== read -r name app; do
+while IFS='=' read -r name app; do
   [ -z "$name" ] || grep -qx "$app" <<<"$apps" || { echo "FAIL INF-8 service/$name: no workload labelled app=$app"; fails=1; }
 done < <(lines 'select(.kind == "Service") | select(.spec.selector != null) | .metadata.name + "=" + .spec.selector.app')
 
@@ -63,7 +63,8 @@ check INF-10 "$workload | .metadata.name as \$n | $containers
   | .port as \$p | select((\$p | tag != \"!!str\") or (\$p | test(\"^[0-9]+\$\")) or ((\$names | any_c(. == \$p)) | not))
   | \$n + \": probe port \" + (.port | tostring) + \" is not a port name the container declares\""
 declared=$(lines "$workload | .spec.template.metadata.labels.app as \$a | $containers | .ports[]? | \$a + \"=\" + .name")
-while IFS== read -r name app target; do
+# shellcheck disable=SC2016 # $n and $a are yq variables, not shell ones
+while IFS='=' read -r name app target; do
   [ -z "$name" ] || grep -qx "$app=$target" <<<"$declared" \
     || { echo "FAIL INF-10 service/$name: targetPort $target is not a port name declared by app=$app"; fails=1; }
 done < <(lines 'select(.kind == "Service") | select(.spec.selector != null) | .metadata.name as $n | .spec.selector.app as $a | .spec.ports[] | $n + "=" + $a + "=" + ((.targetPort // .port) | tostring)')
