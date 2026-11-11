@@ -256,3 +256,19 @@ PR #76 was stacked on #71, which was squash-merged, so it conflicted with main i
 - A stub test of the rollout and smoke scripts under `bash -e` passes nine cases (four failed before the fixes); #83's own deploy test passes 9 of 9 on the two branches combined; CI green.
 - Wrote the merge order (#83 first) and the exact conflict resolution into the description; review requested from a teammate, due 11 November.
 
+## Self-review of three cloud PRs while teammates build the core (#27, #55, #82; PRs #61, #62, #83), 10 November 2026
+
+### Prompt
+
+The 7 November meeting put the schema and core features ahead of reviews, so PRs #61, #62 and #83 were past their three-day windows with no review. Nabeegh's approach: bring each branch up to date with main, have it reviewed from the diff, the issue and the practices only, check every finding against the code before acting on it, fix the real ones test first, rerun every check, and record a self-review on each PR without merging. AI was used for the merges, the reviews, the fixes and stub tests, and the independent checks.
+
+### AI Response
+
+#61 (Datadog): the cluster agent could list every Secret in the cluster through two default ClusterRoles, every pod's logs went to Datadog, a rotated key never reached running agents, and `DATADOG_SITE` was unchecked. #83 (image pinning): the workflow tests passed on broken rollout steps (13 of 22 deliberate breakages at the first check), the bring-up pin check missed tagless, digest and hyphenated images, practice IDs cited rows that do not exist, and a Deployment left on the placeholder tag was never undone. #62 (smoke and alerts): `smoke.sh` could not pass against the deployed URL, accepted the Gateway's 404, and failed on a large `/metrics` body; `alerts.sh` left a rebuilt cluster without alerts.
+
+### What Your Team Did With It
+
+- Each fix came with a check that failed before it: a `helm template` render check, stub tests of the bring-up steps and of both scripts, and 52 changed copies of `deploy.yml` run against the test. Limits the test cannot see are written in the build log.
+- Every round went back to a fresh reviewer until it came back clean. Later rounds caught an undo placed so it could go back one revision too far (fixed before the branch was pushed) and loose wording in the build log (corrected on `main`).
+- One check by mistake ran the real `doctl` against the team account; DigitalOcean refused the only change it tried, and a read-only listing confirmed nothing was created. The test harness now refuses to run unless its stubs are the ones on PATH.
+- Decisions went into ARCHITECTURE D6 and the build log on `main` before the branches were pushed. The PRs are not merged: that, and removing the requested reviewers, waits for Nabeegh.
