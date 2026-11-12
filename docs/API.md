@@ -17,7 +17,7 @@ Base path `/api/v1`. JSON in and out, `Content-Type: application/json`, except f
 | upload a version, revert, edit metadata, tags | yes | yes | | |
 | share, change roles, delete document | yes | | | |
 
-**Error shape.** Every non-2xx response is `{ "error": "<short message>", "code": "<UPPER_SNAKE>", "details": [...] }`. `details` is present only on `400` validation errors: `[{ "field": "title", "message": "required" }]`. Codes used: `VALIDATION`, `UNAUTHORIZED`, `FORBIDDEN`, `NOT_FOUND`, `CONFLICT`, `TOO_LARGE`, `RATE_LIMITED`, `INTERNAL`.
+**Error shape.** Every non-2xx response the API itself writes is `{ "error": "<short message>", "code": "<UPPER_SNAKE>", "details": [...] }`. `details` is present only on `400` validation errors: `[{ "field": "title", "message": "required" }]`. Codes used: `VALIDATION` (400 and 422; a malformed JSON body is a 400 `VALIDATION` without `details`), `UNAUTHORIZED`, `FORBIDDEN`, `NOT_FOUND`, `CONFLICT`, `TOO_LARGE`, `RATE_LIMITED`, `INTERNAL` (every 5xx from the error handler; `/health` answers its own 503 body, below). Any other 4xx carries its status name in upper snake case (418 gives `IM_A_TEAPOT`), or `ERROR` for a status with no name.
 
 **Validation.** Bodies are validated in middleware (zod) before a handler sees them; unknown fields are rejected with `400`. Request bodies are capped at 1 MB; uploads at 50 MB (`413 TOO_LARGE`).
 
