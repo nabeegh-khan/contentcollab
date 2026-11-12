@@ -32,10 +32,10 @@ async function createDocument(ownerId: string): Promise<string> {
   );
   const id = result.rows[0]!.id;
   createdDocumentIds.push(id);
-  await pool.query(
-    "INSERT INTO shares (document_id, user_id, role) VALUES ($1, $2, 'owner')",
-    [id, ownerId],
-  );
+  await pool.query("INSERT INTO shares (document_id, user_id, role) VALUES ($1, $2, 'owner')", [
+    id,
+    ownerId,
+  ]);
   return id;
 }
 
@@ -111,10 +111,10 @@ describe("document shares", () => {
     const owner = await createUser();
     const invitee = await createUser();
     const documentId = await createDocument(owner.id);
-    await pool.query(
-      "INSERT INTO shares (document_id, user_id, role) VALUES ($1, $2, 'viewer')",
-      [documentId, invitee.id],
-    );
+    await pool.query("INSERT INTO shares (document_id, user_id, role) VALUES ($1, $2, 'viewer')", [
+      documentId,
+      invitee.id,
+    ]);
 
     const res = await request(app)
       .post(`/api/v1/documents/${documentId}/shares`)
@@ -130,10 +130,10 @@ describe("document shares", () => {
     const viewer = await createUser();
     const invitee = await createUser();
     const documentId = await createDocument(owner.id);
-    await pool.query(
-      "INSERT INTO shares (document_id, user_id, role) VALUES ($1, $2, 'viewer')",
-      [documentId, viewer.id],
-    );
+    await pool.query("INSERT INTO shares (document_id, user_id, role) VALUES ($1, $2, 'viewer')", [
+      documentId,
+      viewer.id,
+    ]);
 
     const res = await request(app)
       .post(`/api/v1/documents/${documentId}/shares`)
