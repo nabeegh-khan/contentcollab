@@ -28,7 +28,7 @@ function getBucket(): string {
 
 // Uploads a stream using multipart upload when necessary.
 // The file is streamed rather than loaded entirely into memory.
-export async function putStream(key: string, stream: Readable, contentType: string): Promise<void> {
+export async function putStream(key: string, stream: Readable, contentType: string, signal: AbortSignal): Promise<void> {
   const upload = new Upload({
     client: s3,
     params: {
@@ -39,7 +39,17 @@ export async function putStream(key: string, stream: Readable, contentType: stri
     },
   });
 
-  await upload.done();
+  const onAbort = () => {
+    void upload.abort();
+  };
+  signal.addEventListener("abort", onAbort, { once: true });
+  if (signal.aborted) onAbort();
+
+  try {
+    await upload.done();
+  } finally {
+    signal.removeEventListener("abort", onAbort);
+  }
 }
 
 // Retrieves an object as a Node.js readable stream.
