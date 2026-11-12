@@ -4,7 +4,7 @@ Upload a document, share it with the right people, and review it together: comme
 
 Team project for ECE1779 Introduction to Cloud Computing, University of Toronto, Fall 2026.
 
-**Status, 2 November:** proposal sections 2, 3 and 4 in review ([#31](https://github.com/nabeegh-khan/contentcollab/pull/31), [#34](https://github.com/nabeegh-khan/contentcollab/pull/34), [#33](https://github.com/nabeegh-khan/contentcollab/pull/33)), due 7 November; API contract on main ([docs/API.md](docs/API.md)). Cloud and operations work in review: Kubernetes base manifests with minikube and DigitalOcean overlays and a GitHub Container Registry deploy workflow, run on minikube with the restart test passed ([#35](https://github.com/nabeegh-khan/contentcollab/pull/35), [#52](https://github.com/nabeegh-khan/contentcollab/issues/52)); `/metrics` with prom-client ([#57](https://github.com/nabeegh-khan/contentcollab/pull/57)); the BullMQ worker skeleton with a health endpoint ([#58](https://github.com/nabeegh-khan/contentcollab/pull/58)) and its Deployment ([#60](https://github.com/nabeegh-khan/contentcollab/pull/60)); cluster bring-up and tear-down scripts with a Let's Encrypt issuer ([#59](https://github.com/nabeegh-khan/contentcollab/pull/59)); Datadog autodiscovery of `/metrics` ([#61](https://github.com/nabeegh-khan/contentcollab/pull/61)); DigitalOcean alert policies and smoke checks ([#62](https://github.com/nabeegh-khan/contentcollab/pull/62)); and the API image built and smoke-tested against Redis on every pull request ([#64](https://github.com/nabeegh-khan/contentcollab/pull/64)). One Issue per piece of work in every slice (#37 to #55). Minutes in [docs/meetings/](docs/meetings/).
+**Status, 11 November:** merged to `main`: the Compose and CI harness, the cluster bring-up scripts, the worker, `/metrics`, the Datadog install, the autoscaler load test, replica spreading and the deploy checks gate. Feature code is in review: schema ([#88](https://github.com/nabeegh-khan/contentcollab/pull/88), issue #37), storage ([#89](https://github.com/nabeegh-khan/contentcollab/pull/89)), API contract ([#85](https://github.com/nabeegh-khan/contentcollab/pull/85)), web skeleton ([#86](https://github.com/nabeegh-khan/contentcollab/pull/86)), sign-in and document list ([#93](https://github.com/nabeegh-khan/contentcollab/pull/93)), document view ([#91](https://github.com/nabeegh-khan/contentcollab/pull/91)). Cloud pull requests still open: #62 (draft), #75, #83. Recovery dates are in [docs/PLAN.md](docs/PLAN.md#status-and-recovery-6-november); the integration checkpoint is Saturday 14 November.
 
 ## Architecture
 
@@ -40,7 +40,7 @@ This is a review tool, not an editor. Live text editing and track changes are ou
 | Frontend | small React app served as static files by its own container |
 | Background jobs | worker container on a Redis queue (BullMQ): Office-to-PDF conversion, bulk imports, thumbnails |
 | Local development | Docker Compose |
-| Monitoring | DigitalOcean metrics and alerts; `/metrics` on the API (Prometheus format), collected with container logs by Datadog |
+| Monitoring | DigitalOcean metrics and alerts; `/metrics` on the API (Prometheus format) and JSON request logs read with `kubectl`; no agent in the cluster (the nodes cannot carry one: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) D18) |
 | CI/CD | GitHub Actions: lint and test on every pull request, build and deploy on merge to `main` |
 
 Advanced features committed in the proposal: security (sign-in, roles, HTTPS, secrets), CI/CD, real-time, and auto-scaling with high availability. Stretch goals: backup and recovery, external email. Everything else on the board is for the final report, not the proposal.
@@ -51,8 +51,8 @@ Course deadlines are 11:59pm Toronto with no late submissions. The windows are w
 
 | Window | What happens | Course deadline |
 |--------|--------------|-----------------|
-| 17 Oct to 24 Oct | architecture and plan agreed; API contract; team formation on Quercus | team formation, Sat 24 Oct |
-| 19 Oct to 1 Nov | skeleton: Compose stack, schema and first migration, health endpoint, CI on pull requests, manifests on minikube | Assignment 3, Sat 31 Oct |
+| 17 Oct to 24 Oct | architecture and plan agreed; API contract (slipped: agreed by Mon 9 Nov, #10); team formation on Quercus | team formation, Sat 24 Oct |
+| 19 Oct to 1 Nov | skeleton: Compose stack, schema and first migration (slipped: merged by Mon 9 Nov, #37), health endpoint, CI on pull requests, manifests on minikube | Assignment 3, Sat 31 Oct |
 | 26 Oct to 7 Nov | proposal written from the architecture docs; core features under way | **proposal, Sat 7 Nov (15%)** |
 | 2 Nov to 14 Nov | cloud: DOKS cluster, TLS, PostgreSQL on a volume with the restart test, autoscaling, alerts, deploy on merge | |
 | 9 Nov to 20 Nov | real-time, additive features, integration checkpoints Sat 14 and Fri 20 Nov; new features stop Sat 21 Nov | health check, Mon 16 Nov; Assignment 4, Sat 21 Nov |
@@ -75,13 +75,13 @@ docs/
   BUILD_LOG.md       dated record of the cluster build: decisions, evidence, incidents, sources
   PLAN.md            stages, owners, integration, risks; the source for proposal section 3
   PRACTICES.md       the engineering practices we hold to, with their course sources
-  PROPOSAL.md        the proposal, one section per owner, due 7 Nov
+  ECE1779_Team22_Project_Proposal.md  the proposal, one section per owner, due 7 Nov; the file every member submits on Quercus
   API.md             the endpoint contract (written before feature work starts)
   meetings/          one file per team meeting, YYYY-MM-DD.md
 .env.example         environment variable template; copy to .env, which is never committed
 ```
 
-Each folder has a README saying what goes in it, its planned layout, and the practices that apply there. `compose.yaml` lands with the skeleton.
+Each folder has a README saying what goes in it, its layout, and the practices that apply there. `compose.yaml` runs the local stack; `compose.test.yaml` runs the API tests.
 
 ## How we work
 
@@ -96,4 +96,4 @@ Each folder has a README saying what goes in it, its planned layout, and the pra
 
 ## Local setup
 
-Clone, copy `.env.example` to `.env`, then `docker compose up --build`; the API answers at `http://localhost:3000/health`. The Kubernetes manifests run on minikube with `kubectl apply -k k8s/minikube` ([k8s/README.md](k8s/README.md), on #35 until it merges).
+Clone, copy `.env.example` to `.env`, then `docker compose up --build`; the API answers at `http://localhost:3000/health`. The Kubernetes manifests run on minikube with `kubectl apply -k k8s/minikube` ([k8s/README.md](k8s/README.md)).
