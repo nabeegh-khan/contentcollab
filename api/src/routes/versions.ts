@@ -6,8 +6,7 @@ import { HttpError } from "../lib/httpError.js";
 import { parseUpload } from "../lib/parseUpload.js";
 import { requireAuth } from "../middleware/requireAuth.js";
 import { requireRole } from "../middleware/requireRole.js";
-import { putStream, remove } from "../lib/storage.js";
-import { getStream } from "../lib/storage.js";
+import { copy, getStream, putStream, remove } from "../lib/storage.js";
 import { z } from "zod";
 
 const router = Router({ mergeParams: true });
@@ -234,6 +233,155 @@ router.get(
 
     stream.pipe(res);
   },
+);
+
+// POST /documents/:documentId/versions/:versionId/revert
+router.post(
+    "/:versionId/revert",
+    requireAuth,
+    requireRole("owner", "editor"),
+    async (req, res) => {
+      const { documentId, versionId: sourceVersionId } = req.params;
+  
+      if (
+        typeof documentId !== "string" ||
+        typeof sourceVersionId !== "string" ||
+        !z.uuid().safeParse(documentId).success ||
+        !z.uuid().safeParse(sourceVersionId).success
+      ) {
+        throw new HttpError(400, "VALIDATION", "Invalid ID", [
+          { field: "versionId", message: "invalid UUID" },
+        ]);
+      }
+  
+      // Check the reverted version belongs to this document, and is not the current verison
+      const sourceResult = await pool.query<{
+        object_key: string;
+        filename: string;
+        content_type: string;
+        size: string;
+        checksum: string;
+        current_version_id: string | null;
+      }>(
+        `SELECT v.object_key, v.filename, v.content_type, v.size, v.checksum,
+                d.current_version_id
+         FROM document_versions v
+         JOIN documents d ON d.id = v.document_id
+         WHERE v.id = $1 AND v.document_id = $2`,
+        [sourceVersionId, documentId],
+      );
+  
+      const source = sourceResult.rows[0];
+      if (!source) {
+        throw new HttpError(404, "NOT_FOUND", "Version Not Found");
+      }
+      if (source.current_version_id === sourceVersionId) {
+        throw new HttpError(409, "CONFLICT", "Version Already Current");
+      }
+  
+      const newVersionId = randomUUID();
+      const newObjectKey = `documents/${documentId}/${newVersionId}`;
+      let copyStarted = false;
+      let committed = false;
+  
+      try {
+        copyStarted = true;
+        await copy(source.object_key, newObjectKey);
+  
+        const client = await pool.connect();
+  
+        try {
+          await client.query("BEGIN");
+  
+          const documentResult = await client.query<{
+            current_version_id: string | null;
+          }>(
+            `SELECT current_version_id
+             FROM documents
+             WHERE id = $1
+             FOR UPDATE`,
+            [documentId],
+          );
+  
+          const document = documentResult.rows[0];
+          if (!document) {
+            throw new HttpError(404, "NOT_FOUND", "Document Not Found");
+          }
+          if (document.current_version_id === sourceVersionId) {
+            throw new HttpError(409, "CONFLICT", "Version Already Current");
+          }
+  
+          const nextNumber = await client.query<{ number: number }>(
+            `SELECT COALESCE(MAX(number), 0) + 1 AS number
+             FROM document_versions
+             WHERE document_id = $1`,
+            [documentId],
+          );
+  
+          const result = await client.query<VersionRow>(
+            `INSERT INTO document_versions
+               (id, document_id, number, filename, content_type,
+                size, checksum, object_key, uploaded_by, reverted_from)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+             RETURNING id, document_id, number, filename, content_type,
+                       size, checksum, uploaded_by, created_at`,
+            [
+              newVersionId,
+              documentId,
+              nextNumber.rows[0]!.number,
+              source.filename,
+              source.content_type,
+              source.size,
+              source.checksum,
+              newObjectKey,
+              res.locals.userId,
+              sourceVersionId,
+            ],
+          );
+  
+          await client.query(
+            `UPDATE documents
+             SET current_version_id = $2,
+                 row_version = row_version + 1,
+                 updated_at = NOW()
+             WHERE id = $1`,
+            [documentId, newVersionId],
+          );
+  
+          await client.query("COMMIT");
+          committed = true;
+  
+          const version = result.rows[0]!;
+          res.status(201).json({
+            id: version.id,
+            documentId: version.document_id,
+            number: version.number,
+            filename: version.filename,
+            contentType: version.content_type,
+            size: Number(version.size),
+            checksum: version.checksum,
+            uploadedBy: version.uploaded_by,
+            createdAt: version.created_at,
+          });
+        } catch (error) {
+          if (!committed) {
+            await client.query("ROLLBACK").catch((rollbackError: unknown) => {
+              console.error("Failed to roll back revert", rollbackError);
+            });
+          }
+          throw error;
+        } finally {
+          client.release();
+        }
+      } catch (error) {
+        if (copyStarted && !committed) {
+          await remove(newObjectKey).catch((cleanupError: unknown) => {
+            console.error("Failed to remove copied object", cleanupError);
+          });
+        }
+        throw error;
+      }
+    },
 );
 
 export default router;
