@@ -19,6 +19,7 @@ type DocumentRow = {
 };
 
 // New document no share，only check login, requireRole no need
+// POST /document
 router.post("/", requireAuth, async (req, res) => {
   const userId = res.locals.userId as string;
   const documentId = randomUUID();
