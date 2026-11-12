@@ -8,7 +8,7 @@ function App() {
     fetch('/health')
       .then((res) => { if (!ignore) setStatus(res.ok ? 'up' : 'down'); })
       .catch(() => { if (!ignore) setStatus('down'); });
-    return () => { ignore = true; };
-  }, []);
+    return <p>{status === 'loading' ? 'Checking...' : status === 'up' ? 'API up' : 'API down'}</p>;
+  }, [])};
 
 export default App
