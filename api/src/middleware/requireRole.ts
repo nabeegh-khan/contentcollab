@@ -1,6 +1,7 @@
 import type { RequestHandler } from "express";
 import { pool } from "../lib/db.js";
 import { HttpError } from "../lib/httpError.js";
+import { z } from "zod";
 
 export type DocumentRole = "owner" | "editor" | "commenter" | "viewer";
 
@@ -14,9 +15,12 @@ export function requireRole(...allowedRoles: DocumentRole[]): RequestHandler {
       throw new HttpError(401, "UNAUTHORIZED", "Unauthorized");
     }
 
-    if (typeof documentId !== "string") {
+    if (typeof documentId !== "string" || !z.uuid().safeParse(documentId).success) {
       throw new HttpError(400, "VALIDATION", "Invalid Document ID", [
-        { field: "documentId", message: "required" },
+        {
+          field: "documentId",
+          message: typeof documentId === "string" ? "Invalid UUID" : "Required",
+        },
       ]);
     }
 
