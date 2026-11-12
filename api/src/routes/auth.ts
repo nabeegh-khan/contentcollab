@@ -5,6 +5,7 @@ import { z } from "zod";
 import { pool } from "../lib/db.js";
 import { jwtSecret, requireAuth } from "../middleware/requireAuth.js";
 import { HttpError } from "../lib/httpError.js";
+import { validate } from "../lib/validate.js";
 
 const router = Router();
 
@@ -37,21 +38,8 @@ function publicUser(row: UserRow) {
 }
 
 // POST /api/v1/auth/register
-router.post("/register", async (req, res) => {
-  const parsed = registerSchema.safeParse(req.body);
-  if (!parsed.success) {
-    throw new HttpError(
-      400,
-      "VALIDATION",
-      "Invalid Request",
-      parsed.error.issues.map((issue) => ({
-        field: issue.path.join("."),
-        message: issue.message,
-      })),
-    );
-  }
-
-  const { email, password, displayName } = parsed.data;
+router.post("/register", validate(registerSchema), async (req, res) => {
+  const { email, password, displayName } = req.body;
   const passwordHash = await bcrypt.hash(password, 12);
 
   try {
@@ -73,21 +61,8 @@ router.post("/register", async (req, res) => {
 });
 
 // POST /api/v1/auth/login
-router.post("/login", async (req, res) => {
-  const parsed = loginSchema.safeParse(req.body);
-  if (!parsed.success) {
-    throw new HttpError(
-      400,
-      "VALIDATION",
-      "Invalid Request",
-      parsed.error.issues.map((issue) => ({
-        field: issue.path.join("."),
-        message: issue.message,
-      })),
-    );
-  }
-
-  const { email, password } = parsed.data;
+router.post("/login", validate(loginSchema), async (req, res) => {
+  const { email, password } = req.body;
   const result = await pool.query<UserRow>(
     `SELECT id, email, password_hash, display_name, created_at
      FROM users
