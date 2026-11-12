@@ -10,7 +10,7 @@ import metricsRoutes from "./routes/metrics.js";
 import authRoutes from "./routes/auth.js";
 import { jwtSecret } from "./middleware/requireAuth.js";
 import sharesRoutes from "./routes/shares.js";
-//import linksRoutes from "./routes/links.js";
+import linksRoutes from "./routes/links.js";
 
 const app = express();
 
@@ -22,7 +22,7 @@ app.use("/metrics", metricsRoutes);
 app.use("/api/v1/auth", authRoutes);
 app.use((req, res) => res.status(404).json({ error: "Not Found", code: "NOT_FOUND" }));
 app.use("/api/v1/documents/:documentId/shares", sharesRoutes);
-//app.use("/api/v1/links", linksRoutes);
+app.use("/api/v1/links", linksRoutes);
 app.use((req, res) => res.status(404).json({ error: "Not Found" }));
 app.use(errorHandler);
 
