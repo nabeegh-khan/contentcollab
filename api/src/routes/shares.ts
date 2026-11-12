@@ -221,46 +221,46 @@ router.patch("/:shareId", validate(updateShareSchema), async (req, res) => {
     throw new HttpError(409, "CONFLICT", "Share Changed During Update");
   }
   res.status(200).json(toShare(updated.rows[0]));
+});
 
-  // DELETE /documents/:documentId/shares/:shareId
-  router.delete<DocumentParams>("/:shareId", async (req, res) => {
-    const { documentId, shareId } = req.params;
-    if (typeof documentId !== "string" || typeof shareId !== "string") {
-      throw new HttpError(400, "VALIDATION", "Invalid Share ID", [
-        { field: "shareId", message: "required" },
-      ]);
-    }
+// DELETE /documents/:documentId/shares/:shareId
+router.delete<DocumentParams>("/:shareId", async (req, res) => {
+  const { documentId, shareId } = req.params;
+  if (typeof documentId !== "string" || typeof shareId !== "string") {
+    throw new HttpError(400, "VALIDATION", "Invalid Share ID", [
+      { field: "shareId", message: "required" },
+    ]);
+  }
 
-    const existing = await pool.query<Pick<ShareRow, "id" | "user_id" | "role">>(
-      `SELECT id, user_id, role
-       FROM shares
-       WHERE id = $1 AND document_id = $2`,
-      [shareId, documentId],
-    );
+  const existing = await pool.query<Pick<ShareRow, "id" | "user_id" | "role">>(
+    `SELECT id, user_id, role
+      FROM shares
+      WHERE id = $1 AND document_id = $2`,
+    [shareId, documentId],
+  );
 
-    const share = existing.rows[0];
-    if (!share) {
-      throw new HttpError(404, "NOT_FOUND", "Share Not Found");
-    }
+  const share = existing.rows[0];
+  if (!share) {
+    throw new HttpError(404, "NOT_FOUND", "Share Not Found");
+  }
 
-    if (share.role === "owner" && share.user_id === res.locals.userId) {
-      throw new HttpError(403, "FORBIDDEN", "Cannot Remove Your Own Owner Share");
-    }
+  if (share.role === "owner" && share.user_id === res.locals.userId) {
+    throw new HttpError(403, "FORBIDDEN", "Cannot Remove Your Own Owner Share");
+  }
 
-    const deleted = await pool.query(
-      `DELETE FROM shares
-       WHERE id = $1 AND document_id = $2
-         AND NOT (role = 'owner' AND user_id = $3)
-       RETURNING id`,
-      [shareId, documentId, res.locals.userId],
-    );
+  const deleted = await pool.query(
+    `DELETE FROM shares
+      WHERE id = $1 AND document_id = $2
+        AND NOT (role = 'owner' AND user_id = $3)
+      RETURNING id`,
+    [shareId, documentId, res.locals.userId],
+  );
 
-    if (deleted.rowCount !== 1) {
-      throw new HttpError(409, "CONFLICT", "Share Changed During Delete");
-    }
+  if (deleted.rowCount !== 1) {
+    throw new HttpError(409, "CONFLICT", "Share Changed During Delete");
+  }
 
-    res.status(204).end();
-  });
+  res.status(204).end();
 });
 
 export default router;
