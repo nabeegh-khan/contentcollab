@@ -8,6 +8,7 @@ import { pool } from "./lib/db.js";
 import healthRoutes from "./routes/health.js";
 import metricsRoutes from "./routes/metrics.js";
 import authRoutes from "./routes/auth.js";
+import documentRoutes from "./routes/documents.js";
 
 const app = express();
 
@@ -17,6 +18,9 @@ app.use(requestMetrics);
 app.use("/health", healthRoutes);
 app.use("/metrics", metricsRoutes);
 app.use("/api/v1/auth", authRoutes);
+
+
+app.use("/api/v1/documents", documentRoutes);
 app.use((req, res) => res.status(404).json({ error: "Not Found" }));
 app.use(errorHandler);
 
