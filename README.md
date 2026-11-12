@@ -4,7 +4,7 @@ Upload a document, share it with the right people, and review it together: comme
 
 Team project for ECE1779 Introduction to Cloud Computing, University of Toronto, Fall 2026.
 
-**Status, 6 November:** the schema ([#37](https://github.com/nabeegh-khan/contentcollab/issues/37)) slipped and no feature code is merged yet; recovery dates are in [docs/PLAN.md](docs/PLAN.md#status-and-recovery-6-november). The proposal is on `main` for submission on 7 November. Open for review: test harness [#71](https://github.com/nabeegh-khan/contentcollab/pull/71); cloud pull requests #59, #60, #61, #72, #74, #75, #76, #78, and #62 as a draft.
+**Status, 11 November:** merged to `main`: the Compose and CI harness, the cluster bring-up scripts, the worker, `/metrics`, the Datadog install, the autoscaler load test, replica spreading and the deploy checks gate. Feature code is in review: schema ([#88](https://github.com/nabeegh-khan/contentcollab/pull/88), issue #37), storage ([#89](https://github.com/nabeegh-khan/contentcollab/pull/89)), API contract ([#85](https://github.com/nabeegh-khan/contentcollab/pull/85)), web skeleton ([#86](https://github.com/nabeegh-khan/contentcollab/pull/86)), sign-in and document list ([#93](https://github.com/nabeegh-khan/contentcollab/pull/93)), document view ([#91](https://github.com/nabeegh-khan/contentcollab/pull/91)). Cloud pull requests still open: #62 (draft), #75, #83. Recovery dates are in [docs/PLAN.md](docs/PLAN.md#status-and-recovery-6-november); the integration checkpoint is Saturday 14 November.
 
 ## Architecture
 
@@ -40,7 +40,7 @@ This is a review tool, not an editor. Live text editing and track changes are ou
 | Frontend | small React app served as static files by its own container |
 | Background jobs | worker container on a Redis queue (BullMQ): Office-to-PDF conversion, bulk imports, thumbnails |
 | Local development | Docker Compose |
-| Monitoring | DigitalOcean metrics and alerts; `/metrics` on the API (Prometheus format), collected with container logs by Datadog |
+| Monitoring | DigitalOcean metrics and alerts; `/metrics` on the API (Prometheus format) and JSON request logs read with `kubectl`; no agent in the cluster (the nodes cannot carry one: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) D18) |
 | CI/CD | GitHub Actions: lint and test on every pull request, build and deploy on merge to `main` |
 
 Advanced features committed in the proposal: security (sign-in, roles, HTTPS, secrets), CI/CD, real-time, and auto-scaling with high availability. Stretch goals: backup and recovery, external email. Everything else on the board is for the final report, not the proposal.
@@ -81,7 +81,7 @@ docs/
 .env.example         environment variable template; copy to .env, which is never committed
 ```
 
-Each folder has a README saying what goes in it, its planned layout, and the practices that apply there. `compose.yaml` lands with the skeleton.
+Each folder has a README saying what goes in it, its layout, and the practices that apply there. `compose.yaml` runs the local stack; `compose.test.yaml` runs the API tests.
 
 ## How we work
 
@@ -96,4 +96,4 @@ Each folder has a README saying what goes in it, its planned layout, and the pra
 
 ## Local setup
 
-Clone, copy `.env.example` to `.env`, then `docker compose up --build`; the API answers at `http://localhost:3000/health`. The Kubernetes manifests run on minikube with `kubectl apply -k k8s/minikube` ([k8s/README.md](k8s/README.md), on #35 until it merges).
+Clone, copy `.env.example` to `.env`, then `docker compose up --build`; the API answers at `http://localhost:3000/health`. The Kubernetes manifests run on minikube with `kubectl apply -k k8s/minikube` ([k8s/README.md](k8s/README.md)).

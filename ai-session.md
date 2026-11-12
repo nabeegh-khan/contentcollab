@@ -79,6 +79,39 @@ ts-jest with `useESM`, `.ts` treated as ESM, a `moduleNameMapper` that strips th
 - Checked: the three tests (`/health` with both services up, the 404 error shape, the request counter on `/metrics`) were run locally against PostgreSQL and Redis before pushing, and lint, Prettier and the typecheck pass. With Redis stopped, the suite fails on test timeouts rather than at once (superseded 7 November: the suite now stops at once, see the entry below), which is why CI starts Redis as a service instead of relying on the client's reconnect.
 - Kept out of the image: test files and the Jest config are listed in `api/.dockerignore`.
 
+## Load test for the autoscaling extension (#69), 4 November 2026
+
+### Prompt
+
+For the autoscaling and high-availability extension in section 2.7, we need to step the request rate up against the deployed API and see when latency or errors climb, how many API replicas the HPA adds, and whether a rolling update under load drops requests. Can this be one script with no new dependencies, since the team runs it from different laptops?
+
+### AI Response
+
+A Node script using the built-in `fetch`: an open-loop request schedule at a fixed rate per step (so slow responses don't lower the offered load), p50 and p95 latency and the error rate per step, the ready replica count read with `kubectl` at the end of each step, and an optional mode that runs `kubectl rollout restart` halfway through a constant-load step and counts every failed request.
+
+### What Your Team Did With It
+
+- Checked locally against the API with PostgreSQL and Redis at 20 and 100 req/s (no errors, p95 10 and 22 ms); the replicas column shows "-" without cluster access, which is the intended fallback.
+- Changed: the step-length variable is `STEP_SECONDS`, not `SECONDS`, because `SECONDS` is a built-in bash variable.
+- Run on DigitalOcean on 6 November (two runs in `docs/loadtest/`, made with earlier versions of the script, see `docs/loadtest/README.md`). Added since: a check that the HPA can read CPU before a scaling run, a node-memory guard, and per-request failure and scaling logs.
+
+## Review of the load test (#69, pull request #72), 10 November 2026
+
+### Prompt
+
+We reviewed our own load-test pull request against the diff, issue #69 and our practices, and checked each finding against the code before acting on it. We asked: where can this script report a clean result that is not true, and which columns can't support the conclusions we want to draw for the report?
+
+### AI Response
+
+Thirteen findings: a failed `kubectl rollout restart` was swallowed, so a rollout run could show 0 failed requests with no rollout; the rollout call blocked the request timer; "achieved req/s" was the rate requests were sent, not served; latency included failed requests; only 5xx counted as errors; bad environment variables produced NaN rows; p95 equalled the maximum for small samples; failures were timed when they ended; the Helm version check fell through to Helm 4 on any output; the CI job had no permissions or timeout; and the docs and the two committed CSVs no longer matched the script.
+
+### What Your Team Did With It
+
+- Checked each finding against the code and by running the script against a local stand-in server with no cluster before changing anything; all thirteen held.
+- Changed: the rollout runs asynchronously and is waited on with `kubectl rollout status`; a failed or unfinished rollout is written to a `rollout` column and the run exits 1. New columns `sent_per_s` and `ok_per_s`; latency from successes only; any 4xx is a failure; nearest-rank percentiles; variables validated. Tests for the new helpers were written first and failed before the change.
+- Kept: the two 6 November CSVs, labelled in `docs/loadtest/README.md` with the commit that produced them, instead of deleting them.
+- Not covered: the rollout's success path needs the cluster, so it runs with the final measurements.
+
 ## Deploy pipeline and lecture 8 fixes (#59, #65, #70, #74), 4 November 2026
 
 ### Prompt
@@ -256,6 +289,24 @@ PR #76 was stacked on #71, which was squash-merged, so it conflicted with main i
 - A stub test of the rollout and smoke scripts under `bash -e` passes nine cases (four failed before the fixes); #83's own deploy test passes 9 of 9 on the two branches combined; CI green.
 - Wrote the merge order (#83 first) and the exact conflict resolution into the description; review requested from a teammate, due 11 November.
 
+## Redis-down start reviewed: /health answers at once and the reconnect is tested (#65, PR #75), 10 November 2026
+
+### Prompt
+
+Our fix for #65 opens the port before connecting to Redis. We reviewed it against the diff, the issue and our practices, and checked each finding against the code and the node-redis 6.3.0 source before acting. We asked: with Redis down, what does the kubelet actually see from /health, does the CI step prove Redis was the cause, and does the same process recover when Redis returns?
+
+### AI Response
+
+Eight findings. The main one: with Redis down, a ping waits in the client's offline queue for its 5 s command timeout, so the readiness probe (1 s default) times out instead of reading the 503. The other seven: the CI step accepted any 503 although the job has no Postgres, so it only proved the port was open; no curl or job timeout; the reconnect was claimed but not tested; no unit test covered the ping while Redis is down; every retry was logged (about one line every 2 s); the `.catch` message said "first connect failed" when, with the default retry strategy, connect() keeps retrying and does not reject; and a CI comment said the Redis service was there for a check nothing made. A second, independent pass found one more: once a command is written to the socket it has no timeout, so a paused Redis could still hold /health past 1 s.
+
+### What Your Team Did With It
+
+- Measured before changing anything: a ping to a closed port took 5009 ms; with a readiness guard, under 1 ms.
+- Wrote a Jest test first (fails with "Exceeded timeout of 5000 ms"), then made `pingRedis` return false at once while the client is not ready.
+- The CI step now reads the body within 1 s, then starts Redis on the API's port and requires `"redis":"ok"` from the same container with no restart. Run locally on a Docker network: passes on this branch, fails on the PR's previous head and on main.
+- Errors are logged once per outage, with "connected" or "connected again" when Redis is back; the reworded `.catch` says when it can fire and what follows.
+- For the paused Redis: a second test first (a ping that never settles), then a 500 ms limit on the ping. Against a real Redis under `CLIENT PAUSE 3000`: false in 501 ms, true again after the pause.
+
 ## Self-review of three cloud PRs while teammates build the core (#27, #55, #82; PRs #61, #62, #83), 10 November 2026
 
 ### Prompt
@@ -272,3 +323,149 @@ The 7 November meeting put the schema and core features ahead of reviews, so PRs
 - Every round went back to a fresh reviewer until it came back clean. Later rounds caught an undo placed so it could go back one revision too far (fixed before the branch was pushed) and loose wording in the build log (corrected on `main`).
 - One check by mistake ran the real `doctl` against the team account; DigitalOcean refused the only change it tried, and a read-only listing confirmed nothing was created. The test harness now refuses to run unless its stubs are the ones on PATH.
 - Decisions went into ARCHITECTURE D6 and the build log on `main` before the branches were pushed. The PRs are not merged: that, and removing the requested reviewers, waits for Nabeegh.
+
+## Bring-up script checked against current versions and made safe to re-run (#54, PR #94), 11 November 2026
+
+### Prompt
+
+Issue #54: the DOKS bring-up script (Gateway controller, cert-manager, the kubeconfig secret for CI). Check every component version and install path against kubernetes.io, DigitalOcean, cert-manager and NGINX Gateway Fabric docs first. Record the architecture choice in ARCHITECTURE.md and PRACTICES.md. Then harden the script with tests for re-runs, missing variables and a certificate that is not issued. Dry run only; no cluster created or deleted.
+
+### AI Response
+
+The pinned cert-manager (1.19) had reached end of life, and cert-manager 1.21 supports Kubernetes up to 1.36, while an unpinned DOKS create gets 1.37. cert-manager's guide recommends upgrading one minor version at a time, and the setting that enables Gateway API support changed name in 1.21. The running cluster is on 1.37 with cert-manager 1.19.2. DigitalOcean's documented CI pattern is a token plus a 10-minute kubeconfig, not a stored kubeconfig. Proposed changes: checks before any change, a dry-run mode, a stepwise cert-manager upgrade, a certificate wait with cert-manager's status on failure, and stub-driven tests.
+
+### What Your Team Did With It
+
+- Kept the token pattern the deploy workflow already used and recorded why in D13. Recorded the version pins with their sources, and kept the running 1.37 cluster: rebuilding it is the cluster owner's decision.
+- Pushed the tests before the fix so CI showed them failing (11 of 13), then fixed the script.
+- An independent review of the fix found three gaps (a certificate never created was reported as not issued, the worker rollout was not waited for, the Datadog path was untested in dry runs). Each got a test that failed first, then a fix.
+- Ran the dry run against the real cluster and checked that nothing changed. The live upgrade and the CI token wait for Nabeegh.
+
+## Schema contract test for the #37 checklist (#77), 11 November 2026
+
+### Prompt
+
+The schema in #37 carries every promise the proposal makes about data, so we wanted a CI test that fails when one goes missing. We asked for a test written against the #37 checklist and PR #88's migration, shown failing on a bad migration first, with its own claims mutation-tested by someone who had not written it.
+
+### AI Response
+
+A catalog-query checker with 13 checks, scratch databases for isolation, a bad-migration fixture and 15 single-promise changes. A fresh reviewer then changed the checker and the schema and found false passes: a role CHECK of `OR true` or `NOT IN` passed because the check compared quoted text, column types were not checked, any identity column counted as "increasing", and any table named like a mentions table passed.
+
+### What Your Team Did With It
+
+- Replaced the text comparison with a probe on a temporary copy of `shares` inside a rolled-back transaction (four roles accepted, seven other values refused), added type, step, cycle and per-version checks, and grew the change list to 38 rows, each run on #88's migration.
+- Ran the test on the bad migration first (it failed, listing the six broken lines), then on #88's (43 of 43), and a second review round before opening the draft PR.
+- Kept the one item not fixed (`EXISTS` can never be null, so a null guard has nothing to catch) out of the code and in the log.
+
+## CI checks for the migration, the web image and the cloud manifests (part of #70, PR #99), 11 November 2026
+
+### Prompt
+
+The reviews of #88 and #86 promised four CI additions: kubeconform at a supported Kubernetes version, a migration up/down/up step, a web image build and a render check for the infra overlay and migrate Job. We asked for them as small scripts with tests written first, each shown failing on a deliberately broken input, and an independent review before pushing.
+
+### AI Response
+
+Three shell scripts with stub-driven tests (17), workflow changes that skip while the inputs are missing, and local runs against a real Postgres 18 and the real files from #88 and #86. A fresh reviewer then found that the workflow wiring was untested (7 of 7 changed copies passed), that a `yq | grep || true` hid a yq failure, and that the placeholder check missed digits.
+
+### What Your Team Did With It
+
+- Added a test that pins the workflow wiring and killed all of those changes, moved yq output to a file, widened the placeholder check, and re-ran everything.
+- Showed the checks red then green on a runner with a throwaway branch (closed afterwards), and wrote the limits into the PR and the build log: skips that never expire, no check that `down 0` empties the history, a build-only web job.
+
+## A rolling update that drains its pods, and a check that counts failed requests (#69, PR #103), 11 November 2026
+
+### Prompt
+
+Issue #69: prove that the API scales under load and that a rolling update drops no requests. Check the current Kubernetes documentation for the autoscaler, rolling updates, disruption budgets and pod shutdown, record the decision in ARCHITECTURE.md first, then add what is missing, a script that restarts the API under load and counts failed requests, and prove it on a cluster. The local cluster run was stopped for lack of memory, so the proof moves to the DOKS cluster after the rebuild.
+
+### AI Response
+
+The autoscaler, the disruption budget, `maxUnavailable: 0` and the readiness probe were already in the base manifest. The gap is shutdown: the endpoint removal runs alongside SIGTERM, and the API refuses new connections on SIGTERM. Proposed a 10-second `preStop` sleep (the built-in sleep handler, stable since Kubernetes 1.34) as a kustomize component, and a script that runs k6 inside the cluster. A local run showed `/health` fails under load with no rollout, so the script targets `/metrics`.
+
+### What Your Team Did With It
+
+- Wrote the decision into ARCHITECTURE D14 before the code, and corrected it when the plan changed (no local run) and when a review showed two of its claims were wrong: the 25% defaults already come to 0 and 1 for two replicas, and the memory risk was understated.
+- Pushed each batch of tests before the code that satisfies it, so CI showed them failing: 4, 5 and then 6 cases. One case passed on the runner for the wrong reason (it matched bash's wording of an error) and was rewritten to check behaviour.
+- An independent review found three ways the script could report a pass by mistake; each got a failing test first, then a fix.
+- Did not run anything on the cluster: it does not exist yet. The demo page says so and lists what is unverified, and the pull request stays a draft until the numbers are in.
+
+## PRACTICES alignment with the API contract, and lecture 9 rows (#104), 11 November 2026
+
+### Prompt
+
+`docs/PRACTICES.md` API-4 still described offset pagination with a `total`, while `docs/API.md` defines cursor pagination, and a review on #93 had promised to bring the row into line. Lecture 9 had just been posted. We asked for the row to match API.md with an honest source, for one row per lecture 9 practice with page citations, and for a list of what the manifests and code now miss, with no code changes.
+
+### AI Response
+
+A rewritten API-4 and seven new rows from all 98 pages of lecture 9. It found that no lecture or assignment sets a pagination scheme, so the old A1 citation was wrong. It also found one gap: the database volume's Delete reclaim policy, which it opened as #104.
+
+### What Your Team Did With It
+
+- Had the change checked by a new reviewer each round, one who had not written it or seen the earlier rounds, until a round came back clean. Each round checked the slides, the handouts, the manifests and the DigitalOcean and Kubernetes documentation. They found a blank line that broke the API table, a wrong cause for volume loss on cluster teardown (the `--dangerous` flag in `cluster-down.sh`, not the reclaim policy), planned work worded as done, an unsupported A2 citation, and a sentence about the cluster that went stale while the change was being checked. All were fixed before the commit.
+- Left out of this change, and logged as open: an inconsistency inside `docs/API.md` (the API slice's file) and two older rows that no longer agree with the contract.
+
+## PRACTICES rows for lectures 1, 7 and 9, page numbers rechecked (#105, #106), 11 November 2026
+
+### Prompt
+
+The lecture 9 rows had been cited against the 98-page note-taking PDF, while the team keeps the full slides. Lecture 7 had no rows and lecture 1 only two. We asked for every page of the three decks to be read, the lecture 9 citations to be checked against the full slides, rows to be added with page citations, and one issue to be opened for each real gap, with no code changes.
+
+### AI Response
+
+A page map between the two lecture 9 files (two slides are split over two pages in the full version, so citations after p9 move by one, and after p37 by two), corrected citations, six new rows (INF-18 to INF-21, PRC-5, PRC-6) and lecture 1 and 7 pages added to existing rows. It found two gaps: migrations are not required to keep the old API version working during a rolling update (#105), and local scripts do not check the kubectl context (#106).
+
+### What Your Team Did With It
+
+- Checked each new row against the manifests and scripts before writing where it applies, and dropped lecture 1 citations the slides did not support (for "demo live", "pay for what you use" as a reason to destroy resources, and contribution read from Git history).
+- Had the change checked by reviewers who had not written it, a new one each round, and fixed what they found (a migration Job described as existing when it is only planned, a script listed as calling kubectl that does not, a row still placing the cluster in Toronto after the move to nyc3) before committing.
+
+## Two more review passes on the request log and the monitoring scripts (#55, PR #102), 11 November 2026
+
+### Prompt
+
+PR #102 (JSON request logs, bounded metric labels, the error-rate check and the memory-headroom script) had one review. Before it can merge we asked for two more independent passes, the second by a reviewer who had not seen the first: every test shown failing without its change, the error paths (no data, bad input, crash), the log format and label bounds, and every claim in the PR and in D18. Each fault fixed test-first; nothing pushed until the second pass was clean.
+
+### AI Response
+
+The first pass found about thirty items. The most serious were silent all-clears: a node with no reading counted as 0 MiB used, a failing probe below the minimum reported as fine, unreadable lines dropped, a late server error logged as the client aborting. It also found tests that passed with the feature removed and a CRLF README. The second pass found no code fault that blocked a push, but it did find plain-text startup lines, untested bounds, environment-dependent tests and several doc claims that were wrong or stale.
+
+### What Your Team Did With It
+
+- Wrote a failing test for each finding before the fix, in five rounds, and added checks that would have caught the late faults: line endings read from git's index, `--tail=-1` in every documented command, and the logger's output parsed by the check itself.
+- Brought the error bodies in line with our own API contract (`code`), made both scripts exit 2 instead of reporting all clear on bad input, and ran the real server with Redis paused to see the alert fire.
+- Corrected D16, D18, RESEARCH and the demo page where they had gone stale after the cluster rebuild. Left the architecture diagram and the submitted proposal's Datadog line unchanged.
+- Rejected one suggestion: counting aborted requests as failures. They get their own column instead, because a closed browser tab is not a server error.
+
+## The bring-up script follows the rebuilt cluster (#54, PR #94), 11 November 2026
+
+### Prompt
+
+The bring-up script on #94 creates the cluster without `--ha`. Make it create without the paid high-availability control plane and with node autoscaling. Then make it match the rebuilt cluster: its node pool and version, the region and context read from the cluster (nyc3), and the Gateway API CRD opt-out that DOKS 1.37 needed. Write the tests first, record the decision in D13 with sources, and re-check the CI/CD evidence page against the Actions API.
+
+### AI Response
+
+Checked DigitalOcean's doctl reference, its high-availability how-to, its pricing page and its Gateway API guide. Omitting `--ha` turns HA on for 1.36.0 and later, at US$40 a month, and it cannot be turned off. The opt-out for DOKS-managed Gateway API CRDs is the annotation `doks.digitalocean.com/install-policy=external` on each CRD. Proposed `--ha=false`, autoscaling bounds checked before any call, the rebuild's defaults, the context taken from the cluster's own region, and the annotation step before the CRD apply, each with tests. Every run, duration and count on the CI/CD evidence page matched the API.
+
+### What Your Team Did With It
+
+- Committed each batch of tests before its fix: 2 of 30 failed, then 6 of 36. All pass now.
+- Did not set the node pool defaults until the rebuild recorded its actual values, then copied them from that record.
+- An independent review found a test that could not fail on one of its claims, a missing default test and a misleading sentence in D13. All three were fixed before the push.
+- A second review of the final change found an untested warning, a stale paragraph in D13 and two inaccurate sentences in the build log, one of them saying a lint tool was unavailable when it was not. All four were fixed before the push.
+- Noted the deploy path-filter gap on #70 instead of editing `deploy.yml`, because another open pull request changes that file.
+
+## The rollout check reads the rebuilt cluster, and its first live run (#69, PR #103), 11 November 2026
+
+### Prompt
+
+The cluster was rebuilt in nyc3 with one 4 GB node that autoscales to two. Make the rollout script and the demo page read the context and the node limits from the cluster instead of assuming the old Toronto context or two nodes, so the memory check works for one 4 GB node, with tests first and two independent reviews. Then, once the site serves HTTPS on the new cluster, run the scaling and rollout steps and record the numbers.
+
+### AI Response
+
+Proposed printing the context, the nodes and the node autoscaler's bounds read from the cluster, and replacing the 90% memory limit with a check in MiB: every node must have room for the load generator's memory limit plus the extra API pod the rollout adds, read from the Deployment. Wrote failing tests first for each change. Ran the live steps: rollouts under load inside the cluster dropped nothing with or without the drain; through the public URL a rollout lost 28 of about 6,000 requests while the control lost none; the HPA scaled 2 to 5 and back to 2 after five minutes on one node.
+
+### What Your Team Did With It
+
+- Kept a percentage out: 10% of a 4 GB node is less than the load generator may use.
+- Four review rounds found real gaps (a full node let through when another had no metrics, an ignored override, a stale design note, an octal surge value); each got a test that failed first. After our verification rule changed to two full passes plus one delta check, the extra rounds were stopped there.
+- Recorded the public-URL failures as an open question rather than claiming the drain fixed them, and noted that the scale-out to five came from the rollout script's own load, before the stepped test started. A review of the write-up corrected the burst spacing and two statements about what the watch file showed, and the HPA's events were saved as evidence.
