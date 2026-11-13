@@ -23,6 +23,147 @@ type VersionRow = {
   created_at: Date;
 };
 
+// -------------------------- GET: Get All Versions For A Document --------------------------------
+// GET /documents/:documentId/versions
+router.get(
+    "/",
+    requireAuth,
+    requireRole("owner", "editor", "commenter", "viewer"),
+    async (req, res) => {
+      const documentId = res.locals.documentId as string;
+  
+      const rawLimit = req.query.limit;
+      if (rawLimit !== undefined && typeof rawLimit !== "string") {
+        throw new HttpError(400, "VALIDATION", "Invalid Query", [
+          { field: "limit", message: "must be a single integer" },
+        ]);
+      }
+  
+      const limit = rawLimit === undefined ? 20 : Number(rawLimit);
+      if (
+        !Number.isInteger(limit) ||
+        limit < 1 ||
+        limit > 100 ||
+        (rawLimit !== undefined && !/^\d+$/.test(rawLimit))
+      ) {
+        throw new HttpError(400, "VALIDATION", "Invalid Query", [
+          { field: "limit", message: "must be an integer from 1 to 100" },
+        ]);
+      }
+  
+      const rawCursor = req.query.cursor;
+      if (rawCursor !== undefined && typeof rawCursor !== "string") {
+        throw new HttpError(400, "VALIDATION", "Invalid Query", [
+          { field: "cursor", message: "must be a single string" },
+        ]);
+      }
+  
+      let afterNumber: number | null = null;
+  
+      if (rawCursor !== undefined) {
+        try {
+          const decoded: unknown = JSON.parse(
+            Buffer.from(rawCursor, "base64url").toString("utf8"),
+          );
+  
+          if (
+            typeof decoded !== "number" ||
+            !Number.isSafeInteger(decoded) ||
+            decoded < 1
+          ) {
+            throw new Error("Invalid cursor");
+          }
+  
+          afterNumber = decoded;
+        } catch {
+          throw new HttpError(400, "VALIDATION", "Invalid Query", [
+            { field: "cursor", message: "invalid page cursor" },
+          ]);
+        }
+      }
+  
+      const result = await pool.query<VersionRow>(
+        `SELECT id, document_id, number, filename, content_type,
+                size, checksum, uploaded_by, created_at
+         FROM document_versions
+         WHERE document_id = $1
+           AND ($2::integer IS NULL OR number > $2::integer)
+         ORDER BY number ASC
+         LIMIT $3`,
+        [documentId, afterNumber, limit + 1],
+      );
+  
+      const hasNextPage = result.rows.length > limit;
+      const page = result.rows.slice(0, limit);
+      const last = page.at(-1);
+  
+      res.status(200).json({
+        items: page.map((version) => ({
+          id: version.id,
+          documentId: version.document_id,
+          number: version.number,
+          filename: version.filename,
+          contentType: version.content_type,
+          size: Number(version.size),
+          checksum: version.checksum,
+          uploadedBy: version.uploaded_by,
+          createdAt: version.created_at,
+        })),
+        nextCursor:
+          hasNextPage && last
+            ? Buffer.from(JSON.stringify(last.number)).toString("base64url")
+            : null,
+      });
+    },
+  );
+
+// -------------------------- GET: Get A Version by Id -----------------------------
+// GET /documents/:documentId/versions/:versionId
+router.get(
+    "/:versionId",
+    requireAuth,
+    requireRole("owner", "editor", "commenter", "viewer"),
+    async (req, res) => {
+      const documentId = res.locals.documentId as string;
+      const versionId = req.params.versionId;
+  
+      if (
+        typeof versionId !== "string" ||
+        !z.uuid().safeParse(versionId).success
+      ) {
+        throw new HttpError(400, "VALIDATION", "Invalid Version ID", [
+          { field: "versionId", message: "invalid UUID" },
+        ]);
+      }
+  
+      const result = await pool.query<VersionRow>(
+        `SELECT id, document_id, number, filename, content_type,
+                size, checksum, uploaded_by, created_at
+         FROM document_versions
+         WHERE id = $1 AND document_id = $2`,
+        [versionId, documentId],
+      );
+  
+      const version = result.rows[0];
+      if (!version) {
+        throw new HttpError(404, "NOT_FOUND", "Version Not Found");
+      }
+  
+      res.status(200).json({
+        id: version.id,
+        documentId: version.document_id,
+        number: version.number,
+        filename: version.filename,
+        contentType: version.content_type,
+        size: Number(version.size),
+        checksum: version.checksum,
+        uploadedBy: version.uploaded_by,
+        createdAt: version.created_at,
+      });
+    },
+  );
+
+// -------------------------- POST: Upload A New Version ----------------------------
 // POST /documents/:documentId/versions
 router.post(
   "/",
@@ -163,7 +304,7 @@ router.post(
   },
 );
 
-
+// -------------------------- GET: Download A Version --------------------------------
 // GET /documents/:documentId/versions/:versionId/content
 router.get(
   "/:versionId/content",
@@ -237,6 +378,7 @@ router.get(
   },
 );
 
+// -------------------------- POST: Revert To A Old Version ----------------------------
 // POST /documents/:documentId/versions/:versionId/revert
 router.post(
     "/:versionId/revert",
