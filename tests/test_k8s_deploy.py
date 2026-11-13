@@ -311,8 +311,17 @@ class MigrateBeforeRollout(unittest.TestCase):
                 "--timeout=150s; then")
         self.assertIn(wait, self.lines)
         rest = self.lines[self.lines.index(wait) + 1:]
-        self.assertIn(f"kubectl -n contentcollab logs job/{JOB_NAME} --tail=100 || true", rest)
-        self.assertEqual(rest[rest.index("fi") - 1], "exit 1")
+        branch = rest[:rest.index("fi")]
+        self.assertIn(f"kubectl -n contentcollab logs job/{JOB_NAME} --tail=100 || true", branch)
+        # On DeadlineExceeded the pod is deleted and a pod that never started
+        # has no log: the Job's own status and events say why
+        self.assertIn(f"kubectl -n contentcollab describe job/{JOB_NAME} || true", branch)
+        self.assertEqual(branch[-1], "exit 1")
+
+    def test_runs_from_the_repository_root(self):
+        # The api/migrations guard is relative to the checkout
+        self.assertNotIn("working-directory", self.step)
+        self.assertNotIn("shell", self.step)
 
     def test_inside_the_ten_minute_credential(self):
         # D20: migrate wait plus both rollouts, under the 600 s credential
