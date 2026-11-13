@@ -110,6 +110,9 @@ jobs:
           if ! kubectl -n contentcollab wait --for=condition=complete "job/db-migrate-${{ github.sha }}" --timeout=150s; then
             echo "::error::migration Job db-migrate-${{ github.sha }} did not complete: no rollout"
             kubectl -n contentcollab logs "job/db-migrate-${{ github.sha }}" --tail=100 || true
+            # At the deadline the pod is deleted, and a pod that never started
+            # (image pull, missing key) has no log: the status and events say why
+            kubectl -n contentcollab describe "job/db-migrate-${{ github.sha }}" || true
             exit 1
           fi
       - name: Roll the Deployments to this commit
