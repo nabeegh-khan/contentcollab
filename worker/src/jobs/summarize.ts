@@ -14,6 +14,8 @@ export interface SummarizeData {
 }
 
 const KINDS: readonly string[] = ["thread", "version"];
+/** What one job may send to the model: about 25,000 tokens of text, a cost and context-window cap. */
+export const MAX_TEXT_CHARS = 100_000;
 
 export function summarizeWith(provider: SummaryProvider) {
   return async (job: Job<SummarizeData>): Promise<SummaryReply> => {
@@ -21,8 +23,14 @@ export function summarizeWith(provider: SummaryProvider) {
     if (typeof data.kind !== "string" || !KINDS.includes(data.kind)) {
       throw new Error(`summarize: unknown kind ${JSON.stringify(data.kind)}`);
     }
-    if (typeof data.text !== "string" || data.text.trim() === "") {
-      throw new Error("summarize: text must be a non-empty string");
+    if (
+      typeof data.text !== "string" ||
+      data.text.trim() === "" ||
+      data.text.length > MAX_TEXT_CHARS
+    ) {
+      throw new Error(
+        `summarize: text must be a non-empty string of at most ${MAX_TEXT_CHARS} characters`,
+      );
     }
     return checkReply(await provider.summarize(data.kind as SummaryKind, data.text));
   };
