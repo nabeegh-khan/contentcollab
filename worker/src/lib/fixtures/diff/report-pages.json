@@ -1,0 +1,13 @@
+{
+  "before": [
+    "Title page\nContentCollab\nTeam 22",
+    "1. Motivation\nTeams lose track of versions.",
+    "2. Objectives\nShare, comment, compare."
+  ],
+  "after": [
+    "Title page\nContentCollab\nTeam 22",
+    "1. Motivation\nTeams lose track of versions and comments.",
+    "2. Objectives\nShare, comment, compare.",
+    "3. Results\nDeployed on DOKS."
+  ]
+}
