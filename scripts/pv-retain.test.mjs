@@ -49,6 +49,17 @@ test("patches the claim's PersistentVolume from Delete to Retain and shows both"
   const patch = c.filter((l) => l.includes("patch pv pvc-123"));
   assert.equal(patch.length, 1);
   assert.match(patch[0], /"persistentVolumeReclaimPolicy":"Retain"/);
+  // The claim is read in the app namespace, and the PV's own policy field is read back
+  const all = c.join("\n");
+  assert.ok(c.includes("--context testctx -n contentcollab get pvc data-postgres-0 -o jsonpath={.spec.volumeName}"), all);
+  assert.ok(c.includes("--context testctx get pv pvc-123 -o jsonpath={.spec.persistentVolumeReclaimPolicy}"), all);
+});
+
+test("fails when the claim is not bound to a volume yet", () => {
+  const r = run({ ...ctx, STUB_UNBOUND: "1" });
+  assert.equal(r.status, 1, r.out);
+  assert.match(r.out, /claim data-postgres-0 in contentcollab on testctx is not bound yet/);
+  assert.ok(!calls().some((l) => l.includes("patch")));
 });
 
 test("leaves a volume that is already Retain alone", () => {
@@ -61,7 +72,7 @@ test("leaves a volume that is already Retain alone", () => {
 test("fails when there is no claim to protect", () => {
   const r = run({ ...ctx, STUB_NO_CLAIM: "1" });
   assert.equal(r.status, 1, r.out);
-  assert.match(r.out, /no claim data-postgres-0/);
+  assert.match(r.out, /could not read claim data-postgres-0/);
   assert.ok(!calls().some((l) => l.includes("patch")));
 });
 
