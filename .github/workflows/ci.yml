@@ -115,6 +115,13 @@ jobs:
             ok=$(yq 'select(.kind == "Deployment" and .metadata.name == "api") | (.spec.template.spec.topologySpreadConstraints // []) | map(select(.topologyKey == "kubernetes.io/hostname" and .maxSkew == 1 and .whenUnsatisfiable == "ScheduleAnyway" and .labelSelector.matchLabels.app == "api" and ((.matchLabelKeys // []) | contains(["pod-template-hash"])))) | length > 0' /tmp/$overlay.yaml)
             [ "$ok" = "true" ] || { echo "::error::$overlay: api Deployment has no kubernetes.io/hostname spread constraint (maxSkew 1, ScheduleAnyway, app=api, pod-template-hash); got '$ok'"; exit 1; }
           done
+      - name: Deploy path checks
+        # Image pinning, rollback on a failed rollout and the named API port
+        # (tests/test_k8s_deploy.py). Uses the runner's python3 and its PyYAML,
+        # which the image readme does not list: it imported on ubuntu-26.04
+        # 20261101.186.1 (run 42533543112, 8 Nov 2026); if an image drops it,
+        # this step fails with ModuleNotFoundError rather than passing
+        run: python3 -m unittest tests.test_k8s_deploy -v
       - name: Every object in the app namespace
         # A namespace set in the base does not reach resources an overlay
         # adds; the Gateway once landed in `default` this way (BUILD_LOG.md,
