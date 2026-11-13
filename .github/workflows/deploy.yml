@@ -93,6 +93,25 @@ jobs:
       - name: Short-lived cluster credentials
         if: steps.cluster.outputs.present == 'true'
         run: doctl kubernetes cluster kubeconfig save --expiry-seconds 600 contentcollab
+      # The schema moves before any pod does (ARCHITECTURE D20, #117). A
+      # failed migration fails this step, so the rollout below is skipped and
+      # the old pods keep serving on the old schema. Each migration must keep
+      # the previous API version working while both run (#105, L7 p17)
+      - name: Migrate the database to this commit
+        if: steps.cluster.outputs.present == 'true'
+        run: |
+          if [ ! -d api/migrations ]; then echo "No api/migrations in this commit: nothing to migrate"; exit 0; fi
+          # A re-run of the same commit finds its earlier Job; a Job's pod
+          # template cannot be changed, so it is replaced, not re-applied
+          kubectl -n contentcollab delete job "db-migrate-${{ github.sha }}" --ignore-not-found --wait=true
+          sed "s/__IMAGE_TAG__/${{ github.sha }}/g" k8s/doks/migrate-job.yaml | kubectl apply -f -
+          # 150 s here plus two 180 s rollouts stays inside the 600 s login
+          # (the Job itself stops at 120 s, activeDeadlineSeconds)
+          if ! kubectl -n contentcollab wait --for=condition=complete "job/db-migrate-${{ github.sha }}" --timeout=150s; then
+            echo "::error::migration Job db-migrate-${{ github.sha }} did not complete: no rollout"
+            kubectl -n contentcollab logs "job/db-migrate-${{ github.sha }}" --tail=100 || true
+            exit 1
+          fi
       - name: Roll the Deployments to this commit
         if: steps.cluster.outputs.present == 'true'
         run: |
