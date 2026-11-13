@@ -1,6 +1,6 @@
 # tests
 
-Cross-service checks that do not belong to one service: the restart test (data survives deleting the postgres pod), the scale test (requests keep succeeding while the api Deployment scales), and the end-to-end smoke run against a deployed stack. Unit and route tests live next to their service (`api/tests/`).
+Cross-service checks that do not belong to one service: the restart test (data survives deleting the postgres pod), the scale test (requests keep succeeding while the api Deployment scales), the end-to-end smoke run against a deployed stack, and `test_k8s_deploy.py`, which checks image pinning, the rollback step in `deploy.yml` and the named API port without a cluster (`python3 -m unittest tests.test_k8s_deploy -v` from the repository root; needs `kubectl` and PyYAML; runs in the `k8s` CI job). Unit and route tests live next to their service (`api/tests/`).
 
 <!-- PRACTICES:start -->
 

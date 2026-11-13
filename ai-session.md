@@ -257,6 +257,23 @@ Their own PostgreSQL holds 5432, so the test container never started; the reacha
 - Replied to the teammate by editing the morning's comment, under the same-day rule.
 
 
+## Deploy path pinning, rollback and named port (#82), 7 November 2026
+
+### Prompt
+
+Fix three deploy-path gaps from the Lecture 8 review: pin the image to the commit SHA before `kubectl apply -k`, with no `:latest` left in `k8s/`; undo a failed rollout of the API and the worker; name the API container port `http` and use the name in the Service and both probes. Test first, one issue, one PR, independent check at the end.
+
+### AI Response
+
+Wrote a stdlib test that renders the overlays and reads `deploy.yml`, ran it red (9 of 9 failing), then changed the manifests, the deploy step and the bring-up script. Chose a placeholder tag over a tagless image name because Kubernetes reads a tagless name as `latest`. The rollback loop undoes each failed Deployment and still fails the job.
+
+### What Your Team Did With It
+
+- The test failed on the old files and passes on the new ones; the workflow step itself cannot run until cluster credentials exist (#76), and this is stated in the build log.
+- A regex edit left a control character in `deploy.yml`; the rollback test caught it and it was fixed before the commit.
+- 10 November: the `deploy.yml` part of this work reached `main` through #76, so it is no longer in this PR's diff; the test's workflow checks were tightened after a review showed they passed on a broken rollout step (see the build log, 7 November entry, update of 10 November).
+- 11 November: before merge we tested the Service change on a throwaway k3s cluster and found that switching `targetPort` to the name in the same apply would leave no routable endpoint during the first rollout; the Service keeps the number for now, with a test that fails on the named version (build log, update of 11 November).
+
 ## Datadog install reviewed and hardened (#27, PR #61), 8 November 2026
 
 ### Prompt
@@ -418,3 +435,71 @@ A page map between the two lecture 9 files (two slides are split over two pages 
 
 - Checked each new row against the manifests and scripts before writing where it applies, and dropped lecture 1 citations the slides did not support (for "demo live", "pay for what you use" as a reason to destroy resources, and contribution read from Git history).
 - Had the change checked by reviewers who had not written it, a new one each round, and fixed what they found (a migration Job described as existing when it is only planned, a script listed as calling kubectl that does not, a row still placing the cluster in Toronto after the move to nyc3) before committing.
+
+## Two more review passes on the request log and the monitoring scripts (#55, PR #102), 11 November 2026
+
+### Prompt
+
+PR #102 (JSON request logs, bounded metric labels, the error-rate check and the memory-headroom script) had one review. Before it can merge we asked for two more independent passes, the second by a reviewer who had not seen the first: every test shown failing without its change, the error paths (no data, bad input, crash), the log format and label bounds, and every claim in the PR and in D18. Each fault fixed test-first; nothing pushed until the second pass was clean.
+
+### AI Response
+
+The first pass found about thirty items. The most serious were silent all-clears: a node with no reading counted as 0 MiB used, a failing probe below the minimum reported as fine, unreadable lines dropped, a late server error logged as the client aborting. It also found tests that passed with the feature removed and a CRLF README. The second pass found no code fault that blocked a push, but it did find plain-text startup lines, untested bounds, environment-dependent tests and several doc claims that were wrong or stale.
+
+### What Your Team Did With It
+
+- Wrote a failing test for each finding before the fix, in five rounds, and added checks that would have caught the late faults: line endings read from git's index, `--tail=-1` in every documented command, and the logger's output parsed by the check itself.
+- Brought the error bodies in line with our own API contract (`code`), made both scripts exit 2 instead of reporting all clear on bad input, and ran the real server with Redis paused to see the alert fire.
+- Corrected D16, D18, RESEARCH and the demo page where they had gone stale after the cluster rebuild. Left the architecture diagram and the submitted proposal's Datadog line unchanged.
+- Rejected one suggestion: counting aborted requests as failures. They get their own column instead, because a closed browser tab is not a server error.
+
+## The bring-up script follows the rebuilt cluster (#54, PR #94), 11 November 2026
+
+### Prompt
+
+The bring-up script on #94 creates the cluster without `--ha`. Make it create without the paid high-availability control plane and with node autoscaling. Then make it match the rebuilt cluster: its node pool and version, the region and context read from the cluster (nyc3), and the Gateway API CRD opt-out that DOKS 1.37 needed. Write the tests first, record the decision in D13 with sources, and re-check the CI/CD evidence page against the Actions API.
+
+### AI Response
+
+Checked DigitalOcean's doctl reference, its high-availability how-to, its pricing page and its Gateway API guide. Omitting `--ha` turns HA on for 1.36.0 and later, at US$40 a month, and it cannot be turned off. The opt-out for DOKS-managed Gateway API CRDs is the annotation `doks.digitalocean.com/install-policy=external` on each CRD. Proposed `--ha=false`, autoscaling bounds checked before any call, the rebuild's defaults, the context taken from the cluster's own region, and the annotation step before the CRD apply, each with tests. Every run, duration and count on the CI/CD evidence page matched the API.
+
+### What Your Team Did With It
+
+- Committed each batch of tests before its fix: 2 of 30 failed, then 6 of 36. All pass now.
+- Did not set the node pool defaults until the rebuild recorded its actual values, then copied them from that record.
+- An independent review found a test that could not fail on one of its claims, a missing default test and a misleading sentence in D13. All three were fixed before the push.
+- A second review of the final change found an untested warning, a stale paragraph in D13 and two inaccurate sentences in the build log, one of them saying a lint tool was unavailable when it was not. All four were fixed before the push.
+- Noted the deploy path-filter gap on #70 instead of editing `deploy.yml`, because another open pull request changes that file.
+
+## The rollout check reads the rebuilt cluster, and its first live run (#69, PR #103), 11 November 2026
+
+### Prompt
+
+The cluster was rebuilt in nyc3 with one 4 GB node that autoscales to two. Make the rollout script and the demo page read the context and the node limits from the cluster instead of assuming the old Toronto context or two nodes, so the memory check works for one 4 GB node, with tests first and two independent reviews. Then, once the site serves HTTPS on the new cluster, run the scaling and rollout steps and record the numbers.
+
+### AI Response
+
+Proposed printing the context, the nodes and the node autoscaler's bounds read from the cluster, and replacing the 90% memory limit with a check in MiB: every node must have room for the load generator's memory limit plus the extra API pod the rollout adds, read from the Deployment. Wrote failing tests first for each change. Ran the live steps: rollouts under load inside the cluster dropped nothing with or without the drain; through the public URL a rollout lost 28 of about 6,000 requests while the control lost none; the HPA scaled 2 to 5 and back to 2 after five minutes on one node.
+
+### What Your Team Did With It
+
+- Kept a percentage out: 10% of a 4 GB node is less than the load generator may use.
+- Four review rounds found real gaps (a full node let through when another had no metrics, an ignored override, a stale design note, an octal surge value); each got a test that failed first. After our verification rule changed to two full passes plus one delta check, the extra rounds were stopped there.
+- Recorded the public-URL failures as an open question rather than claiming the drain fixed them, and noted that the scale-out to five came from the rollout script's own load, before the stepped test started. A review of the write-up corrected the burst spacing and two statements about what the watch file showed, and the HPA's events were saved as evidence.
+
+## Pull request reviews before the checkpoint, and the migration Job (#117), 13 November 2026
+
+### Prompt
+
+Before the 14 November checkpoint: review the pull requests waiting on the cloud slice (#85, #86, #88, #111, #114, #116) against our review criteria, with each draft checked by a second, independent review before posting. Then build what the cloud slice still owed the core path: something that runs the schema migrations on the cluster before each rollout, tests first.
+
+### AI Response
+
+Drafted each review with file and line findings and checked each draft separately. For the migration, proposed a Kubernetes Job per commit, run from `deploy.yml` between the cluster login and the rollout, skipped while there are no migrations, deleted and recreated on a re-run, with a wait that fails the run before any pod changes, inside the ten-minute cluster login; wrote the tests first.
+
+### What Your Team Did With It
+
+- The second check corrected three findings before the reviews were posted, and fixed wording in others: the deploy and Kubernetes changes in the auth pull request came from an old schema commit, not its author; a draft said updating from `main` would bring in a column that the schema pull request does not yet have; and a cursor fix was incomplete.
+- Found after approving the schema that it still lacks the revert column agreed on 12 November; posted a correction on the pull request asking for a second migration rather than withdrawing the approval, so the schema and auth are not held up.
+- Kept the migration Job out of the teammates' pull requests and in our own deploy scope, built on the open image-pinning pull request because both change the same step.
+- Committed the tests before each change (12 of 26 failing, then 1 of 27, twice) and applied the review's findings: the failure branch also prints the Job's status and its pod's events, since the deadline terminates the pod and a pod that never started has no log.

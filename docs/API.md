@@ -1,6 +1,6 @@
 # API contract
 
-First draft, 31 October 2026, from `ARCHITECTURE.md` D2 to D5 and D10. Owned by the API and data slice after review (Issue #10). The frontend, the real-time layer and the additive slices build against this table; a change to a path, a body or a status code is a change here first, with the team told on the Issue.
+Reviewed by Milton on 9 November 2026 from `ARCHITECTURE.md` D2 to D5 and D10. Owned by the API and data slice after review (Issue #10). The frontend, the real-time layer and the additive slices build against this table; a change to a path, a body or a status code is a change here first, with the team told on the Issue.
 
 Base path `/api/v1`. JSON in and out, `Content-Type: application/json`, except file upload (`multipart/form-data`) and file download (the stored content type). Timestamps are ISO 8601 UTC. Ids are UUIDs.
 
@@ -17,7 +17,7 @@ Base path `/api/v1`. JSON in and out, `Content-Type: application/json`, except f
 | upload a version, revert, edit metadata, tags | yes | yes | | |
 | share, change roles, delete document | yes | | | |
 
-**Error shape.** Every non-2xx response is `{ "error": "<short message>", "code": "<UPPER_SNAKE>", "details": [...] }`. `details` is present only on `400` validation errors: `[{ "field": "title", "message": "required" }]`. Codes used: `VALIDATION`, `UNAUTHORIZED`, `FORBIDDEN`, `NOT_FOUND`, `CONFLICT`, `TOO_LARGE`, `RATE_LIMITED`, `INTERNAL`.
+**Error shape.** Every non-2xx response the API itself writes is `{ "error": "<short message>", "code": "<UPPER_SNAKE>", "details": [...] }`. `details` is present only on `400` validation errors: `[{ "field": "title", "message": "required" }]`. Codes used: `VALIDATION` (400 and 422; a malformed JSON body is a 400 `VALIDATION` without `details`), `UNAUTHORIZED`, `FORBIDDEN`, `NOT_FOUND`, `CONFLICT`, `TOO_LARGE`, `RATE_LIMITED`, `INTERNAL` (every 5xx from the error handler; `/health` answers its own 503 body, below). Any other 4xx carries its status name in upper snake case (418 gives `IM_A_TEAPOT`), or `ERROR` for a status with no name.
 
 **Validation.** Bodies are validated in middleware (zod) before a handler sees them; unknown fields are rejected with `400`. Request bodies are capped at 1 MB; uploads at 50 MB (`413 TOO_LARGE`).
 
@@ -25,7 +25,7 @@ Base path `/api/v1`. JSON in and out, `Content-Type: application/json`, except f
 
 **Rate limit.** Writes are limited per user (default 60 a minute); over the limit `429 RATE_LIMITED` with `Retry-After`.
 
-**Status codes.** `200` read or update, `201` created (body is the created object), `204` deleted (no body), `400`, `401`, `403`, `404`, `409` (duplicate email, revert to the current version), `413`, `429`, `500`, `503` (health only).
+**Status codes.** `200` read or update, `201` created (body is the created object), `204` deleted (no body), `400`, `401`, `403`, `404`, `409` (duplicate email, upload and import), `413`, `429`, `500`, `503` (health only).
 
 ## Objects
 
@@ -38,6 +38,9 @@ Comment    { id, versionId, authorId, parentId | null, body, anchor | null, reso
 Anchor     { page: number, x: number, y: number }      (0 to 1, relative to the page; null for a general comment)
 Tag        { name, count }
 ```
+
+<!--  Cursor     { createdAt, id }                           (base64, sort key, direction) -->
+
 
 `role` on a Document is the caller's role, so the client can hide controls it cannot use.
 
@@ -60,7 +63,7 @@ Passwords: bcrypt, minimum 8 characters. Tokens expire after 24 hours; no refres
 | GET | `/documents` | `?q=` title search, `?tag=` filter | `200` page of `Document` the caller can read |
 | POST | `/documents` | multipart: `file`, `title` (defaults to filename) | `201 Document` with version 1; `413`; `400` type not allowed |
 | GET | `/documents/:documentId` | | `200 Document` |
-| PATCH | `/documents/:documentId` | `{ title?, tags? }` | `200 Document` |
+| PATCH | `/documents/:documentId` | `{ title?, tags? }` | `200 Document` - `tags` replaces the tag list, replace is a single transaction and omitting `tags` would leave them unchanged |
 | DELETE | `/documents/:documentId` | | `204`; owner only |
 
 Allowed upload types: PDF, PNG, JPEG, plus docx, xlsx, pptx, txt, md (stored and downloadable, not rendered).
@@ -73,7 +76,7 @@ Allowed upload types: PDF, PNG, JPEG, plus docx, xlsx, pptx, txt, md (stored and
 | POST | `/documents/:documentId/versions` | multipart: `file` | `201 Version`, becomes current |
 | GET | `/documents/:documentId/versions/:versionId` | | `200 Version` |
 | GET | `/documents/:documentId/versions/:versionId/content` | | `200` file stream, `Content-Disposition: attachment` |
-| POST | `/documents/:documentId/versions/:versionId/revert` | | `201 Version` (a new version with the old content); `409` already current |
+| POST | `/documents/:documentId/versions/:versionId/revert` | | `201 Version` (a new version with the old content)|
 
 Upload streams to Spaces; the row is written only after the object is stored. The same checksum on the same document is `409`.
 
@@ -95,7 +98,7 @@ A link share grants its role to anyone with the token until `expiresAt`. Writes 
 |---|---|---|---|
 | GET | `/documents/:documentId/versions/:versionId/comments` | `?resolved=` | `200` page of `Comment`, oldest first, threads flattened with `parentId` |
 | POST | `/documents/:documentId/versions/:versionId/comments` | `{ body, anchor?, parentId? }` | `201 Comment` |
-| PATCH | `/documents/:documentId/comments/:commentId` | `{ body?, resolved? }` | `200 Comment`; author or owner |
+| PATCH | `/documents/:documentId/comments/:commentId` | `{ body?, resolved? }` | `200 Comment`; `resolved` is stored on thread root; PATCH w/a `resolved` reply sets it on the root and returns the root `Comment`; `comment:updated` carries the root. Allowed for author of thread root; `body` can only be changed by the comment's author. |
 | DELETE | `/documents/:documentId/comments/:commentId` | | `204`; author or owner |
 
 `@displayName` in a body is a mention; the API resolves it to users who have a share on the document and emits a notification event.
@@ -130,9 +133,3 @@ Server to client, in the version room:
 | `mention` | `{ commentId, documentId, from }` (to the mentioned user only) |
 
 Every event is emitted after the database write commits, through the Redis adapter, so every API replica delivers it.
-
-## Open points for the API and data slice
-
-- Whether `PATCH /documents/:id` with `tags` replaces or merges the tag list (draft: replaces).
-- Whether `resolved` moves to the thread root only (draft: any comment, the client shows the root's value).
-- Cursor encoding (draft: base64 of `createdAt,id`).
