@@ -60,6 +60,29 @@ test("passes when the marker survives pod delete, api restart and scale 0 to 1; 
   const one = c.findIndex((l) => l.includes("scale statefulset postgres --replicas=1"));
   assert.ok(zero >= 0 && one > zero, "scaled to 0 then to 1");
   assert.ok(!c.some((l) => /cordon|drain/.test(l)), "no drain unless asked");
+  // The read after the API restart is made by an API pod, not by psql
+  const restart = c.findIndex((l) => l.includes("rollout restart deployment/api"));
+  assert.ok(c.slice(restart).some((l) => l.includes("exec deploy/api") && l.includes("restart_test")), "API read after the restart");
+});
+
+test("fails when the marker was never written: a read finds only the marker that was inserted", () => {
+  const r = run({ ...ctx, STUB_NO_TABLE: "1" });
+  assert.equal(r.status, 1, r.out);
+  assert.match(r.out, /FAIL: the marker was not written/);
+});
+
+for (const event of ["delete", "scale"]) {
+  test(`fails when the running API restarted after the postgres ${event}: it must reconnect on its own`, () => {
+    const r = run({ ...ctx, STUB_API_RESTARTS_AFTER: event });
+    assert.equal(r.status, 1, r.out);
+    assert.match(r.out, /FAIL: an API container restarted/);
+  });
+}
+
+test("fails when the API does not answer /health ok after postgres is back", () => {
+  const r = run({ ...ctx, STUB_API_UNHEALTHY: "1" });
+  assert.equal(r.status, 1, r.out);
+  assert.match(r.out, /FAIL: the API did not answer \/health/);
 });
 
 for (const [forget, phrase] of [["delete", "after deleting the postgres pod"], ["restart", "after restarting the api"], ["scale", "after scaling postgres to 0 and back to 1"]]) {
@@ -83,18 +106,33 @@ test("DRAIN=1 needs two nodes and refuses before touching any", () => {
   assert.ok(!calls().some((l) => /cordon|drain|delete pod/.test(l)));
 });
 
+test("DRAIN=1 counts only Ready nodes", () => {
+  const r = run({ ...ctx, DRAIN: "1", STUB_NODES: "1", STUB_NODES_NOT_READY: "1" });
+  assert.equal(r.status, 1, r.out);
+  assert.match(r.out, /DRAIN=1 needs at least two nodes/);
+  assert.ok(!calls().some((l) => /cordon|drain|delete pod/.test(l)));
+});
+
+// Every call names the cluster: this machine's current context may be another one
+const allNamed = (c) => assert.ok(c.every((l) => l.startsWith("--context testctx ")), c.join("\n"));
+
 test("DRAIN=1 cordons, drains, checks the marker and uncordons, in that order", () => {
   const r = run({ ...ctx, DRAIN: "1" });
   assert.equal(r.status, 0, r.out);
   assert.match(r.out, /PASS: the marker survived 4 of 4 events/);
   const c = calls();
+  allNamed(c);
   const at = (word) => c.findIndex((l) => new RegExp(`\\b${word} node-1`).test(l));
   assert.ok(at("cordon") >= 0 && at("drain") > at("cordon") && at("uncordon") > at("drain"), c.join("\n"));
+  // DOKS runs DaemonSets on every node; without this the drain refuses
+  assert.match(c[at("drain")], /--ignore-daemonsets/);
 });
 
 test("the node is uncordoned even when the check after the drain fails", () => {
   const r = run({ ...ctx, DRAIN: "1", STUB_FORGET: "drain" });
   assert.equal(r.status, 1, r.out);
   assert.match(r.out, /FAIL: marker missing after draining node-1/);
-  assert.ok(calls().some((l) => /\buncordon node-1/.test(l)));
+  const c = calls();
+  allNamed(c);
+  assert.ok(c.some((l) => /\buncordon node-1/.test(l)));
 });
