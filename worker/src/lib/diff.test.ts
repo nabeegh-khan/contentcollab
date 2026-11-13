@@ -65,6 +65,13 @@ test("inputs above the line-pair limit are refused, not computed", () => {
   assert.throws(() => lineDiff(big, big + "\nmore"), DiffTooLargeError);
 });
 
+test("a huge version against an empty one is refused too (its lines are the cost)", () => {
+  const lines = Math.floor(Math.sqrt(MAX_LINE_PAIRS)) * Math.floor(Math.sqrt(MAX_LINE_PAIRS)) + 1;
+  const huge = "x\n".repeat(lines);
+  assert.throws(() => lineDiff("", huge), DiffTooLargeError);
+  assert.throws(() => lineDiff(huge, "one line"), DiffTooLargeError);
+});
+
 test("pages are compared by position: unchanged, changed with its line diff, added", () => {
   const { before, after } = JSON.parse(fixture("report-pages.json")) as {
     before: string[];
