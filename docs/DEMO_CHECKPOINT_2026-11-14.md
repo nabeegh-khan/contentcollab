@@ -23,6 +23,17 @@ Written Friday 13 November, evening, from `main` (cf483ef: #83, #99 and #88 merg
 
 As of 13 Nov evening: #88 is merged; #118 is green and awaiting review; #85 is approved by Nabeegh with Eyrika's 12 Nov changes-requested review still standing; #111, #114, #116 and #86 have changes requested.
 
+## Advanced features: progress to show (pull requests with passing tests)
+
+| Feature | Pull request | Show it with |
+|---|---|---|
+| Version comparison (#23) | #123: line and page diff in the worker, `version-diff` job, compare route behind a flag (501 until versions are stored) | the fixture tests: `cd worker; npm test` (12 of 12 on the PR); CI's worker job |
+| Summaries and suggested tags (#26) | #125 (on #123): `summarize` job, stub and Claude providers behind one interface, reply checked before use | the same `npm test` (21 of 21 with #123); runs with the stub until `SUMMARY_PROVIDER=anthropic` and a key are set |
+| Status page, backend (#30) | #124: `GET /api/v1/status` (queue depth, p50/p95, replicas null until RBAC) | the status tests in api/ (9 of 9); live once merged: `curl.exe -s https://contentcollab.app/api/v1/status` |
+| Restart test (#68) | #120: `scripts/restart-test.sh`, checks the API reconnects without a restart | `node --test scripts/restart-test.test.mjs` (16 of 16); the live run's record in `docs/DEMO_PERSISTENCE.md` once run |
+| Volume kept on claim delete (#104) | #122: `scripts/pv-retain.sh` | its tests (6 of 6); live: the PV's reclaim policy before and after |
+| Service by port name (#107) | #121 | `kubectl -n contentcollab get endpointslice -l kubernetes.io/service-name=api` after it deploys |
+
 ## Order, five minutes
 
 1. (1 min) `/health` on the public URL and `kubectl get pods,pvc,hpa`: what runs where, PostgreSQL on a block-storage volume.
