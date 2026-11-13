@@ -13,6 +13,9 @@ Repeatable operations as scripts, so nothing important lives in dashboard clicks
 | `observability-up.sh` | Installs the observability stack of ARCHITECTURE D19 into the namespace `observability` (part a: Prometheus, kube-state-metrics, Grafana with its dashboard). Refuses a kubectl context other than `EXPECTED_CONTEXT` and fewer than two Ready nodes (prints the node-pool command; `ALLOW_ONE_NODE=1` overrides); creates the Grafana password once, never prints it; `DRY_RUN=1` changes nothing | `kubectl`, the cluster up |
 | `observability-down.sh` | Removes the stack, its namespace and its cluster roles, and prints the command that lets the pool return to one node | `kubectl` |
 | `hpa-ready.mjs` | Exits 1 with the reason while the HPA cannot read CPU | `kubectl`, a cluster |
+| `ci-kubeconform.sh` | CI only: validates rendered manifests with kubeconform, strictly, at each version in the `KUBE_VERSION` list that `ci.yml` sets (1.36.0 and 1.37.0), with the CRD catalogue for the Gateway and ClusterIssuer | `kubeconform`, `KUBE_VERSION` |
+| `ci-k8s-cloud.sh` | CI only: renders `k8s/doks/infra` and `k8s/doks/migrate-job.yaml` (`__IMAGE_TAG__` filled in) and validates them; skipped while they do not exist. Fails on any other placeholder | `kubectl`, `kubeconform`, `KUBE_VERSION` |
+| `ci-migrate-check.sh` | CI only: runs the migrations up, `down 0`, up against the database the `PG*` variables name and fails on any error; skipped while `api/migrations` does not exist. Run from `api/` | `npm`, `PG*` variables |
 | `sync-practices.py` | Copies the applicable rows of `docs/PRACTICES.md` into each folder README | Python |
 | `meeting-actions.py` | Turns a meeting's Actions table into GitHub Issues | GitHub CLI |
 
