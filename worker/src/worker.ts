@@ -5,6 +5,8 @@ import { QUEUE_NAME } from "./queue.js";
 import { connection } from "./redis.js";
 import { ping, type PingData } from "./jobs/ping.js";
 import { versionDiff, type VersionDiffData } from "./jobs/versionDiff.js";
+import { summarizeWith, type SummarizeData } from "./jobs/summarize.js";
+import { providerFromEnv } from "./lib/summary.js";
 
 // Defaults when the environment sets nothing, and the HTTP codes the probe answers with
 const DEFAULT_CONCURRENCY = 2;
@@ -15,9 +17,13 @@ const HTTP_UNAVAILABLE = 503;
 
 // Handlers by job name. Adding a job type is one entry here plus a file in
 // jobs/, nothing else changes (D10: extend behind the contract).
+const summarize = summarizeWith(providerFromEnv(process.env));
+
 const handlers: Record<string, (job: Job) => Promise<unknown>> = {
   ping: (job) => ping(job as Job<PingData>),
   "version-diff": (job) => versionDiff(job as Job<VersionDiffData>),
+  // SUMMARY_PROVIDER picks the stub (default) or Claude (#26, D22)
+  summarize: (job) => summarize(job as Job<SummarizeData>),
 };
 
 const worker = new Worker(
