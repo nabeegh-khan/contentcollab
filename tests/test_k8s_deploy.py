@@ -206,5 +206,123 @@ class NamedApiPort(unittest.TestCase):
         self.assertEqual(self.api["livenessProbe"]["tcpSocket"]["port"], "http")
 
 
+MIGRATE_STEP = "Migrate the database to this commit"
+CREDENTIALS_STEP = "Short-lived cluster credentials"
+JOB_FILE = ROOT / "k8s" / "doks" / "migrate-job.yaml"
+JOB_NAME = "db-migrate-${{ github.sha }}"
+
+
+def step_names():
+    return [s.get("name") for s in jobs()["rollout"]["steps"]]
+
+
+def keys_of(path, section):
+    """Top-level keys of a ConfigMap's `data` or a Secret's `stringData`."""
+    doc = yaml.safe_load((ROOT / path).read_text())
+    return set(doc[section])
+
+
+class MigrationJob(unittest.TestCase):
+    """D20 (#117): the Job that runs api/migrations before each rollout."""
+
+    def setUp(self):
+        self.text = JOB_FILE.read_text()
+        self.job = yaml.safe_load(self.text)
+        self.pod = self.job["spec"]["template"]["spec"]
+        self.c = self.pod["containers"][0]
+
+    def test_one_job_per_commit_in_the_app_namespace(self):
+        self.assertEqual(self.job["kind"], "Job")
+        self.assertEqual(self.job["metadata"]["name"], "db-migrate-__IMAGE_TAG__")
+        self.assertEqual(self.job["metadata"]["namespace"], "contentcollab")
+
+    def test_runs_the_api_image_of_this_commit(self):
+        self.assertEqual(self.c["image"], "ghcr.io/nabeegh-khan/contentcollab-api:__IMAGE_TAG__")
+        self.assertEqual(self.c["command"], ["npm", "run", "migrate", "--", "up"])
+        # deploy.yml fills only __IMAGE_TAG__; any other placeholder would
+        # reach the cluster as text
+        self.assertEqual(set(re.findall(r"__[A-Z][A-Z0-9_]*__", self.text)), {"__IMAGE_TAG__"})
+
+    def test_no_blind_retry_a_deadline_and_a_kept_log(self):
+        spec = self.job["spec"]
+        self.assertEqual(spec["backoffLimit"], 0)
+        self.assertEqual(spec["activeDeadlineSeconds"], 120)
+        self.assertEqual(spec["ttlSecondsAfterFinished"], 86400)
+        self.assertEqual(self.pod["restartPolicy"], "Never")
+
+    def test_non_root_with_requests_and_limits(self):
+        self.assertEqual(self.pod["securityContext"], {"runAsNonRoot": True, "runAsUser": 1000})
+        for kind in ("requests", "limits"):
+            self.assertEqual(set(self.c["resources"][kind]), {"cpu", "memory"}, kind)
+
+    def test_connection_only_from_the_database_keys_that_exist(self):
+        # No envFrom: the Job gets the five values it needs, not the signing
+        # key or the Spaces credentials (SEC-2)
+        self.assertNotIn("envFrom", self.c)
+        env = {e["name"]: e["valueFrom"] for e in self.c["env"]}
+        self.assertEqual(set(env), {"PGHOST", "PGPORT", "PGDATABASE", "PGUSER", "PGPASSWORD"})
+        config = keys_of("k8s/base/configmap.yaml", "data")
+        stored = keys_of("k8s/base/secrets.example.yaml", "stringData")
+        expected = {"PGHOST": ("configMapKeyRef", "app-config", "DB_HOST"),
+                    "PGPORT": ("configMapKeyRef", "app-config", "DB_PORT"),
+                    "PGDATABASE": ("configMapKeyRef", "app-config", "DB_NAME"),
+                    "PGUSER": ("secretKeyRef", "app-secrets", "DB_USER"),
+                    "PGPASSWORD": ("secretKeyRef", "app-secrets", "DB_PASSWORD")}
+        for var, (ref, name, key) in expected.items():
+            self.assertEqual(env[var], {ref: {"name": name, "key": key}}, var)
+            self.assertIn(key, config if ref == "configMapKeyRef" else stored, var)
+
+    def test_the_overlay_does_not_apply_the_job(self):
+        # Applied only by the migrate step, with the tag filled in
+        self.assertEqual([d for d in render("doks") if d["kind"] == "Job"], [])
+
+
+class MigrateBeforeRollout(unittest.TestCase):
+    def setUp(self):
+        self.step = step(MIGRATE_STEP)
+        self.lines = shell_lines(self.step["run"])
+
+    def test_between_the_credentials_and_the_rollout(self):
+        names = step_names()
+        self.assertEqual(names.index(MIGRATE_STEP), names.index(CREDENTIALS_STEP) + 1)
+        self.assertEqual(names.index(ROLLOUT_STEP), names.index(MIGRATE_STEP) + 1)
+
+    def test_runs_whenever_the_cluster_exists_and_its_failure_stops_the_run(self):
+        self.assertEqual(self.step.get("if"), "steps.cluster.outputs.present == 'true'")
+        self.assertNotIn("continue-on-error", self.step)
+        # The rollout keeps the default condition, so it is skipped after a
+        # failed migration and the old pods keep serving
+        self.assertNotIn("always()", rollout_step().get("if", ""))
+
+    def test_skipped_while_there_are_no_migrations(self):
+        guard = self.lines[0]
+        self.assertRegex(guard, r"^if \[ ! -d api/migrations \]; then echo .*; exit 0; fi$")
+
+    def test_old_job_of_this_commit_is_deleted_before_the_apply(self):
+        delete = f"kubectl -n contentcollab delete job {JOB_NAME} --ignore-not-found --wait=true"
+        apply = ("sed s/__IMAGE_TAG__/${{ github.sha }}/g k8s/doks/migrate-job.yaml "
+                 "| kubectl apply -f -")
+        self.assertIn(delete, self.lines)
+        self.assertIn(apply, self.lines)
+        self.assertLess(self.lines.index(delete), self.lines.index(apply))
+
+    def test_waits_for_completion_and_fails_with_the_log(self):
+        wait = (f"if ! kubectl -n contentcollab wait --for=condition=complete job/{JOB_NAME} "
+                "--timeout=150s; then")
+        self.assertIn(wait, self.lines)
+        rest = self.lines[self.lines.index(wait) + 1:]
+        self.assertIn(f"kubectl -n contentcollab logs job/{JOB_NAME} --tail=100 || true", rest)
+        self.assertEqual(rest[rest.index("fi") - 1], "exit 1")
+
+    def test_inside_the_ten_minute_credential(self):
+        # D20: migrate wait plus both rollouts, under the 600 s credential
+        # with a minute to spare (the smoke check fetches fresh credentials)
+        migrate = [int(t) for t in re.findall(r"--timeout=(\d+)s", self.step["run"])]
+        rollout = [int(t) for t in re.findall(r"rollout status [^\n]*--timeout=(\d+)s", rollout_step()["run"])]
+        self.assertEqual(len(migrate), 1, "one wait in the migrate step")
+        self.assertEqual(len(rollout), 1, "one rollout wait, run once per Deployment")
+        self.assertLessEqual(migrate[0] + 2 * rollout[0], 540)
+
+
 if __name__ == "__main__":
     unittest.main()
