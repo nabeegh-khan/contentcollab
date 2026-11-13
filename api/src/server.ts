@@ -9,7 +9,7 @@ import healthRoutes from "./routes/health.js";
 import metricsRoutes from "./routes/metrics.js";
 import { statusRoutes } from "./routes/status.js";
 import { latencyFrom, queueDepth } from "./lib/status.js";
-import { inClusterGet, readyReplicas } from "./lib/replicas.js";
+import { cachedFor, inClusterGet, readyReplicas } from "./lib/replicas.js";
 import { httpDuration } from "./lib/metrics.js";
 
 const app = express();
@@ -21,13 +21,16 @@ app.use("/health", healthRoutes);
 app.use("/metrics", metricsRoutes);
 // Status page numbers (#30, D23); replicas come from the Kubernetes API in a pod, null elsewhere
 const kubeGet = inClusterGet(process.env);
+// The endpoint is public: at most one apiserver read every few seconds per pod
+const REPLICAS_CACHE_MS = 5000;
+const replicas = kubeGet ? cachedFor(REPLICAS_CACHE_MS, () => readyReplicas(kubeGet)) : null;
 app.use(
   "/api/v1/status",
   statusRoutes({
     // Fail fast while Redis is down instead of queueing commands until the time limit
     queue: () => (redis.isReady ? queueDepth(redis) : Promise.reject(new Error("redis not ready"))),
     latency: () => latencyFrom(httpDuration),
-    replicas: () => (kubeGet ? readyReplicas(kubeGet) : Promise.resolve(null)),
+    replicas: () => (replicas ? replicas() : Promise.resolve(null)),
   }),
 );
 app.use((req, res) => res.status(404).json({ error: "Not Found" }));
