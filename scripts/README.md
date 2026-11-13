@@ -11,6 +11,9 @@ Repeatable operations as scripts, so nothing important lives in dashboard clicks
 | `loadtest.mjs` | Stepped load against the deployed API for the autoscaling test (#69): sent and served req/s, p50 and p95 latency of successful requests, errors and ready API replicas per step, or a rolling restart under load with `ROLLOUT=1`, which exits 1 if the rollout fails or does not finish. Results and column meanings in `docs/loadtest/`. Refuses to start while the HPA cannot read CPU; warns and continues when no cluster is reachable | Node, a reachable API |
 | `metrics-server.sh` | Installs metrics-server, pinned, so the HPA can read CPU | `kubectl`, a cluster |
 | `hpa-ready.mjs` | Exits 1 with the reason while the HPA cannot read CPU | `kubectl`, a cluster |
+| `ci-kubeconform.sh` | CI only: validates rendered manifests with kubeconform, strictly, at each version in the `KUBE_VERSION` list that `ci.yml` sets (1.36.0 and 1.37.0), with the CRD catalogue for the Gateway and ClusterIssuer | `kubeconform`, `KUBE_VERSION` |
+| `ci-k8s-cloud.sh` | CI only: renders `k8s/doks/infra` and `k8s/doks/migrate-job.yaml` (`__IMAGE_TAG__` filled in) and validates them; skipped while they do not exist. Fails on any other placeholder | `kubectl`, `kubeconform`, `KUBE_VERSION` |
+| `ci-migrate-check.sh` | CI only: runs the migrations up, `down 0`, up against the database the `PG*` variables name and fails on any error; skipped while `api/migrations` does not exist. Run from `api/` | `npm`, `PG*` variables |
 | `sync-practices.py` | Copies the applicable rows of `docs/PRACTICES.md` into each folder README | Python |
 | `meeting-actions.py` | Turns a meeting's Actions table into GitHub Issues | GitHub CLI |
 | `do-project.sh` | The DigitalOcean project `ContentCollab`, found by exact name or created once (#53; steps in `k8s/README.md`) | `doctl` (authenticated) |
