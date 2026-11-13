@@ -21,8 +21,8 @@ spec:
         runAsUser: 1000
       containers:
         - name: worker
-          # Tag replaced by the overlay or by CI, never edited here (INF-5)
-          image: ghcr.io/nabeegh-khan/contentcollab-worker:latest
+          # `unpinned` is replaced by the overlay or by CI (see api.yaml)
+          image: ghcr.io/nabeegh-khan/contentcollab-worker:unpinned
           ports:
             # Named once; both probes refer to it by name (INF-10). Must equal
             # WORKER_PORT in configmap.yaml (L8 p92)
