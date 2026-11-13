@@ -16,15 +16,25 @@ type Outcome<T> = { ok: true; value: T } | { ok: false; error: string };
 /** How long one source may take; node-redis queues commands while Redis is down instead of failing. */
 export const SOURCE_TIMEOUT_MS = 1000;
 
-async function attempt<T>(read: () => Promise<T>, timeoutMs: number): Promise<Outcome<T>> {
+class NoAnswer extends Error {}
+
+// The reason a caller sees is "unavailable" or the time limit; the error itself goes to the log, so
+// nothing internal (hosts, driver messages) reaches this public endpoint
+async function attempt<T>(
+  name: string,
+  read: () => Promise<T>,
+  timeoutMs: number,
+): Promise<Outcome<T>> {
   let timer: NodeJS.Timeout | undefined;
   const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new Error(`no answer within ${timeoutMs} ms`)), timeoutMs);
+    timer = setTimeout(() => reject(new NoAnswer(`no answer within ${timeoutMs} ms`)), timeoutMs);
   });
   try {
     return { ok: true, value: await Promise.race([read(), timeout]) };
   } catch (err) {
-    return { ok: false, error: (err as Error).message };
+    if (err instanceof NoAnswer) return { ok: false, error: err.message };
+    console.error(`status: ${name} failed:`, (err as Error).message);
+    return { ok: false, error: "unavailable" };
   } finally {
     clearTimeout(timer);
   }
@@ -34,9 +44,9 @@ export function statusRoutes(sources: StatusSources, timeoutMs = SOURCE_TIMEOUT_
   const router = Router();
   router.get("/", async (_req, res) => {
     const [queue, latency, replicas] = await Promise.all([
-      attempt(sources.queue, timeoutMs),
-      attempt(sources.latency, timeoutMs),
-      attempt(sources.replicas, timeoutMs),
+      attempt("queue", sources.queue, timeoutMs),
+      attempt("latency", sources.latency, timeoutMs),
+      attempt("replicas", sources.replicas, timeoutMs),
     ]);
     res.set("Cache-Control", "no-store").json({
       generatedAt: new Date().toISOString(),

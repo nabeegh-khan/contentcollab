@@ -22,7 +22,8 @@ app.use("/metrics", metricsRoutes);
 app.use(
   "/api/v1/status",
   statusRoutes({
-    queue: () => queueDepth(redis),
+    // Fail fast while Redis is down instead of queueing commands until the time limit
+    queue: () => (redis.isReady ? queueDepth(redis) : Promise.reject(new Error("redis not ready"))),
     latency: () => latencyFrom(httpDuration),
     replicas: async () => null,
   }),
