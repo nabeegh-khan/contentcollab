@@ -39,6 +39,7 @@ describe("latencyFrom", () => {
       requests: FAST_COUNT + SLOW_COUNT,
       p50Seconds: FIRST_BUCKET,
       p95Seconds: SLOW_BUCKET,
+      overTopBucket: false,
     });
   });
 
@@ -53,6 +54,31 @@ describe("latencyFrom", () => {
       requests: 0,
       p50Seconds: null,
       p95Seconds: null,
+      overTopBucket: false,
+    });
+  });
+
+  it("a quantile above the top bucket reads as the top bound, flagged, not as no data", async () => {
+    const top = BUCKETS[BUCKETS.length - 1]!;
+    const h = histogramWith([[top + top, SLOW_COUNT]]);
+    expect(await latencyFrom(h)).toEqual({
+      requests: SLOW_COUNT,
+      p50Seconds: top,
+      p95Seconds: top,
+      overTopBucket: true,
+    });
+  });
+
+  it("leaves out probes, scrapes and the status page's own polling", async () => {
+    const h = histogramWith([[SLOW, 1]]);
+    ["/health/", "/metrics/", "/api/v1/status/"].forEach((route) =>
+      Array.from({ length: FAST_COUNT }).forEach(() => h.observe({ method: "GET", route }, FAST)),
+    );
+    expect(await latencyFrom(h)).toEqual({
+      requests: 1,
+      p50Seconds: SLOW_BUCKET,
+      p95Seconds: SLOW_BUCKET,
+      overTopBucket: false,
     });
   });
 });

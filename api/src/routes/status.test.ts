@@ -12,7 +12,7 @@ const REQUESTS = 10;
 const P50 = 0.005;
 const P95 = 0.1;
 const API_PODS = 2;
-const LATENCY = { requests: REQUESTS, p50Seconds: P50, p95Seconds: P95 };
+const LATENCY = { requests: REQUESTS, p50Seconds: P50, p95Seconds: P95, overTopBucket: false };
 
 const appWith = (deps: Parameters<typeof statusRoutes>[0]) =>
   express().use("/api/v1/status", statusRoutes(deps));
@@ -47,7 +47,8 @@ describe("GET /api/v1/status", () => {
       }),
     ).get("/api/v1/status");
     expect(res.status).toBe(OK);
-    expect(res.body.queue).toEqual({ waiting: null, error: "redis down" });
+    // The reason a caller sees is generic; the detail goes to the log
+    expect(res.body.queue).toEqual({ waiting: null, error: "unavailable" });
     expect(res.body.replicas).toEqual({ api: null });
     expect(res.body.latency.requests).toBe(LATENCY.requests);
   });
