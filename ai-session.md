@@ -257,6 +257,23 @@ Their own PostgreSQL holds 5432, so the test container never started; the reacha
 - Replied to the teammate by editing the morning's comment, under the same-day rule.
 
 
+## Deploy path pinning, rollback and named port (#82), 7 November 2026
+
+### Prompt
+
+Fix three deploy-path gaps from the Lecture 8 review: pin the image to the commit SHA before `kubectl apply -k`, with no `:latest` left in `k8s/`; undo a failed rollout of the API and the worker; name the API container port `http` and use the name in the Service and both probes. Test first, one issue, one PR, independent check at the end.
+
+### AI Response
+
+Wrote a stdlib test that renders the overlays and reads `deploy.yml`, ran it red (9 of 9 failing), then changed the manifests, the deploy step and the bring-up script. Chose a placeholder tag over a tagless image name because Kubernetes reads a tagless name as `latest`. The rollback loop undoes each failed Deployment and still fails the job.
+
+### What Your Team Did With It
+
+- The test failed on the old files and passes on the new ones; the workflow step itself cannot run until cluster credentials exist (#76), and this is stated in the build log.
+- A regex edit left a control character in `deploy.yml`; the rollback test caught it and it was fixed before the commit.
+- 10 November: the `deploy.yml` part of this work reached `main` through #76, so it is no longer in this PR's diff; the test's workflow checks were tightened after a review showed they passed on a broken rollout step (see the build log, 7 November entry, update of 10 November).
+- 11 November: before merge we tested the Service change on a throwaway k3s cluster and found that switching `targetPort` to the name in the same apply would leave no routable endpoint during the first rollout; the Service keeps the number for now, with a test that fails on the named version (build log, update of 11 November).
+
 ## Datadog install reviewed and hardened (#27, PR #61), 8 November 2026
 
 ### Prompt
