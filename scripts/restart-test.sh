@@ -4,11 +4,17 @@
 #   1. the postgres pod is deleted and the StatefulSet replaces it
 #   2. the api Deployment is restarted, and an API pod reads the row through its own connection
 #   3. PostgreSQL is scaled to 0 and back to 1
-#   4. with DRAIN=1 (two nodes or more): the node postgres runs on is drained
-# A pass is only counted if the pod really was replaced (its UID changed). Run it against a cluster you
-# name: KUBE_CONTEXT is required, the current context is never assumed. It writes one small table,
-# restart_test, and leaves it (DB-12: dropping data is a deliberate step); with DRAIN=1 it cordons and
-# drains a node and uncordons it again, also on failure.
+#   4. with DRAIN=1 (two Ready nodes or more): the node postgres runs on is drained
+# A pass is only counted if the pod really was replaced (its UID changed). After events 1 and 3 the running
+# API must answer /health ok again with no container restart: it reconnects on its own (#68).
+# Run it against a cluster you name: KUBE_CONTEXT is required, the current context is never assumed. It
+# writes one small table, restart_test, and leaves it (DB-12: dropping data is a deliberate step; remove
+# it with DROP TABLE restart_test). With DRAIN=1 it cordons and drains a node and uncordons it again, also
+# on failure.
+# What users see: PostgreSQL is down during events 1 and 3 (and moves node in 4, with its volume); after
+# about 15 s the API's readiness probe takes its pods out, so the site serves nothing until PostgreSQL is
+# back. A drain evicts every pod on that node, in every namespace, and deletes their emptyDir data. Not
+# during a demo or a grading window.
 #
 #   KUBE_CONTEXT=<cluster> scripts/restart-test.sh            # events 1 to 3
 #   KUBE_CONTEXT=<cluster> DRAIN=1 scripts/restart-test.sh    # events 1 to 4
@@ -65,6 +71,29 @@ wait_ready() { # the pod may not exist yet right after a delete or a scale up
 }
 uid() { kc get pod postgres-0 -o jsonpath='{.metadata.uid}'; }
 
+# The sum of the restart counts of the running API containers
+api_restarts() {
+  local sum=0 n
+  for n in $(kc get pods -l app=api -o jsonpath='{range .items[*]}{range .status.containerStatuses[*]}{.restartCount}{" "}{end}{end}'); do
+    sum=$((sum + n))
+  done
+  echo "$sum"
+}
+# api_recovered <event text> <restart sum before>: the running API answers /health ok again, and no API
+# container was restarted to get there
+api_recovered() {
+  local code=""
+  for _ in $(seq 1 60); do
+    # shellcheck disable=SC2016  # JavaScript for node inside the API pod
+    code=$(kc exec deploy/api -- node -e 'fetch("http://localhost:3000/health").then(r=>console.log(r.status)).catch(()=>console.log(0))' 2>/dev/null) || code=""
+    [ "$code" = 200 ] && break
+    sleep "$RETRY_WAIT"
+  done
+  [ "$code" = 200 ] || fail "the API did not answer /health ok $1 (last: ${code:-no answer})"
+  [ "$(api_restarts)" = "$2" ] || fail "an API container restarted $1: it did not reconnect on its own"
+  echo "ok    the API reconnected $1 without a restart"
+}
+
 # check <event text> <reader>: the marker is there once
 check() {
   local n
@@ -81,8 +110,10 @@ replaced() { # replaced <old uid> <what happened>
 # --- start --------------------------------------------------------------------------------------
 echo "Target: context $KUBE_CONTEXT, namespace $NAMESPACE, marker $marker"
 if [ "$DRAIN" = 1 ]; then # refuse before anything is touched: a drain with one node leaves the pod nowhere to go
-  nodes=$(kubectl --context "$KUBE_CONTEXT" get nodes -o name | wc -l | tr -d ' ')
-  if [ "$nodes" -lt 2 ]; then echo "DRAIN=1 needs at least two nodes (found $nodes)"; exit 1; fi
+  # Only Ready nodes that take pods count: "<name> <unschedulable>|<Ready status>" per node
+  nodes=$(kubectl --context "$KUBE_CONTEXT" get nodes -o jsonpath='{range .items[*]}{.metadata.name} {.spec.unschedulable}|{range .status.conditions[?(@.type=="Ready")]}{.status}{end}{"\n"}{end}' \
+    | grep -c ' |True$' || true)
+  if [ "$nodes" -lt 2 ]; then echo "DRAIN=1 needs at least two nodes that are Ready and schedulable (found $nodes)"; exit 1; fi
 fi
 echo "Claim: $(kc get pvc data-postgres-0 -o jsonpath='{.spec.volumeName} {.spec.storageClassName}')"
 wait_ready
@@ -93,10 +124,12 @@ echo "wrote marker; node: $(kc get pod postgres-0 -o jsonpath='{.spec.nodeName}'
 
 # --- 1. delete the pod ---------------------------------------------------------------------------
 before=$(uid)
+restarts=$(api_restarts)
 kc delete pod postgres-0 --wait=true >/dev/null
 wait_ready
 replaced "$before" "after the delete"
 check "after deleting the postgres pod" count_via_psql
+api_recovered "after deleting the postgres pod" "$restarts"
 
 # --- 2. restart the api ----------------------------------------------------------------------------
 kc rollout restart deployment/api >/dev/null
@@ -105,19 +138,21 @@ check "after restarting the api, read by an API pod" count_via_api
 
 # --- 3. scale postgres to 0 and back to 1 ------------------------------------------------------------
 before=$(uid)
+restarts=$(api_restarts) # the pods from the restart in event 2
 kc scale statefulset postgres --replicas=0 >/dev/null
 kc wait --for=delete pod/postgres-0 --timeout="$TIMEOUT" >/dev/null
 kc scale statefulset postgres --replicas=1 >/dev/null
 wait_ready
 replaced "$before" "after scaling to 0 and back"
 check "after scaling postgres to 0 and back to 1" count_via_psql
+api_recovered "after scaling postgres to 0 and back to 1" "$restarts"
 
 # --- 4. drain the node (DOKS demo) -------------------------------------------------------------------------
 if [ "$DRAIN" = 1 ]; then
   before=$(uid)
   node=$(kc get pod postgres-0 -o jsonpath='{.spec.nodeName}')
+  cordoned=$node # set first: an interrupt during the cordon still uncordons (a no-op if it never applied)
   kubectl --context "$KUBE_CONTEXT" cordon "$node" >/dev/null
-  cordoned=$node
   kubectl --context "$KUBE_CONTEXT" drain "$node" --ignore-daemonsets --delete-emptydir-data --timeout="$TIMEOUT" >/dev/null
   wait_ready
   replaced "$before" "after the drain"

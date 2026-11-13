@@ -22,8 +22,8 @@ case "$*" in
   *"scale statefulset postgres --replicas=0"*) : ;;
   *" drain "*) log_event drain ;;
   *"get nodes"*)
-    for i in $(seq 1 "${STUB_NODES:-2}"); do echo "node-$i ||True"; done
-    for i in $(seq 1 "${STUB_NODES_NOT_READY:-0}"); do echo "bad-$i ||False"; done ;;
+    for i in $(seq 1 "${STUB_NODES:-2}"); do echo "node-$i |True"; done
+    for i in $(seq 1 "${STUB_NODES_NOT_READY:-0}"); do echo "bad-$i |False"; done ;;
   *"get pods -l app=api"*)
     # restartCount of each API container; the restart event replaces the pods (counts start again)
     n=0
