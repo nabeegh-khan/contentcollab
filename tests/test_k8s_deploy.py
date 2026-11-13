@@ -198,7 +198,12 @@ class NamedApiPort(unittest.TestCase):
         # until a new pod was ready (k3s 1.34, 11 Nov), hence the two steps
         svc = next(d for d in self.docs if d["kind"] == "Service" and d["metadata"]["name"] == "api")
         self.assertEqual([p["targetPort"] for p in svc["spec"]["ports"]], ["http"])
-        self.assertEqual([p["port"] for p in svc["spec"]["ports"]], [3000], "the Gateway routes to port 3000")
+        # The Gateway's route names the Service port; read it, so the two cannot drift
+        route_ports = [ref["port"] for d in self.docs if d["kind"] == "HTTPRoute"
+                       for rule in d["spec"]["rules"] for ref in rule.get("backendRefs", [])
+                       if ref["name"] == "api"]
+        self.assertTrue(route_ports, "no HTTPRoute backendRef to the api Service in the doks render")
+        self.assertEqual({p["port"] for p in svc["spec"]["ports"]}, set(route_ports))
 
     def test_both_probes_use_the_name(self):
         self.assertEqual(self.api["readinessProbe"]["httpGet"]["port"], "http")
