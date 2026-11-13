@@ -14,6 +14,7 @@ RUN npm ci
 # Now copy the TypeScript config and the source code
 COPY tsconfig.json ./
 COPY src ./src
+COPY migrations ./migrations
 
 # Run as the image's built-in non-root user, not root (SEC-6)
 USER node
