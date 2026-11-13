@@ -42,6 +42,8 @@ spec:
     spec:
       # Longer than any request, so SIGTERM lets in-flight work finish (API-7)
       terminationGracePeriodSeconds: 30
+      # Its own account: may get deployments/api for /api/v1/status (api-rbac.yaml, #30)
+      serviceAccountName: api
       # One replica per node where possible, so losing a node leaves one
       # serving (INF-4, ARCHITECTURE D5). Not required anti-affinity:
       # replicas 3-5 and the rollout surge pod must still schedule on two

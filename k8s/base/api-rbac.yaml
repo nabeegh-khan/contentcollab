@@ -1,0 +1,30 @@
+# The API reads its own Deployment's ready replicas for GET /api/v1/status (#30, ARCHITECTURE D23),
+# and nothing else: its own ServiceAccount, a Role with `get` on deployments/api only, no
+# cluster-wide access (SEC-6, least privilege; lecture 8 on RBAC).
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: api
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: api-status
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    resourceNames: ["api"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: api-status
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: api-status
+subjects:
+  - kind: ServiceAccount
+    name: api
+    namespace: contentcollab

@@ -121,7 +121,7 @@ jobs:
         # which the image readme does not list: it imported on ubuntu-26.04
         # 20261101.186.1 (run 42533543112, 8 Nov 2026); if an image drops it,
         # this step fails with ModuleNotFoundError rather than passing
-        run: python3 -m unittest tests.test_k8s_deploy -v
+        run: python3 -m unittest tests.test_k8s_deploy tests.test_k8s_status_rbac -v
       - name: Every object in the app namespace
         # A namespace set in the base does not reach resources an overlay
         # adds; the Gateway once landed in `default` this way (BUILD_LOG.md,
