@@ -135,6 +135,51 @@ jobs:
             [ -z "$stray" ] || { echo "::error::$overlay renders objects outside contentcollab: $stray"; exit 1; }
           done
 
+  # The observability stack (ARCHITECTURE D19, #109) is its own kustomization,
+  # applied by scripts/observability-up.sh: schema check, Prometheus's own
+  # config check, and the rendered objects and dashboard against the design
+  observability:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    timeout-minutes: 10
+    env:
+      # The same versions as the k8s job: the planned 1.36 and the running 1.37 (#99)
+      KUBE_VERSION: "1.36.0 1.37.0"
+    steps:
+      - uses: actions/checkout@v5
+      - uses: azure/setup-kubectl@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - name: Install kubeconform
+        run: |
+          curl -sSL https://github.com/yannh/kubeconform/releases/download/v0.7.0/kubeconform-linux-amd64.tar.gz | tar xz
+          sudo mv kubeconform /usr/local/bin/
+      - name: Render and validate
+        run: |
+          kubectl kustomize k8s/observability > /tmp/observability.yaml
+          bash scripts/ci-kubeconform.sh /tmp/observability.yaml
+      - name: promtool check config
+        # The in-cluster token and CA files do not exist on the runner;
+        # promtool only checks that they are present, so empty stand-ins do
+        run: |
+          sa=$(mktemp -d)
+          touch "$sa/token" "$sa/ca.crt"
+          # mktemp -d is 0700; the image runs as nobody and must read these
+          chmod 755 "$sa" && chmod 644 "$sa/token" "$sa/ca.crt"
+          docker run --rm \
+            -v "$PWD/k8s/observability/prometheus:/cfg:ro" \
+            -v "$sa:/var/run/secrets/kubernetes.io/serviceaccount:ro" \
+            --entrypoint promtool prom/prometheus:v3.16.0 check config /cfg/prometheus.yml
+      - name: promtool test rules (the dashboard's queries)
+        run: |
+          docker run --rm -v "$PWD/k8s/observability/prometheus:/cfg:ro" -w /cfg \
+            --entrypoint promtool prom/prometheus:v3.16.0 test rules dashboard.test.yml
+      - name: Rendered objects and dashboard
+        # yq 4 is preinstalled on the Ubuntu runner
+        run: node --test k8s/observability/*.test.mjs
+
   worker:
     runs-on: ubuntu-latest
     defaults:

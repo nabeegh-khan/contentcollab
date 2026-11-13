@@ -1,0 +1,80 @@
+# Prometheus configuration (ARCHITECTURE D19, #109). Four things are scraped:
+# the API's /metrics, the kubelet's resource and cAdvisor endpoints, and
+# kube-state-metrics. Series are kept few: only the metric names the
+# dashboard uses are stored from the kubelet, and cAdvisor series only for
+# the app and observability namespaces.
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  # Every ready api pod behind the api Service, found through its
+  # EndpointSlices, so a pod the HPA adds is scraped within one interval.
+  # EndpointSlices also list not-ready and terminating pods; those are dropped
+  - job_name: api
+    kubernetes_sd_configs:
+      - role: endpointslice
+        namespaces:
+          names: [contentcollab]
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_service_name]
+        regex: api
+        action: keep
+      - source_labels: [__meta_kubernetes_endpointslice_endpoint_conditions_ready]
+        regex: "true"
+        action: keep
+      - source_labels: [__meta_kubernetes_namespace]
+        target_label: namespace
+      - source_labels: [__meta_kubernetes_pod_name]
+        target_label: pod
+
+  # The kubelet on each node, over HTTPS with the service account's token.
+  # The kubelet authorizes /metrics/* as the nodes/metrics subresource, so
+  # Prometheus needs no nodes/proxy permission. TLS is verified against the
+  # cluster CA, as metrics-server already does on this cluster.
+  - job_name: kubelet-resource
+    scheme: https
+    metrics_path: /metrics/resource
+    scrape_interval: 30s
+    tls_config:
+      ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+    authorization:
+      credentials_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+    kubernetes_sd_configs:
+      - role: node
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_node_name]
+        target_label: node
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: node_memory_working_set_bytes|node_cpu_usage_seconds_total|pod_memory_working_set_bytes|pod_cpu_usage_seconds_total
+        action: keep
+
+  - job_name: kubelet-cadvisor
+    scheme: https
+    metrics_path: /metrics/cadvisor
+    scrape_interval: 30s
+    tls_config:
+      ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+    authorization:
+      credentials_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+    kubernetes_sd_configs:
+      - role: node
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_node_name]
+        target_label: node
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: container_memory_working_set_bytes|container_cpu_usage_seconds_total|container_network_(receive|transmit)_bytes_total
+        action: keep
+      - source_labels: [namespace]
+        regex: contentcollab|observability
+        action: keep
+
+  - job_name: kube-state-metrics
+    static_configs:
+      - targets: ["kube-state-metrics.observability.svc:8080"]
