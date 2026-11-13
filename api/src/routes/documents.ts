@@ -25,15 +25,10 @@ type ListCursor = {
 };
 
 function invalidQuery(field: string, message: string): HttpError {
-  return new HttpError(400, "VALIDATION", "Invalid Query", [
-    { field, message },
-  ]);
+  return new HttpError(400, "VALIDATION", "Invalid Query", [{ field, message }]);
 }
 
-function singleQueryValue(
-  value: unknown,
-  field: string,
-): string | undefined {
+function singleQueryValue(value: unknown, field: string): string | undefined {
   if (value === undefined) return undefined;
   if (typeof value !== "string") {
     throw invalidQuery(field, "must be a single string");
@@ -65,9 +60,7 @@ router.get("/", requireAuth, async (req, res) => {
 
   if (rawCursor !== undefined) {
     try {
-      const decoded: unknown = JSON.parse(
-        Buffer.from(rawCursor, "base64url").toString("utf8"),
-      );
+      const decoded: unknown = JSON.parse(Buffer.from(rawCursor, "base64url").toString("utf8"));
 
       if (
         typeof decoded !== "object" ||
@@ -132,14 +125,7 @@ router.get("/", requireAuth, async (req, res) => {
        )
      ORDER BY d.created_at DESC, d.id DESC
      LIMIT $6`,
-    [
-      userId,
-      q || null,
-      tag || null,
-      cursor?.createdAt ?? null,
-      cursor?.id ?? null,
-      limit + 1,
-    ],
+    [userId, q || null, tag || null, cursor?.createdAt ?? null, cursor?.id ?? null, limit + 1],
   );
 
   const hasNextPage = result.rows.length > limit;
@@ -195,14 +181,9 @@ router.post("/", requireAuth, async (req, res) => {
 
   try {
     const uploaded = await parseUpload(req, async (file, info, signal) => {
-
       // Transform send data to storage
       const countingStream = new Transform({
-        transform(
-          chunk: Buffer,
-          _encoding: BufferEncoding,
-          callback: TransformCallback,
-        ) {
+        transform(chunk: Buffer, _encoding: BufferEncoding, callback: TransformCallback) {
           hash.update(chunk);
           size += chunk.length;
           callback(null, chunk);
@@ -212,12 +193,7 @@ router.post("/", requireAuth, async (req, res) => {
       file.pipe(countingStream);
       objectUploadStarted = true;
 
-      await putStream(
-        objectKey,
-        countingStream,
-        info.contentType,
-        signal,
-      );
+      await putStream(objectKey, countingStream, info.contentType, signal);
     });
 
     // parseUpload resolves only after both the file stream and putStream have completed successfully.
@@ -314,9 +290,7 @@ router.get(
   async (req, res) => {
     const documentId = res.locals.documentId as string;
 
-    const result = await pool.query<
-      DocumentRow & { tags: string[] }
-    >(
+    const result = await pool.query<DocumentRow & { tags: string[] }>(
       `SELECT
          d.id,
          d.title,
@@ -361,10 +335,9 @@ const patchDocumentSchema = z
     title: z.string().trim().min(1).max(255).optional(),
     tags: z.array(z.string().trim().min(1).max(100)).optional(),
   })
-  .refine(
-    (body) => body.title !== undefined || body.tags !== undefined,
-    { message: "provide title or tags" },
-  );
+  .refine((body) => body.title !== undefined || body.tags !== undefined, {
+    message: "provide title or tags",
+  });
 
 type PatchDocumentBody = z.infer<typeof patchDocumentSchema>;
 
@@ -414,10 +387,7 @@ router.patch(
           );
         }
 
-        await client.query(
-          `DELETE FROM document_tags WHERE document_id = $1`,
-          [documentId],
-        );
+        await client.query(`DELETE FROM document_tags WHERE document_id = $1`, [documentId]);
 
         await client.query(
           `INSERT INTO document_tags (document_id, tag_id)
@@ -460,65 +430,50 @@ router.patch(
 
 // ---------------------------- DELETE: Delete a Document -------------------------------
 // DELETE /documents/:documentId
-router.delete(
-  "/:documentId",
-  requireAuth,
-  requireRole("owner"),
-  async (_req, res) => {
-    const documentId = res.locals.documentId as string;
-    const client = await pool.connect();
-    let objectKeys: string[] = [];
+router.delete("/:documentId", requireAuth, requireRole("owner"), async (_req, res) => {
+  const documentId = res.locals.documentId as string;
+  const client = await pool.connect();
+  let objectKeys: string[] = [];
 
-    try {
-      await client.query("BEGIN");
+  try {
+    await client.query("BEGIN");
 
-      // Lock the document to prevent modifications when same document are being uploaded.
-      const documentResult = await client.query(
-        `SELECT id FROM documents WHERE id = $1 FOR UPDATE`,
-        [documentId],
-      );
+    // Lock the document to prevent modifications when same document are being uploaded.
+    const documentResult = await client.query(`SELECT id FROM documents WHERE id = $1 FOR UPDATE`, [
+      documentId,
+    ]);
 
-      if (documentResult.rowCount === 0) {
-        throw new HttpError(404, "NOT_FOUND", "Document Not Found");
-      }
-
-      // Record all the objects need to be deleted from Spaces
-      const versionsResult = await client.query<{ object_key: string }>(
-        `SELECT object_key
-         FROM document_versions
-         WHERE document_id = $1`,
-        [documentId],
-      );
-      objectKeys = versionsResult.rows.map((row) => row.object_key);
-
-      await client.query(
-        `DELETE FROM documents WHERE id = $1`,
-        [documentId],
-      );
-
-      await client.query("COMMIT");
-    } catch (error) {
-      await client.query("ROLLBACK");
-      throw error;
-    } finally {
-      client.release();
+    if (documentResult.rowCount === 0) {
+      throw new HttpError(404, "NOT_FOUND", "Document Not Found");
     }
 
-    const cleanup = await Promise.allSettled(
-      objectKeys.map((key) => remove(key)),
+    // Record all the objects need to be deleted from Spaces
+    const versionsResult = await client.query<{ object_key: string }>(
+      `SELECT object_key
+         FROM document_versions
+         WHERE document_id = $1`,
+      [documentId],
     );
+    objectKeys = versionsResult.rows.map((row) => row.object_key);
 
-    cleanup.forEach((result, index) => {
-      if (result.status === "rejected") {
-        console.error(
-          "Failed to remove document object",
-          objectKeys[index],
-          result.reason,
-        );
-      }
-    });
+    await client.query(`DELETE FROM documents WHERE id = $1`, [documentId]);
 
-    res.sendStatus(204);
-  },
-);
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+
+  const cleanup = await Promise.allSettled(objectKeys.map((key) => remove(key)));
+
+  cleanup.forEach((result, index) => {
+    if (result.status === "rejected") {
+      console.error("Failed to remove document object", objectKeys[index], result.reason);
+    }
+  });
+
+  res.sendStatus(204);
+});
 export default router;

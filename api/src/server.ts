@@ -20,7 +20,6 @@ app.use("/health", healthRoutes);
 app.use("/metrics", metricsRoutes);
 app.use("/api/v1/auth", authRoutes);
 
-
 app.use("/api/v1/documents", documentRoutes);
 app.use("/api/v1/documents/:documentId/versions", versionsRoutes);
 app.use((req, res) => res.status(404).json({ error: "Not Found" }));

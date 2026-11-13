@@ -28,7 +28,12 @@ function getBucket(): string {
 
 // Uploads a stream using multipart upload when necessary.
 // The file is streamed rather than loaded entirely into memory.
-export async function putStream(key: string, stream: Readable, contentType: string, signal: AbortSignal): Promise<void> {
+export async function putStream(
+  key: string,
+  stream: Readable,
+  contentType: string,
+  signal: AbortSignal,
+): Promise<void> {
   const upload = new Upload({
     client: s3,
     params: {

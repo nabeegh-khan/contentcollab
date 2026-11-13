@@ -137,7 +137,7 @@ describe("Spaces storage", () => {
   it("aborts an upload when the signal is aborted", async () => {
     const controller = new AbortController();
     let finishUpload!: () => void;
-  
+
     done.mockImplementation(
       () =>
         new Promise<void>((resolve) => {
@@ -145,18 +145,18 @@ describe("Spaces storage", () => {
         }),
     );
     abort.mockResolvedValue();
-  
+
     const uploading = putStream(
       "documents/doc-1/version-1",
       Readable.from(["contents"]),
       "text/plain",
       controller.signal,
     );
-  
+
     controller.abort();
-  
+
     expect(abort).toHaveBeenCalledTimes(1);
-  
+
     finishUpload();
     await uploading;
   });

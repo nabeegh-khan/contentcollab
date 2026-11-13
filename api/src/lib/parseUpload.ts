@@ -11,15 +11,9 @@ const allowedTypes: Record<string, string[]> = {
   ".png": ["image/png"],
   ".jpg": ["image/jpeg"],
   ".jpeg": ["image/jpeg"],
-  ".docx": [
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  ],
-  ".xlsx": [
-    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  ],
-  ".pptx": [
-    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-  ],
+  ".docx": ["application/vnd.openxmlformats-officedocument.wordprocessingml.document"],
+  ".xlsx": ["application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"],
+  ".pptx": ["application/vnd.openxmlformats-officedocument.presentationml.presentation"],
   ".txt": ["text/plain"],
   ".md": ["text/markdown", "text/plain"],
 };
@@ -33,14 +27,9 @@ export type ParsedUpload = UploadInfo & {
   title?: string;
 };
 
-
 export function parseUpload(
   req: Request,
-  onFile: (
-    file: Readable,
-    info: UploadInfo,
-    signal: AbortSignal,
-  ) => Promise<void>,
+  onFile: (file: Readable, info: UploadInfo, signal: AbortSignal) => Promise<void>,
 ): Promise<ParsedUpload> {
   return new Promise((resolve, reject) => {
     let busboy: ReturnType<typeof Busboy>;
@@ -100,7 +89,6 @@ export function parseUpload(
         file.resume();
       });
 
-      
       uploadPromise = onFile(file, uploadInfo, controller.signal).catch((error: unknown) => {
         failure ??= error instanceof Error ? error : new Error(String(error));
         file.resume();
@@ -128,9 +116,9 @@ export function parseUpload(
         if (!uploadInfo) {
           throw new HttpError(400, "VALIDATION", "File Required");
         }
-        resolve({ 
-            ...uploadInfo, 
-            ...(title !== undefined ? { title } : {}) 
+        resolve({
+          ...uploadInfo,
+          ...(title !== undefined ? { title } : {}),
         });
       })().catch(reject);
     });
