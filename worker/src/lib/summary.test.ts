@@ -9,6 +9,7 @@ import {
   providerFromEnv,
   MAX_SUMMARY_CHARS,
   MAX_TAGS,
+  MAX_TAG_CHARS,
   DEFAULT_MODEL,
   type MessagesClient,
 } from "./summary.js";
@@ -31,6 +32,10 @@ test("replies outside the shape are refused", () => {
   assert.throws(() => checkReply({ summary: "ok", tags: tooMany }), failsWith("tags"));
   assert.throws(() => checkReply({ summary: "ok", tags: ["Upper Case"] }), failsWith("tags"));
   assert.throws(() => checkReply({ summary: "ok" }), failsWith("tags"));
+  assert.throws(
+    () => checkReply({ summary: "ok", tags: ["a".repeat(MAX_TAG_CHARS + 1)] }),
+    failsWith("tags"),
+  );
   assert.throws(() => checkReply("just text"), failsWith("summary"));
 });
 

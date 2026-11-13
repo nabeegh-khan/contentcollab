@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { Job } from "bullmq";
-import { summarizeWith, type SummarizeData } from "./summarize.js";
+import { summarizeWith, MAX_TEXT_CHARS, type SummarizeData } from "./summarize.js";
 import { stubProvider, type SummaryProvider } from "../lib/summary.js";
 
 const job = (data: unknown) => ({ data }) as Job<SummarizeData>;
@@ -20,6 +20,9 @@ test("bad input fails the job", async () => {
   const run = summarizeWith(stubProvider);
   await assert.rejects(run(job({ kind: "email", text: "x" })), failsWith("kind"));
   await assert.rejects(run(job({ kind: "thread", text: "" })), failsWith("text"));
+  // A cap on what one job may send to the model (cost, context window)
+  const tooLong = "x".repeat(MAX_TEXT_CHARS + 1);
+  await assert.rejects(run(job({ kind: "thread", text: tooLong })), failsWith("text"));
 });
 
 test("a reply outside the shape fails the job", async () => {
