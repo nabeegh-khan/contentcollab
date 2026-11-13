@@ -14,7 +14,9 @@ const appWith = () => express().use("/api/v1/documents", compareRoutes);
 
 describe("GET /api/v1/documents/:documentId/versions/:versionId/compare", () => {
   it("answers 501 NOT_IMPLEMENTED in the API's error shape until versions are stored", async () => {
-    const res = await request(appWith()).get(`/api/v1/documents/${DOC}/versions/${V2}/compare?to=${V1}`);
+    const res = await request(appWith()).get(
+      `/api/v1/documents/${DOC}/versions/${V2}/compare?to=${V1}`,
+    );
     expect(res.status).toBe(NOT_IMPLEMENTED);
     expect(res.body).toEqual({ error: "Not Implemented", code: "NOT_IMPLEMENTED" });
   });
