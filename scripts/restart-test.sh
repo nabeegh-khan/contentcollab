@@ -13,7 +13,7 @@
 # on failure.
 # What users see: PostgreSQL is down during events 1 and 3 (and moves node in 4, with its volume); after
 # about 15 s the API's readiness probe takes its pods out, so the site serves nothing until PostgreSQL is
-# back. A drain evicts every pod on that node, in every namespace, and deletes their emptyDir data. Not
+# back. A drain evicts every pod on that node except DaemonSet pods, in every namespace, and deletes their emptyDir data. Not
 # during a demo or a grading window.
 #
 #   KUBE_CONTEXT=<cluster> scripts/restart-test.sh            # events 1 to 3
@@ -71,16 +71,13 @@ wait_ready() { # the pod may not exist yet right after a delete or a scale up
 }
 uid() { kc get pod postgres-0 -o jsonpath='{.metadata.uid}'; }
 
-# The sum of the restart counts of the running API containers
+# "<pod> <restartCount>" for each API pod (one container per pod)
 api_restarts() {
-  local sum=0 n
-  for n in $(kc get pods -l app=api -o jsonpath='{range .items[*]}{range .status.containerStatuses[*]}{.restartCount}{" "}{end}{end}'); do
-    sum=$((sum + n))
-  done
-  echo "$sum"
+  kc get pods -l app=api -o jsonpath='{range .items[*]}{.metadata.name}{" "}{range .status.containerStatuses[*]}{.restartCount}{end}{"\n"}{end}'
 }
-# api_recovered <event text> <restart sum before>: the running API answers /health ok again, and no API
-# container was restarted to get there
+# api_recovered <event text> <api_restarts before>: the running API answers /health ok again, and no API
+# pod present in both snapshots restarted to get there (pods that went away, e.g. terminating after the
+# rollout of event 2 or scaled down by the HPA, are not counted)
 api_recovered() {
   local code=""
   for _ in $(seq 1 60); do
@@ -90,7 +87,9 @@ api_recovered() {
     sleep "$RETRY_WAIT"
   done
   [ "$code" = 200 ] || fail "the API did not answer /health ok $1 (last: ${code:-no answer})"
-  [ "$(api_restarts)" = "$2" ] || fail "an API container restarted $1: it did not reconnect on its own"
+  local up
+  up=$(awk 'NR==FNR { b[$1] = $2; next } ($1 in b) && $2 > b[$1] { print $1 }' <(printf '%s\n' "$2") <(api_restarts) | tr '\n' ' ')
+  [ -z "$up" ] || fail "an API container restarted $1 (${up% }): it did not reconnect on its own"
   echo "ok    the API reconnected $1 without a restart"
 }
 
