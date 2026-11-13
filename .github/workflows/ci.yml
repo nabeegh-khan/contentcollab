@@ -143,6 +143,9 @@ jobs:
     permissions:
       contents: read
     timeout-minutes: 10
+    env:
+      # The same versions as the k8s job: the planned 1.36 and the running 1.37 (#99)
+      KUBE_VERSION: "1.36.0 1.37.0"
     steps:
       - uses: actions/checkout@v5
       - uses: azure/setup-kubectl@v4
@@ -156,9 +159,7 @@ jobs:
       - name: Render and validate
         run: |
           kubectl kustomize k8s/observability > /tmp/observability.yaml
-          for v in 1.33.0 1.36.0 1.37.0; do
-            kubeconform -strict -summary -kubernetes-version $v /tmp/observability.yaml
-          done
+          bash scripts/ci-kubeconform.sh /tmp/observability.yaml
       - name: promtool check config
         # The in-cluster token and CA files do not exist on the runner;
         # promtool only checks that they are present, so empty stand-ins do
