@@ -191,15 +191,19 @@ class NamedApiPort(unittest.TestCase):
     def test_container_port_is_named_http(self):
         self.assertIn({"name": "http", "containerPort": 3000}, self.api["ports"])
 
-    def test_service_target_port_is_the_number_of_the_named_port(self):
-        # Not the name yet: the pods running on the cluster have an unnamed
-        # port, and a Service that switches to targetPort `http` in the same
-        # apply moves them to an EndpointSlice with no ports before any new
-        # pod is ready, so the API has no routable endpoint for that window
-        # (seen on k3s 1.34, 11 Nov). The name follows once named pods run.
+    def test_service_targets_the_named_port(self):
+        # #107: by name, now that the running pods (since #83, b25cc86) and
+        # the revision an undo returns to carry the named port. Switching in
+        # the same apply that first named the port emptied the EndpointSlice
+        # until a new pod was ready (k3s 1.34, 11 Nov), hence the two steps
         svc = next(d for d in self.docs if d["kind"] == "Service" and d["metadata"]["name"] == "api")
-        named = next(p["containerPort"] for p in self.api["ports"] if p.get("name") == "http")
-        self.assertEqual([p["targetPort"] for p in svc["spec"]["ports"]], [named])
+        self.assertEqual([p["targetPort"] for p in svc["spec"]["ports"]], ["http"])
+        # The Gateway's route names the Service port; read it, so the two cannot drift
+        route_ports = [ref["port"] for d in self.docs if d["kind"] == "HTTPRoute"
+                       for rule in d["spec"]["rules"] for ref in rule.get("backendRefs", [])
+                       if ref["name"] == "api"]
+        self.assertTrue(route_ports, "no HTTPRoute backendRef to the api Service in the doks render")
+        self.assertEqual({p["port"] for p in svc["spec"]["ports"]}, set(route_ports))
 
     def test_both_probes_use_the_name(self):
         self.assertEqual(self.api["readinessProbe"]["httpGet"]["port"], "http")

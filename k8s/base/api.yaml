@@ -9,11 +9,11 @@ spec:
     app: api
   ports:
     - port: 3000
-      # The number, not the name `http`, until pods with the named port run:
-      # switching in the same apply leaves the old pods in an EndpointSlice
-      # with no ports, so no ready endpoint until a new pod passes /health
-      # (INF-10; BUILD_LOG.md, #82 entry, update of 11 Nov; #107)
-      targetPort: 3000
+      # By name (INF-10), a step after #83 named the container port: switching
+      # in the same apply left the old pods in an EndpointSlice with no ports,
+      # so no ready endpoint until a new pod passed /health (BUILD_LOG.md, #82
+      # entry, update of 11 Nov; #107)
+      targetPort: http
 ---
 apiVersion: apps/v1
 kind: Deployment
