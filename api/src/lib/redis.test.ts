@@ -1,12 +1,18 @@
 // Tests for redis.ts while Redis is down: /health's ping fails fast, and errors are logged once per outage (#65).
-import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "@jest/globals";
 import { EventEmitter } from "node:events";
 import { createServer, type AddressInfo } from "node:net";
 import { createClient } from "redis";
+import { captureStdout } from "./logCapture.js";
 import { logStateChanges, pingRedis } from "./redis.js";
 
 // A port that was listening and then closed stands in for Redis being down
 let closedPort: number;
+
+// The log-level tests expect the default level, whatever the shell exported
+beforeEach(() => {
+  delete process.env.LOG_LEVEL;
+});
 
 beforeAll(async () => {
   const s = createServer();
@@ -84,5 +90,54 @@ describe("logStateChanges", () => {
       "redis: Socket closed unexpectedly (retrying; further errors not logged until Redis is back)",
       "redis: connected again",
     ]);
+  });
+});
+
+describe("logStateChanges default writer", () => {
+  it("writes one JSON line per state change, marked as the redis component", () => {
+    const out = captureStdout();
+    try {
+      const client = new EventEmitter();
+      logStateChanges(client);
+      client.emit("error", new Error("connect ECONNREFUSED"));
+      const [line, ...rest] = out.lines();
+      expect(rest).toHaveLength(0);
+      expect(line?.component).toBe("redis");
+      expect(line?.level).toBe("error");
+      expect(line?.msg).toContain("redis: connect ECONNREFUSED");
+      expect(line?.error?.kind).toBe("Error");
+    } finally {
+      out.restore();
+    }
+  });
+});
+
+describe("logStateChanges, second review of #55", () => {
+  it("names the error code when the message is empty, as Node's AggregateError for localhost is", () => {
+    const client = new EventEmitter();
+    const lines: string[] = [];
+    logStateChanges(client, (line) => lines.push(line));
+    client.emit("error", Object.assign(new AggregateError([], ""), { code: "ECONNREFUSED" }));
+    expect(lines).toEqual([
+      "redis: ECONNREFUSED (retrying; further errors not logged until Redis is back)",
+    ]);
+  });
+
+  it("the default writer logs the outage at error with its code, and the reconnection at info", () => {
+    const out = captureStdout();
+    try {
+      const client = new EventEmitter();
+      logStateChanges(client);
+      const refused = Object.assign(new Error("connect ECONNREFUSED"), { code: "ECONNREFUSED" });
+      client.emit("error", refused);
+      client.emit("ready");
+      const [down, up] = out.lines();
+      expect(down?.level).toBe("error");
+      expect(down?.error).toEqual(expect.objectContaining({ kind: "Error", code: "ECONNREFUSED" }));
+      expect(up?.level).toBe("info");
+      expect(up?.msg).toBe("redis: connected");
+    } finally {
+      out.restore();
+    }
   });
 });

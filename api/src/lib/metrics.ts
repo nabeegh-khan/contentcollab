@@ -9,8 +9,8 @@ collectDefaultMetrics({ register: registry });
 
 export const httpRequests = new Counter({
   name: "http_requests_total",
-  help: "Requests served, by method, route and status code",
-  labelNames: ["method", "route", "status"] as const,
+  help: "Requests served, by method, route template and status class (2xx to 5xx)",
+  labelNames: ["method", "route", "status_class"] as const,
   registers: [registry],
 });
 
@@ -25,7 +25,7 @@ export const httpDuration = new Histogram({
 
 export const httpErrors = new Counter({
   name: "http_errors_total",
-  help: "Responses with a 5xx status, by route",
-  labelNames: ["route"] as const,
+  help: "Responses with a 5xx status, by method, route template and status class",
+  labelNames: ["method", "route", "status_class"] as const,
   registers: [registry],
 });

@@ -1,0 +1,20 @@
+{
+  "name": "ContentCollab: 5xx share per route above 2% over 5 minutes",
+  "type": "query alert",
+  "query": "sum(last_5m):sum:contentcollab.http_requests.count{status_class:5xx} by {route}.as_count() / sum:contentcollab.http_requests.count{*} by {route}.as_count() > 0.02",
+  "message": "More than 2% of the requests to {{route.name}} answered 5xx in the last 5 minutes (now {{value}}, as a fraction of the requests).\n\nFind the failing requests: Logs, search `@http.route:\"{{route.name}}\" @http.status_code:[500 TO 599]`, then follow one `@http.request_id` through the log. Check `kubectl -n contentcollab get pods` and `kubectl -n contentcollab logs deploy/api`; /health answers 503 when PostgreSQL or Redis is down.\n\nA route with few requests can cross 2% on a single failure: read the request count on the dashboard before acting.",
+  "tags": ["service:contentcollab", "team:cloud"],
+  "priority": null,
+  "options": {
+    "thresholds": {
+      "critical": 0.02,
+      "warning": 0.01
+    },
+    "notify_audit": false,
+    "notify_no_data": false,
+    "require_full_window": false,
+    "renotify_interval": 0,
+    "include_tags": true,
+    "new_group_delay": 60
+  }
+}
