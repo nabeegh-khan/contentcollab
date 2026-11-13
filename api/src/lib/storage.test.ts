@@ -4,6 +4,7 @@ import { Readable } from "node:stream";
 const send = jest.fn<(command: MockCommand) => Promise<unknown>>();
 const done = jest.fn<() => Promise<unknown>>();
 const uploadOptions = jest.fn<(options: Record<string, unknown>) => void>();
+const abort = jest.fn<() => Promise<void>>();
 
 class MockCommand {
   input: Record<string, unknown>;
@@ -20,6 +21,10 @@ class MockUpload {
 
   async done() {
     return done();
+  }
+
+  async abort() {
+    return abort();
   }
 }
 
@@ -50,14 +55,15 @@ afterEach(() => {
   send.mockReset();
   done.mockReset();
   uploadOptions.mockClear();
+  abort.mockReset();
 });
 
 describe("Spaces storage", () => {
   it("uploads a stream using the multipart Upload helper", async () => {
     const stream = Readable.from(["document contents"]);
     done.mockResolvedValue({});
-
-    await putStream("documents/doc-1/version-1", stream, "text/plain");
+    const signal = new AbortController().signal;
+    await putStream("documents/doc-1/version-1", stream, "text/plain", signal);
 
     expect(uploadOptions).toHaveBeenCalledWith({
       client: expect.anything(),
@@ -74,9 +80,10 @@ describe("Spaces storage", () => {
 
   it("propagates upload failures", async () => {
     done.mockRejectedValue(new Error("Upload failed"));
+    const signal = new AbortController().signal;
 
     await expect(
-      putStream("documents/doc-1/version-1", Readable.from(["contents"]), "text/plain"),
+      putStream("documents/doc-1/version-1", Readable.from(["contents"]), "text/plain", signal),
     ).rejects.toThrow("Upload failed");
   });
 
@@ -125,5 +132,32 @@ describe("Spaces storage", () => {
       Bucket: "test-bucket",
       Key: "documents/doc-1/version-1",
     });
+  });
+
+  it("aborts an upload when the signal is aborted", async () => {
+    const controller = new AbortController();
+    let finishUpload!: () => void;
+  
+    done.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          finishUpload = resolve;
+        }),
+    );
+    abort.mockResolvedValue();
+  
+    const uploading = putStream(
+      "documents/doc-1/version-1",
+      Readable.from(["contents"]),
+      "text/plain",
+      controller.signal,
+    );
+  
+    controller.abort();
+  
+    expect(abort).toHaveBeenCalledTimes(1);
+  
+    finishUpload();
+    await uploading;
   });
 });
