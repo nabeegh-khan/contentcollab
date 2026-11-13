@@ -313,9 +313,12 @@ class MigrateBeforeRollout(unittest.TestCase):
         rest = self.lines[self.lines.index(wait) + 1:]
         branch = rest[:rest.index("fi")]
         self.assertIn(f"kubectl -n contentcollab logs job/{JOB_NAME} --tail=100 || true", branch)
-        # On DeadlineExceeded the pod is deleted and a pod that never started
-        # has no log: the Job's own status and events say why
+        # At the deadline the pod is terminated and a pod that never started
+        # has no log: the Job's status says it stopped, and the pod's own
+        # events (image pull, missing key) say why; they outlive the pod
         self.assertIn(f"kubectl -n contentcollab describe job/{JOB_NAME} || true", branch)
+        self.assertIn("kubectl -n contentcollab get events --field-selector involvedObject.kind=Pod "
+                      f"--sort-by=.lastTimestamp | grep {JOB_NAME} || true", branch)
         self.assertEqual(branch[-1], "exit 1")
 
     def test_runs_from_the_repository_root(self):
