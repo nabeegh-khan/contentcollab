@@ -52,9 +52,9 @@ class StatusReadAccess(unittest.TestCase):
         self.assertNotIn("ClusterRole", kinds)
         self.assertNotIn("ClusterRoleBinding", kinds)
 
-    def test_other_workloads_do_not_get_a_token(self):
-        # Only the API needs the Kubernetes API; the others keep the default account without a token
-        for name in ("worker",):
+    def test_other_workloads_do_not_run_as_the_api_account(self):
+        # Only the API may read its Deployment; the others keep the namespace's default account
+        for name in ("worker", "redis"):
             pod = one(self.docs, "Deployment", name)["spec"]["template"]["spec"]
             self.assertNotEqual(pod.get("serviceAccountName"), "api", name)
 
