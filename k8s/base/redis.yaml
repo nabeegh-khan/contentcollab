@@ -9,6 +9,7 @@ spec:
     app: redis
   ports:
     - port: 6379
+      targetPort: redis # the container port's name (INF-10)
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -24,11 +25,17 @@ spec:
       labels:
         app: redis
     spec:
+      # The image's own `redis` user (uid 999), so it never runs as root (SEC-6)
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
       containers:
         - name: redis
           image: redis:8
           ports:
-            - containerPort: 6379
+            - name: redis # INF-10
+              containerPort: 6379
           readinessProbe:
             exec:
               command: ["redis-cli", "ping"]
