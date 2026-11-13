@@ -25,7 +25,7 @@ Base path `/api/v1`. JSON in and out, `Content-Type: application/json`, except f
 
 **Rate limit.** Writes are limited per user (default 60 a minute); over the limit `429 RATE_LIMITED` with `Retry-After`.
 
-**Status codes.** `200` read or update, `201` created (body is the created object), `204` deleted (no body), `400`, `401`, `403`, `404`, `409` (duplicate email, revert to the current version), `413`, `429`, `500`, `503` (health only).
+**Status codes.** `200` read or update, `201` created (body is the created object), `204` deleted (no body), `400`, `401`, `403`, `404`, `409` (duplicate email, upload and import), `413`, `429`, `500`, `503` (health only).
 
 ## Objects
 
@@ -76,7 +76,7 @@ Allowed upload types: PDF, PNG, JPEG, plus docx, xlsx, pptx, txt, md (stored and
 | POST | `/documents/:documentId/versions` | multipart: `file` | `201 Version`, becomes current |
 | GET | `/documents/:documentId/versions/:versionId` | | `200 Version` |
 | GET | `/documents/:documentId/versions/:versionId/content` | | `200` file stream, `Content-Disposition: attachment` |
-| POST | `/documents/:documentId/versions/:versionId/revert` | | `201 Version` (a new version with the old content); `409` already current |
+| POST | `/documents/:documentId/versions/:versionId/revert` | | `201 Version` (a new version with the old content)|
 
 Upload streams to Spaces; the row is written only after the object is stored. The same checksum on the same document is `409`.
 
