@@ -1,6 +1,6 @@
 // scripts/restart-test.sh against a stand-in kubectl (#68; DB-2, TST-4): a marker row must survive each event,
-// and the test must not pass when nothing was restarted. Control flow only; the real behaviour is in
-// docs/DEMO_PERSISTENCE.md (a local cluster, an emptyDir run that fails and a claim run that passes).
+// and the test must not pass when nothing was restarted. Control flow only; runs on a real cluster are
+// recorded in docs/DEMO_PERSISTENCE.md.
 import { test, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, chmodSync } from "node:fs";
