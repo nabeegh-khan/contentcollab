@@ -6,8 +6,6 @@ import { connection } from "./redis.js";
 import { ping, type PingData } from "./jobs/ping.js";
 import { versionDiff, type VersionDiffData } from "./jobs/versionDiff.js";
 
-// Handlers by job name. Adding a job type is one entry here plus a file in
-// jobs/, nothing else changes (D10: extend behind the contract).
 // Defaults when the environment sets nothing, and the HTTP codes the probe answers with
 const DEFAULT_CONCURRENCY = 2;
 const DEFAULT_HEALTH_PORT = 3001;
@@ -15,6 +13,8 @@ const HTTP_OK = 200;
 const HTTP_NOT_FOUND = 404;
 const HTTP_UNAVAILABLE = 503;
 
+// Handlers by job name. Adding a job type is one entry here plus a file in
+// jobs/, nothing else changes (D10: extend behind the contract).
 const handlers: Record<string, (job: Job) => Promise<unknown>> = {
   ping: (job) => ping(job as Job<PingData>),
   "version-diff": (job) => versionDiff(job as Job<VersionDiffData>),

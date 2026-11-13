@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { lineDiff, pageDiff, MAX_LINE_PAIRS, DiffTooLargeError } from "./diff.js";
+import { lineDiff, pageDiff, MAX_TABLE_CELLS, DiffTooLargeError } from "./diff.js";
 
 const fixture = (name: string) =>
   readFileSync(new URL(`./fixtures/diff/${name}`, import.meta.url), "utf8");
@@ -59,14 +59,14 @@ test("empty versions", () => {
   assert.equal(d.removed, 0);
 });
 
-test("inputs above the line-pair limit are refused, not computed", () => {
-  const n = Math.floor(Math.sqrt(MAX_LINE_PAIRS)) + 1;
+test("inputs above the table-size limit are refused, not computed", () => {
+  const n = Math.floor(Math.sqrt(MAX_TABLE_CELLS)) + 1;
   const big = Array.from({ length: n }, (_, i) => `line ${i}`).join("\n");
   assert.throws(() => lineDiff(big, big + "\nmore"), DiffTooLargeError);
 });
 
 test("a huge version against an empty one is refused too (its lines are the cost)", () => {
-  const lines = Math.floor(Math.sqrt(MAX_LINE_PAIRS)) * Math.floor(Math.sqrt(MAX_LINE_PAIRS)) + 1;
+  const lines = Math.floor(Math.sqrt(MAX_TABLE_CELLS)) * Math.floor(Math.sqrt(MAX_TABLE_CELLS)) + 1;
   const huge = "x\n".repeat(lines);
   assert.throws(() => lineDiff("", huge), DiffTooLargeError);
   assert.throws(() => lineDiff(huge, "one line"), DiffTooLargeError);

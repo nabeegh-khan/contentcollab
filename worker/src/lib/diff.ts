@@ -2,12 +2,15 @@
 // lineDiff: longest common subsequence over lines. pageDiff: pages compared by position, each changed
 // page carrying its own line diff (PDF page text; rendering pages to images is not done here).
 
-/** Above this many line pairs (before lines x after lines) the diff is refused, not computed. */
-export const MAX_LINE_PAIRS = 4_000_000;
+/**
+ * Above this many cells of the LCS table, (before lines + 1) x (after lines + 1), the diff is refused,
+ * not computed: the table and the result both grow with it. The +1 makes one empty side still count.
+ */
+export const MAX_TABLE_CELLS = 4_000_000;
 
 export class DiffTooLargeError extends Error {
-  constructor(pairs: number) {
-    super(`diff too large: ${pairs} line pairs, limit ${MAX_LINE_PAIRS}`);
+  constructor(cells: number) {
+    super(`diff too large: ${cells} table cells, limit ${MAX_TABLE_CELLS}`);
     this.name = "DiffTooLargeError";
   }
 }
@@ -90,8 +93,8 @@ function step(a: string[], b: string[], table: Uint32Array[], w: Walk): Walk {
 export function lineDiff(beforeText: string, afterText: string): LineDiff {
   const a = splitLines(beforeText);
   const b = splitLines(afterText);
-  const pairs = a.length * b.length;
-  if (pairs > MAX_LINE_PAIRS) throw new DiffTooLargeError(pairs);
+  const cells = (a.length + 1) * (b.length + 1);
+  if (cells > MAX_TABLE_CELLS) throw new DiffTooLargeError(cells);
 
   const table = lcsTable(a, b);
   // Every step consumes at least one line of a or b, so a.length + b.length steps finish the walk
