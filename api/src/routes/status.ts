@@ -13,21 +13,30 @@ export interface StatusSources {
 
 type Outcome<T> = { ok: true; value: T } | { ok: false; error: string };
 
-async function attempt<T>(read: () => Promise<T>): Promise<Outcome<T>> {
+/** How long one source may take; node-redis queues commands while Redis is down instead of failing. */
+export const SOURCE_TIMEOUT_MS = 1000;
+
+async function attempt<T>(read: () => Promise<T>, timeoutMs: number): Promise<Outcome<T>> {
+  let timer: NodeJS.Timeout | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`no answer within ${timeoutMs} ms`)), timeoutMs);
+  });
   try {
-    return { ok: true, value: await read() };
+    return { ok: true, value: await Promise.race([read(), timeout]) };
   } catch (err) {
     return { ok: false, error: (err as Error).message };
+  } finally {
+    clearTimeout(timer);
   }
 }
 
-export function statusRoutes(sources: StatusSources): Router {
+export function statusRoutes(sources: StatusSources, timeoutMs = SOURCE_TIMEOUT_MS): Router {
   const router = Router();
   router.get("/", async (_req, res) => {
     const [queue, latency, replicas] = await Promise.all([
-      attempt(sources.queue),
-      attempt(sources.latency),
-      attempt(sources.replicas),
+      attempt(sources.queue, timeoutMs),
+      attempt(sources.latency, timeoutMs),
+      attempt(sources.replicas, timeoutMs),
     ]);
     res.set("Cache-Control", "no-store").json({
       generatedAt: new Date().toISOString(),
