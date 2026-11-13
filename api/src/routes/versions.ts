@@ -143,9 +143,11 @@ router.post(
           createdAt: version.created_at,
         });
       } catch (error) {
-        await client.query("ROLLBACK").catch((rollbackError: unknown) => {
-          console.error("Failed to roll back version upload", rollbackError);
-        });
+        if (!committed) {
+            await client.query("ROLLBACK").catch((rollbackError: unknown) => {
+                console.error("Failed to roll back version upload", rollbackError);
+            });
+        }    
         throw error;
       } finally {
         client.release();
