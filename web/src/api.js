@@ -14,6 +14,7 @@ app.post("/auth/register/:email, password, displayName", async (req, res))
       
     catch (e)
     {
+      console.error(e);
       return res.status(409).json({"error": "email taken"});
     }
   }
@@ -35,6 +36,7 @@ app.post("/auth/login/:email, password", async (req, res))
       
     catch (e)
     {
+      console.error(e);
       return res.status(401).json({ "error": "wrong email or password" });
     }
   }
@@ -46,20 +48,30 @@ app.post("/auth/login/:email, password", async (req, res))
 
 }
 
-app.post("/documents", async (req, res))
+app.post("/documents/:file, title", async (req, res))
 {
   try
   {
     try
     {
-
+      try
+      {
+        return res.status(201);
+      }
+        
+      catch (e)
+      {
+        console.error(e);
+        return res.status(400).json({ "error": "type not allowed" });
+      }
     }
-      
-    catch (e)
+    catch (er)
     {
-      
+      console.error(er);
+      return res.status(413).json({ "error": "file must be <= 50 MB" });
     }
   }
+    
     
   catch (err) {
     console.error(err);
@@ -67,7 +79,7 @@ app.post("/documents", async (req, res))
   }  
 }
 
-app.get("/documents/:file, title", async (req, res))
+app.get("/documents", async (req, res))
 {
   try
   {
