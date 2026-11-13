@@ -7,6 +7,7 @@ import { connectRedis } from "./lib/redis.js";
 import { pool } from "./lib/db.js";
 import healthRoutes from "./routes/health.js";
 import metricsRoutes from "./routes/metrics.js";
+import compareRoutes, { compareEnabled } from "./routes/compare.js";
 
 const app = express();
 
@@ -15,6 +16,8 @@ app.use(requestLogger);
 app.use(requestMetrics);
 app.use("/health", healthRoutes);
 app.use("/metrics", metricsRoutes);
+// Version comparison (#23, D21): off unless FEATURE_VERSION_COMPARE=1
+if (compareEnabled(process.env)) app.use("/api/v1/documents", compareRoutes);
 app.use((req, res) => res.status(404).json({ error: "Not Found" }));
 app.use(errorHandler);
 

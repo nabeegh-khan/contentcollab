@@ -151,6 +151,9 @@ jobs:
       - run: npm run lint
       - run: npm run format:check
       - run: npm run typecheck
+      # Unit tests of the job handlers on fixture files (no Redis needed),
+      # Node's built-in runner through tsx (#23, D21)
+      - run: npm test
 
   # Node's built-in test runner over the operational scripts (no
   # dependencies), e.g. the HPA readiness check the load test relies on (#69)
