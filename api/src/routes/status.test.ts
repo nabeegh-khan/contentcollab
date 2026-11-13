@@ -51,4 +51,23 @@ describe("GET /api/v1/status", () => {
     expect(res.body.replicas).toEqual({ api: null });
     expect(res.body.latency.requests).toBe(LATENCY.requests);
   });
+
+  it("a source that never answers (Redis down queues commands) is cut off, not waited for", async () => {
+    const SHORT_MS = 50;
+    const res = await request(
+      express().use(
+        "/api/v1/status",
+        statusRoutes(
+          {
+            queue: () => new Promise<number>(() => {}),
+            latency: async () => LATENCY,
+            replicas: async () => null,
+          },
+          SHORT_MS,
+        ),
+      ),
+    ).get("/api/v1/status");
+    expect(res.status).toBe(OK);
+    expect(res.body.queue).toEqual({ waiting: null, error: `no answer within ${SHORT_MS} ms` });
+  });
 });
