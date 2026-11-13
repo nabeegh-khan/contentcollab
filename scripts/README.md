@@ -16,6 +16,11 @@ Repeatable operations as scripts, so nothing important lives in dashboard clicks
 | `ci-migrate-check.sh` | CI only: runs the migrations up, `down 0`, up against the database the `PG*` variables name and fails on any error; skipped while `api/migrations` does not exist. Run from `api/` | `npm`, `PG*` variables |
 | `sync-practices.py` | Copies the applicable rows of `docs/PRACTICES.md` into each folder README | Python |
 | `meeting-actions.py` | Turns a meeting's Actions table into GitHub Issues | GitHub CLI |
+| `do-project.sh` | The DigitalOcean project `ContentCollab`, found by exact name or created once (#53; steps in `k8s/README.md`) | `doctl` (authenticated) |
+| `app-secret.sh` | Creates or updates the `app-secrets` Secret from the environment, the existing Secret, a prompt or generated values, over stdin and never as an argument; keeps `DB_PASSWORD` and `JWT_SECRET` once set; removes the plain-text annotation a client-side apply leaves; `RESTART=1` restarts api and worker | `kubectl`; `SPACES_KEY` and `SPACES_SECRET` in the environment or typed at a prompt |
+| `spaces-verify.sh` | Proves a Spaces key can put, upload in parts, copy and delete, that an anonymous read is refused and, with `FOREIGN_BUCKET`, that the key is refused on another bucket; deletes what it wrote | AWS CLI v2, `curl`, `SPACES_KEY` and `SPACES_SECRET` |
+
+`*.test.mjs` run in CI with `node --test scripts/*.test.mjs`. The tests of the shell scripts run them against stand-ins for kubectl, doctl, the AWS CLI and curl in `testdata/`, and refuse to run unless the stand-ins are the ones on PATH.
 
 Still to write: the migrations Job wrapper (API slice) and backup and restore (backup slice).
 

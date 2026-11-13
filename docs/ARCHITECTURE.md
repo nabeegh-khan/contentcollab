@@ -281,6 +281,8 @@ Proposed: **DOKS**. The deciding points are the autoscaler and the volume handli
 
 A managed database alone does not count as persistent storage in this course, so PostgreSQL runs in the cluster as a StatefulSet with a PersistentVolumeClaim backed by DigitalOcean block storage. Uploaded files do not go on that volume: with several API replicas, a file written to one pod's disk is invisible to the others. Spaces is S3-compatible object storage reachable from every replica; the API streams the upload to Spaces and keeps the metadata row (owner, version, size, checksum, object key) in PostgreSQL. The restart test for the presentation: delete the postgres pod, the PVC re-attaches, the data is still there.
 
+Bucket and keys (#53, 11 November): one private Standard Storage bucket in TOR1; the API and the worker share one access key limited to that bucket (Read/Write/Delete); the backup job gets its own bucket and key, because a limited key is scoped to a bucket, not a prefix. Keys exist only in the cluster Secret `app-secrets`; Git holds a template of placeholders. Reasons, options and sources: [BUILD_LOG](BUILD_LOG.md), 11 November.
+
 Schema, first cut: `users`, `documents`, `document_versions` (one row per upload, object key in Spaces), `shares` (document, user or link token, role, expiry), `comments` (document version, anchor, author, body, parent for threads), `tags`, `document_tags`. Roles are Owner, Editor, Commenter and Viewer (28 October, proposal section 2), enforced by one middleware that loads the share row for the current user and document before any handler runs.
 
 ### D3. What "collaboration" means here
