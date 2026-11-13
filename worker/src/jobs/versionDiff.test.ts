@@ -7,7 +7,8 @@ import { versionDiff, type VersionDiffData } from "./versionDiff.js";
 
 const job = (data: unknown) => ({ data }) as Job<VersionDiffData>;
 // The job's error names what was wrong with its input
-const failsWith = (text: string) => (err: unknown) => err instanceof Error && err.message.includes(text);
+const failsWith = (text: string) => (err: unknown) =>
+  err instanceof Error && err.message.includes(text);
 
 test("text versions give a line diff", async () => {
   const r = await versionDiff(job({ kind: "text", before: "a\nb", after: "a\nc" }));
@@ -21,7 +22,16 @@ test("PDF page texts give a page diff", async () => {
 });
 
 test("an unknown kind or missing content fails the job", async () => {
-  await assert.rejects(versionDiff(job({ kind: "video", before: "", after: "" })), failsWith("kind"));
-  await assert.rejects(versionDiff(job({ kind: "text", before: "a" })), failsWith("before and after"));
-  await assert.rejects(versionDiff(job({ kind: "pages", before: ["a"], after: "b" })), failsWith("before and after"));
+  await assert.rejects(
+    versionDiff(job({ kind: "video", before: "", after: "" })),
+    failsWith("kind"),
+  );
+  await assert.rejects(
+    versionDiff(job({ kind: "text", before: "a" })),
+    failsWith("before and after"),
+  );
+  await assert.rejects(
+    versionDiff(job({ kind: "pages", before: ["a"], after: "b" })),
+    failsWith("before and after"),
+  );
 });

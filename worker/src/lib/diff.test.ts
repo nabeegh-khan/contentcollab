@@ -5,7 +5,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { lineDiff, pageDiff, MAX_LINE_PAIRS, DiffTooLargeError } from "./diff.js";
 
-const fixture = (name: string) => readFileSync(new URL(`./fixtures/diff/${name}`, import.meta.url), "utf8");
+const fixture = (name: string) =>
+  readFileSync(new URL(`./fixtures/diff/${name}`, import.meta.url), "utf8");
 
 // Line numbers in notes-v1.md and notes-v2.md (1-based)
 const SHARES_LINE = 4;
@@ -65,7 +66,10 @@ test("inputs above the line-pair limit are refused, not computed", () => {
 });
 
 test("pages are compared by position: unchanged, changed with its line diff, added", () => {
-  const { before, after } = JSON.parse(fixture("report-pages.json")) as { before: string[]; after: string[] };
+  const { before, after } = JSON.parse(fixture("report-pages.json")) as {
+    before: string[];
+    after: string[];
+  };
   const d = pageDiff(before, after);
   // The fixture: page 2 reworded, page 4 new
   assert.deepEqual(
