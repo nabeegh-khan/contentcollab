@@ -1,0 +1,54 @@
+
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: db-migrate-__IMAGE_TAG__
+  namespace: contentcollab
+spec:
+  backoffLimit: 3
+  ttlSecondsAfterFinished: 86400
+  template:
+    spec:
+      restartPolicy: Never
+
+      initContainers:
+        - name: wait-for-postgres
+          image: postgres:18
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              until pg_isready -h postgres -p 5432 -U "$DB_USER" -d "$DB_NAME"; do
+                echo "Waiting for PostgreSQL..."
+                sleep 2
+              done
+          envFrom:
+            - configMapRef:
+                name: app-config
+            - secretRef:
+                name: app-secrets
+
+      containers:
+        - name: migrate
+          image: ghcr.io/nabeegh-khan/contentcollab-api:__IMAGE_TAG__
+          imagePullPolicy: Always
+          command: ["npm", "run", "migrate", "--", "up"]
+          env:
+            - name: PGHOST
+              value: postgres
+            - name: PGPORT
+              value: "5432"
+            - name: PGDATABASE
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: DB_NAME
+            - name: PGUSER
+              valueFrom:
+                secretKeyRef:
+                  name: app-secrets
+                  key: DB_USER
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: app-secrets
+                  key: DB_PASSWORD
