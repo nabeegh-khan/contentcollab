@@ -22,3 +22,6 @@ Thumbs.db
 .vscode/
 .idea/
 k8s/**/secrets.yaml
+
+# Python bytecode from the manifest tests
+__pycache__/
