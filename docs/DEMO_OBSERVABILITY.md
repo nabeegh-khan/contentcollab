@@ -46,7 +46,7 @@ http_errors_total{method="GET",route="/health",status_class="5xx"} 1
 
 ## 4. The error-rate check turning red
 
-`scripts/error-rate.mjs` reads the request log and prints the 5xx share per route (`--tail=-1` in the commands matters: with a selector, `kubectl logs` returns only the last 10 lines of each pod unless told otherwise, and the share would come from that sample); it exits 1 when a route with at least 10 requests is above 2% (the threshold in the failure table of `docs/ARCHITECTURE.md`; `THRESHOLD` and `MIN_REQUESTS` change it).
+`scripts/error-rate.mjs` reads the request log and prints the 5xx share per route (`--tail=-1` in the commands matters: with a selector, `kubectl logs` returns only the last 10 lines of each pod unless told otherwise, and the share would come from that sample); it exits 1 when a route with at least 10 requests is above 2% (the threshold in the failure table of `docs/ARCHITECTURE.md`; `THRESHOLD` and `MIN_REQUESTS` change it), or on any failing `/health` or `/metrics`.
 
 ```
 # healthy: send some traffic that is logged (a successful /health is not), then every route is "ok"
@@ -78,12 +78,12 @@ docker compose start redis
 
 ## Not installed, and why
 
-No monitoring agent runs in the cluster. By placement it fails even today: an agent of 256 MiB on each node leaves 234.6 and 42.6 MiB, so the 256 MiB cluster agent fits on neither node (`AGENT_MI=256 CLUSTER_AGENT_MI=256 node scripts/memory-headroom.mjs`). With the API at its five-pod maximum, 405 MiB of memory is unrequested and about 172 MiB is unused across the two nodes (11 November 2026, `node scripts/memory-headroom.mjs`); a Datadog agent requests 768 MiB, and a Prometheus and Grafana pair needs more than the real memory left (D18). The Datadog dashboard and monitor files (`k8s/doks/datadog/`) stay in the repository, validated against Datadog's schemas, for use only if a third node is ever added.
+No monitoring agent runs in the cluster. On the two 2 GB nodes measured before the rebuild, by placement it failed: an agent of 256 MiB on each node left 234.6 and 42.6 MiB, so the 256 MiB cluster agent fit on neither node (`AGENT_MI=256 CLUSTER_AGENT_MI=256 node scripts/memory-headroom.mjs`). With the API at its five-pod maximum, 405 MiB of memory was unrequested and about 172 MiB unused across the two nodes (11 November 2026, `node scripts/memory-headroom.mjs`); a Datadog agent requests 768 MiB, and a Prometheus and Grafana pair needed more than the real memory left (D18). The rebuilt cluster has larger nodes (D13), so these numbers no longer describe it: re-measuring it is open, and D18 is revisited if an agent then fits. The Datadog dashboard and monitor files (`k8s/doks/datadog/`) stay in the repository (checked once against Datadog's published Dashboard and Monitor schemas, not against an account), for use only if a third node is ever added.
 
 ## To confirm on the rebuilt cluster
 
-- `node scripts/memory-headroom.mjs` prints about the same numbers as D18 (the node size and the pods are unchanged by the rebuild).
+- `node scripts/memory-headroom.mjs` on the rebuilt cluster (s-2vcpu-4gb nodes, autoscaling 1 to 2, D13): the numbers in D18 are from the old 2 GB nodes and do not carry over.
 - The Insights tab shows both worker nodes; `bash scripts/alerts.sh` creates three policies and `doctl monitoring alert list` shows them.
 - After #102 is rolled out: section 1 finds the request by its ID; section 4 goes from ok to ALERT within a minute of stopping Redis, and two minutes after starting it again the failing lines have left the window.
-- Startup lines (`api listening on 3000`) are still plain text; the error-rate check ignores them.
+- After a scale-up or a rollout, a readiness probe can reach a new pod before it has connected to Redis and get a 503: the check then shows a `/health` failure or two without an outage. Read the count and the pods' ages before calling it red.
 - The Redis stop in section 4 is checked against the code (`/health` returns 503 when Redis is down, readiness is `/health`, liveness is the socket) and has not been run on the cluster yet.

@@ -64,12 +64,29 @@ jobs:
           cache: npm
           cache-dependency-path: api/package-lock.json
       - run: npm ci
+      # The migrations must survive up, down, up against this Postgres before
+      # any test runs, and the schema is left migrated for the tests (DB-9,
+      # TST-1). Skipped until api/migrations exists (#37).
+      - name: Migrations up, down, up
+        run: bash ../scripts/ci-migrate-check.sh
+        env:
+          PGHOST: ${{ env.DB_HOST }} # node-pg-migrate reads the PG* variables
+          PGPORT: ${{ env.DB_PORT }}
+          PGUSER: ${{ env.DB_USER }}
+          PGPASSWORD: ${{ env.DB_PASSWORD }}
+          PGDATABASE: ${{ env.DB_NAME }}
       - run: npm test
 
   # Renders both overlays and checks every object against the Kubernetes
   # schemas, so a bad manifest fails the PR instead of the cluster
   k8s:
     runs-on: ubuntu-latest
+    env:
+      # The Kubernetes versions every manifest is validated against, set once:
+      # 1.36, the plan in ARCHITECTURE D13 (maintained until 28 Jun 2027), and
+      # 1.37, which the cluster rebuilt on 11 Nov 2026 runs (D13). 1.33 reached
+      # end of life on 28 Jun 2026 (kubernetes.io/releases, checked 11 Nov 2026)
+      KUBE_VERSION: "1.36.0 1.37.0"
     steps:
       - uses: actions/checkout@v5
       - uses: azure/setup-kubectl@v4
@@ -81,16 +98,13 @@ jobs:
         run: |
           for overlay in minikube doks; do
             kubectl kustomize k8s/$overlay > /tmp/$overlay.yaml
-            kubeconform -strict -summary -kubernetes-version 1.33.0 \
-              -schema-location default \
-              -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
-              /tmp/$overlay.yaml
+            bash scripts/ci-kubeconform.sh /tmp/$overlay.yaml
           done
           # The issuer is applied by scripts/cluster-up.sh, not by the overlay
-          kubeconform -strict -summary -kubernetes-version 1.33.0 \
-            -schema-location default \
-            -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
-            k8s/doks/cluster-issuer.yaml
+          bash scripts/ci-kubeconform.sh k8s/doks/cluster-issuer.yaml
+      - name: Infra overlay and migrate Job
+        # Rendered and validated once #37 adds them; skipped until then
+        run: bash scripts/ci-k8s-cloud.sh
       - name: API replicas spread across nodes
         # Two replicas on two nodes are only highly available if the
         # scheduler is told to spread them: its default spread skips nodes
@@ -113,8 +127,11 @@ jobs:
         # adds; the Gateway once landed in `default` this way (BUILD_LOG.md,
         # 4 Nov). yq 4 is preinstalled on the Ubuntu runner.
         run: |
-          for overlay in minikube doks; do
-            stray=$(yq 'select(.kind != "Namespace" and .metadata.namespace != "contentcollab") | .kind + "/" + .metadata.name' /tmp/$overlay.yaml | grep -v '^---$' || true)
+          for overlay in minikube doks infra migrate-job; do
+            [ -f /tmp/$overlay.yaml ] || continue # infra and migrate-job exist once #37 lands
+            # yq writes to a file so a yq failure stops the step; in a pipe with `|| true` it read as no strays
+            yq 'select(.kind != "Namespace" and .metadata.namespace != "contentcollab") | .kind + "/" + .metadata.name' /tmp/$overlay.yaml > /tmp/$overlay.stray
+            stray=$(grep -v '^---$' /tmp/$overlay.stray || true)
             [ -z "$stray" ] || { echo "::error::$overlay renders objects outside contentcollab: $stray"; exit 1; }
           done
 
@@ -211,3 +228,28 @@ jobs:
             sleep 1
           done
           echo "api did not pick Redis up (last: $body)"; docker logs api-noredis; exit 1
+
+  # Builds the web image without pushing it, so a Dockerfile that no longer
+  # builds fails the pull request rather than the first deploy (#47, CON-3). Skipped until web/Dockerfile exists. hashFiles
+  # cannot be used in a job-level condition, so each step carries it; the job itself
+  # always runs and reports green. The cache has its own scope so the two
+  # images do not overwrite each other's layers.
+  web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - name: Skipped
+        if: hashFiles('web/Dockerfile') == ''
+        run: echo "web/Dockerfile does not exist yet (#47), web image build skipped"
+      - uses: docker/setup-buildx-action@v3
+        if: hashFiles('web/Dockerfile') != ''
+      - uses: docker/build-push-action@v6
+        if: hashFiles('web/Dockerfile') != ''
+        with:
+          context: web # the Dockerfile and its files live in web/
+          push: false # build only; nothing is published from a pull request
+          load: true # keep the result in the runner's Docker daemon
+          tags: contentcollab-web:pr # local tag, never published
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,mode=max,scope=web
