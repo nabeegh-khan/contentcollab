@@ -25,10 +25,13 @@ case "$*" in
     for i in $(seq 1 "${STUB_NODES:-2}"); do echo "node-$i |True"; done
     for i in $(seq 1 "${STUB_NODES_NOT_READY:-0}"); do echo "bad-$i |False"; done ;;
   *"get pods -l app=api"*)
-    # restartCount of each API container; the restart event replaces the pods (counts start again)
+    # "<pod> <restartCount>" per API pod
     n=0
     if [ -n "${STUB_API_RESTARTS_AFTER:-}" ] && happened "$STUB_API_RESTARTS_AFTER"; then n=1; fi
-    echo "$n 0" ;;
+    echo "api-a $n"
+    echo "api-b 0"
+    # A terminating pod (with a restart) still listed before event 3, gone after it
+    if [ "${STUB_API_POD_GONE:-0}" = 1 ] && ! happened scale; then echo "api-old 1"; fi ;;
   *"get pod postgres-0"*"nodeName"*) echo node-1 ;;
   *"get pod postgres-0"*"metadata.uid"*)
     if [ "${STUB_SAME_UID:-0}" = 1 ]; then echo uid-0; else echo "uid-$(grep -cE 'delete|scale|drain' "$events")"; fi ;;

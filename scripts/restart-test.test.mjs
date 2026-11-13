@@ -79,6 +79,12 @@ for (const event of ["delete", "scale"]) {
   });
 }
 
+test("an API pod that goes away between the two counts is not a restart", () => {
+  const r = run({ ...ctx, STUB_API_POD_GONE: "1" });
+  assert.equal(r.status, 0, r.out);
+  assert.match(r.out, /PASS: the marker survived 3 of 3 events/);
+});
+
 test("fails when the API does not answer /health ok after postgres is back", () => {
   const r = run({ ...ctx, STUB_API_UNHEALTHY: "1" });
   assert.equal(r.status, 1, r.out);
