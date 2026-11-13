@@ -13,6 +13,12 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    healthcheck: # https://last9.io/blog/docker-compose-health-checks/ used for lines 17 and 72
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"] 
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   # Background jobs on the Redis queue; no published port (CON-7)
   worker:
@@ -54,6 +60,20 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
+
+  web:
+    build: ./web
+    ports:
+      - "8080:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+        test: ["CMD", "curl", "-f", "http://localhost"]
+        interval: 5s
+        timeout: 5s
+        retries: 5
+        start_period: 10s          
 
 # Named volume so database data survives container restarts (STO-2)
 volumes:
