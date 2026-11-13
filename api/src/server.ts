@@ -9,6 +9,7 @@ import healthRoutes from "./routes/health.js";
 import metricsRoutes from "./routes/metrics.js";
 import { statusRoutes } from "./routes/status.js";
 import { latencyFrom, queueDepth } from "./lib/status.js";
+import { inClusterGet, readyReplicas } from "./lib/replicas.js";
 import { httpDuration } from "./lib/metrics.js";
 
 const app = express();
@@ -18,14 +19,15 @@ app.use(requestLogger);
 app.use(requestMetrics);
 app.use("/health", healthRoutes);
 app.use("/metrics", metricsRoutes);
-// Status page numbers (#30, D23); replicas need read access to the Deployment, not granted yet
+// Status page numbers (#30, D23); replicas come from the Kubernetes API in a pod, null elsewhere
+const kubeGet = inClusterGet(process.env);
 app.use(
   "/api/v1/status",
   statusRoutes({
     // Fail fast while Redis is down instead of queueing commands until the time limit
     queue: () => (redis.isReady ? queueDepth(redis) : Promise.reject(new Error("redis not ready"))),
     latency: () => latencyFrom(httpDuration),
-    replicas: async () => null,
+    replicas: () => (kubeGet ? readyReplicas(kubeGet) : Promise.resolve(null)),
   }),
 );
 app.use((req, res) => res.status(404).json({ error: "Not Found" }));
