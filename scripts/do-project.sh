@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Creates the DigitalOcean project that groups the cluster, the load balancer and the Spaces
-# bucket (#53), or finds it by name. Repeatable: a second run changes nothing (INF-3).
+# Creates the DigitalOcean project ContentCollab (#53), or finds it by name. Repeatable: a second
+# run changes nothing (INF-3). Only the Spaces bucket is assigned to it today (k8s/README.md);
+# the cluster and load balancer stay in the default project until a follow-up assigns them.
 # Needs doctl, authenticated with `doctl auth init`.
 set -euo pipefail
 

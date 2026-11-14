@@ -9,7 +9,8 @@
 #   SPACES_KEY=... scripts/app-secret.sh
 #
 # Settings: NAMESPACE (contentcollab), SECRET_NAME (app-secrets), KUBE_CONTEXT (the current one),
-# RESTART=1 (restart api and worker afterwards; they read the Secret only when they start).
+# RESTART=1 (restart api and worker afterwards; they read the Secret only when they start),
+# DB_PASSWORD_ROTATED=1 (allow a DB_PASSWORD that differs from the existing Secret's).
 # Values: DB_USER, DB_PASSWORD, JWT_SECRET, SPACES_KEY, SPACES_SECRET. A value given here wins; one
 # left out is kept from the existing Secret, else generated (DB_PASSWORD, JWT_SECRET), defaulted
 # (DB_USER) or left empty (the Spaces keys). A new DB_PASSWORD would not match the one PostgreSQL
@@ -70,6 +71,14 @@ resolve() { # resolve <KEY> <min length> <user|random24|random32|prompt>
       [ -n "$value" ] || [ "$3" = prompt ] || { echo "$key is missing from the existing Secret: set $key in the environment to replace it"; exit 1; }
       [ "$value" != "REPLACE_ME" ] || { echo "$key in the existing Secret is still the template placeholder (the template was applied unedited): set $key in the environment to replace it"; exit 1; }
       [[ -z "$value" || "$value" =~ ^[A-Za-z0-9+/=._-]+$ ]] || { echo "$key in the existing Secret has characters other than letters, digits and + / = . _ - : set $key in the environment to replace it"; exit 1; }
+    fi
+  elif [ "$key" = DB_PASSWORD ] && [ "$exists" = true ] && [ "${DB_PASSWORD_ROTATED:-}" != 1 ]; then
+    # PostgreSQL keeps the password it stored when its volume was first initialised: a new one
+    # in the Secret alone locks the api out. Rotate it in PostgreSQL first (ALTER USER), then
+    # say so with DB_PASSWORD_ROTATED=1.
+    if [ "$value" != "$(kc -n "$NAMESPACE" get secret "$SECRET_NAME" -o "jsonpath={.data.DB_PASSWORD}" | base64 -d)" ]; then
+      echo "DB_PASSWORD differs from the one in the existing Secret: change it in PostgreSQL first (ALTER USER), then rerun with DB_PASSWORD_ROTATED=1"
+      exit 1
     fi
   fi
   if [ -z "$value" ] && [ "$3" = prompt ] && [ -t 0 ]; then
