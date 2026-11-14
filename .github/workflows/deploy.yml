@@ -90,13 +90,70 @@ jobs:
           token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
       - uses: azure/setup-kubectl@v4
         if: steps.cluster.outputs.present == 'true'
+      - name: Short-lived cluster credentials
+        if: steps.cluster.outputs.present == 'true'
+        run: doctl kubernetes cluster kubeconfig save --expiry-seconds 600 contentcollab
       - name: Roll the Deployments to this commit
         if: steps.cluster.outputs.present == 'true'
         run: |
-          kubectl apply -k k8s/doks
+          # Pin both images to this commit in the overlay, then apply once:
+          # one rollout per merge, and the manifest that is applied names the
+          # image that was built (INF-9)
+          cd k8s/doks
           for svc in api worker; do
-            kubectl -n contentcollab set image deployment/$svc $svc=$REGISTRY/contentcollab-$svc:${{ github.sha }}
+            kustomize edit set image $REGISTRY/contentcollab-$svc=$REGISTRY/contentcollab-$svc:${{ github.sha }}
           done
-          # Fails the job, and so the run, if the new pods never become ready
-          kubectl -n contentcollab rollout status deployment/api --timeout=180s
-          kubectl -n contentcollab rollout status deployment/worker --timeout=180s
+          cd ../..
+          kubectl apply -k k8s/doks
+          # A rollout that never turns ready is rolled back here, not by hand,
+          # and the job still fails so the run is not green (INF-9). A failed
+          # undo is reported and the next Deployment is still checked.
+          failed=0
+          for svc in api worker; do
+            # A renamed image would leave set image matching nothing, so the
+            # apply sets the base placeholder `unpinned`, which cannot be
+            # pulled: that rollout never finishes (the old pods keep serving).
+            # It fails the run and goes on to the watch below, whose `rollout
+            # status` waits for the new revision before undoing it; an undo
+            # straight after the apply could go back one revision too far.
+            # Any other image is reported without an undo, since no new
+            # revision may exist to undo
+            image=$(kubectl -n contentcollab get deployment/$svc -o jsonpath='{.spec.template.spec.containers[0].image}') \
+              || image="(unreadable)"   # a bare failing assignment would end the step under bash -e
+            case "$image" in
+              *:${{ github.sha }}) ;;
+              *:unpinned) echo "::error::deployment/$svc was applied with the placeholder tag"; failed=1 ;;
+              *) echo "::error::deployment/$svc runs $image, not this commit"; failed=1; continue ;;
+            esac
+            kubectl -n contentcollab rollout status deployment/$svc --timeout=180s \
+              || { kubectl -n contentcollab rollout undo deployment/$svc \
+                     || echo "::error::undo of deployment/$svc failed: the cluster may run mixed versions"; failed=1; }
+          done
+          exit $failed
+      # Skipped until SMOKE_URL is set, so deploys do not roll back before DNS
+      # and TLS exist
+      - name: Smoke check, roll back on failure
+        if: steps.cluster.outputs.present == 'true' && vars.SMOKE_URL != ''
+        env:
+          SMOKE_URL: ${{ vars.SMOKE_URL }}
+        run: |
+          # Reads the body, not just the status: both dependencies must be up.
+          # No -f, so a 503's body (which dependency is down) reaches the log
+          for _ in $(seq 1 12); do
+            body=$(curl -sS --max-time 5 "$SMOKE_URL/health" || true)
+            if echo "$body" | grep -q '"status":"ok"'; then echo "smoke ok: $body"; exit 0; fi
+            sleep 5
+          done
+          echo "::error::Smoke check failed (last body: $body): rolling back"
+          # The ten-minute credentials may have run out during two rollouts and
+          # the smoke wait; fetch fresh ones so the rollback is not refused
+          doctl kubernetes cluster kubeconfig save --expiry-seconds 600 contentcollab \
+            || echo "::warning::could not refresh cluster credentials; trying the rollback with the current ones"
+          # Both images come from this commit, so both go back together; one
+          # failed undo does not stop the other
+          for svc in api worker; do
+            { kubectl -n contentcollab rollout undo deployment/$svc \
+                && kubectl -n contentcollab rollout status deployment/$svc --timeout=180s; } \
+              || echo "::error::rollback of deployment/$svc failed: the cluster may run mixed versions"
+          done
+          exit 1
