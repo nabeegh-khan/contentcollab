@@ -520,3 +520,19 @@ Spaces access keys can only be created in the Control Panel and the CLI cannot c
 - Ran `spaces-verify.sh` with the AWS CLI against a local S3 gateway and `app-secret.sh` with kubectl against a local k3s cluster, using made-up keys and the cluster's own kubeconfig, never the account or the DOKS context. Nothing was created on DigitalOcean: the project, bucket, key and Secret are commands and Control Panel steps for Nabeegh to run (`k8s/README.md`).
 - Changed `cluster-up.sh` to call the new script, then dropped that change: the open PR #94 rewrites the same file and its tests would break. The follow-up is written down for after #94 merges.
 - Read #88 and #89 without editing them. The one point for #88 (its init container should read `DB_USER` by key) is in the build log, and a new test reports it once both are merged.
+
+## Re-reviews before the checkpoint call and the CI signing-key fix (#127), 14 November 2026
+
+### Prompt
+
+Before the 3:30pm checkpoint: unblock CI for the auth and shares pull requests, re-review both against our criteria after their author's fixes, answer the web skeleton's open questions, and update the demo page and meeting agenda from the current state.
+
+### AI Response
+
+Traced the red `docker` job to CI starting the API image without a signing key, proposed a test-only value on both `docker run` lines with a check that fails first, drafted the re-reviews and the web comment, and drafted the agenda and demo updates.
+
+### What Your Team Did With It
+
+- Kept the fix in CI, our own scope, and left the auth code alone; the check was committed before the fix and failed first.
+- An independent check of the review drafts corrected one wrong claim (a merge conflict on the web branch that Git does not produce) and changed the shares review from an approval to a comment, since the branch still carries the auth branch's broken Compose line until auth merges.
+- Found in re-review that the auth branch's new Compose line stops `docker compose up` and that four docs files on it are older copies; both are asked of the author, not changed by us. Deferred items went to #129 and #130.
