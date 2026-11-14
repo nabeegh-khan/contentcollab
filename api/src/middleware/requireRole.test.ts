@@ -74,6 +74,37 @@ afterAll(async () => {
 });
 
 describe("requireRole on an owner-only document route", () => {
+  it("returns 400 for a non-UUID documentId", async () => {
+    const callerId = await createUser();
+    const res = await request(app)
+      .get("/documents/not-a-uuid/owner-only")
+      .set("Authorization", `Bearer ${token(callerId)}`);
+
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe("VALIDATION");
+    expect(res.body.details).toEqual(
+      expect.arrayContaining([expect.objectContaining({ field: "documentId" })]),
+    );
+  });
+
+  it("returns 404 when the caller's share has expired", async () => {
+    const ownerId = await createUser();
+    const callerId = await createUser();
+    const documentId = await createDocument(ownerId);
+    await pool.query(
+      `INSERT INTO shares (document_id, user_id, role, expires_at)
+       VALUES ($1, $2, 'owner', NOW() - INTERVAL '1 minute')`,
+      [documentId, callerId],
+    );
+
+    const res = await request(app)
+      .get(`/documents/${documentId}/owner-only`)
+      .set("Authorization", `Bearer ${token(callerId)}`);
+
+    expect(res.status).toBe(404);
+    expect(res.body.code).toBe("NOT_FOUND");
+  });
+
   it("returns 404 when the caller has no share", async () => {
     const ownerId = await createUser();
     const callerId = await createUser();
@@ -120,3 +151,4 @@ describe("requireRole on an owner-only document route", () => {
     expect(res.body).toEqual({ role: "owner" });
   });
 });
+

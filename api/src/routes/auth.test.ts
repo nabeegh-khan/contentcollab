@@ -53,6 +53,21 @@ afterAll(async () => {
 });
 
 describe("POST /api/v1/auth/register", () => {
+  it("returns 400 when registration contains an unknown field", async () => {
+    const res = await request(app).post(`${base}/register`).send({
+      email: email(),
+      password: "password123",
+      displayName: "Test User",
+      isAdmin: true,
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe("VALIDATION");
+    expect(res.body.details).toEqual(
+      expect.arrayContaining([expect.objectContaining({ field: "body" })]),
+    );
+  });
+
   it("creates a user with 201 and never returns the password hash", async () => {
     const userEmail = email();
     const res = await request(app).post(`${base}/register`).send({
@@ -107,6 +122,50 @@ describe("POST /api/v1/auth/register", () => {
 });
 
 describe("POST /api/v1/auth/login and GET /api/v1/auth/me", () => {
+  it("returns 400 for an invalid login email", async () => {
+    const res = await request(app).post(`${base}/login`).send({
+      email: "not-an-email",
+      password: "password123",
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe("VALIDATION");
+    expect(res.body.details).toEqual(
+      expect.arrayContaining([expect.objectContaining({ field: "email" })]),
+    );
+  });
+
+  it("returns 400 when login contains an unknown field", async () => {
+    const res = await request(app).post(`${base}/login`).send({
+      email: email(),
+      password: "password123",
+      unexpected: true,
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe("VALIDATION");
+    expect(res.body.details).toEqual(
+      expect.arrayContaining([expect.objectContaining({ field: "body" })]),
+    );
+  });
+
+  it("returns 401 for an invalid or expired token", async () => {
+    const user = await createUser();
+    const expiredToken = jwt.sign({}, testSecret, {
+      subject: user.id,
+      expiresIn: -1,
+    });
+
+    for (const token of ["not-a-jwt", expiredToken]) {
+      const res = await request(app)
+        .get(`${base}/me`)
+        .set("Authorization", `Bearer ${token}`);
+
+      expect(res.status).toBe(401);
+      expect(res.body.code).toBe("UNAUTHORIZED");
+    }
+  });
+  
   it("returns a token and public user for valid credentials", async () => {
     const user = await createUser();
     const res = await request(app).post(`${base}/login`).send({
