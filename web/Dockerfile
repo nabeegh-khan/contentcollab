@@ -14,4 +14,4 @@ FROM nginx
 
 COPY --from=build /web/dist /usr/share/nginx/html
 
-COPY nginx.conf /etc/nginx/nginx.conf
+COPY nginx.conf /etc/nginx/conf.d/default.conf
