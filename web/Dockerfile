@@ -1,15 +1,17 @@
 FROM node:24 AS build
 
-COPY --from=build /web/dist /usr/share/nginx/html
-
 WORKDIR /web
 
+COPY package.json package-lock.json ./
+
 RUN npm ci
+
+COPY . .
 
 RUN npm run build
 
 FROM nginx
 
-COPY nginx.conf /etc/nginx/nginx.conf
+COPY --from=build /web/dist /usr/share/nginx/html
 
-COPY dist/ /usr/share/nginx/html
+COPY nginx.conf /etc/nginx/nginx.conf
