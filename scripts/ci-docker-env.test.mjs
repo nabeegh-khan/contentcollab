@@ -12,7 +12,9 @@ function apiDockerRunLines(workflowText) {
   return workflowText
     .split("\n")
     .map((line) => line.trim())
-    .filter((line) => line.startsWith("docker run") && line.includes(IMAGE_TAG));
+    .filter(
+      (line) => line.startsWith("docker run") && line.includes(IMAGE_TAG),
+    );
 }
 
 test("ci.yml starts the API image at least once", () => {
