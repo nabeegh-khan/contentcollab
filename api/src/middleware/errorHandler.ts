@@ -22,9 +22,31 @@ export function errorHandler(err: unknown, req: Request, res: Response, next: Ne
     typeof err === "object" &&
     err !== null &&
     "type" in err &&
+    err.type === "entity.too.large"
+  ) {
+    res.status(413).json({
+      error: "Request Body Too Large",
+      code: "TOO_LARGE",
+    });
+    return;
+  }
+
+  if (
+    typeof err === "object" &&
+    err !== null &&
+    "type" in err &&
     err.type === "entity.parse.failed"
   ) {
     res.status(400).json({ error: "Malformed JSON", code: "VALIDATION" });
+    return;
+  }
+
+  if (err instanceof HttpError && err.status >= 500) {
+    console.error(`${req.method} ${req.originalUrl}`, err);
+    res.status(err.status).json({
+      error: "Internal Server Error",
+      code: "INTERNAL",
+    });
     return;
   }
 
@@ -46,5 +68,8 @@ export function errorHandler(err: unknown, req: Request, res: Response, next: Ne
   }
 
   console.error(`${req.method} ${req.originalUrl}`, err);
-  res.status(500).json({ error: "Internal Server Error" });
+  res.status(500).json({
+    error: "Internal Server Error",
+    code: "INTERNAL",
+  });
 }

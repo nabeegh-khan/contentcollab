@@ -5,6 +5,7 @@ import app from "../server.js";
 import { pool } from "../lib/db.js";
 import { requireDatabase } from "../lib/dbReady.js";
 import { requireServices } from "../lib/reachable.js";
+import jwt from "jsonwebtoken";
 
 const base = "/api/v1/auth";
 const testSecret = "auth-test-secret-that-is-not-used-outside-tests";
@@ -165,7 +166,7 @@ describe("POST /api/v1/auth/login and GET /api/v1/auth/me", () => {
       expect(res.body.code).toBe("UNAUTHORIZED");
     }
   });
-  
+
   it("returns a token and public user for valid credentials", async () => {
     const user = await createUser();
     const res = await request(app).post(`${base}/login`).send({

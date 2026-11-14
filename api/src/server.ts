@@ -8,6 +8,7 @@ import { pool } from "./lib/db.js";
 import healthRoutes from "./routes/health.js";
 import metricsRoutes from "./routes/metrics.js";
 import authRoutes from "./routes/auth.js";
+import { jwtSecret } from "./middleware/requireAuth.js";
 
 const app = express();
 
@@ -17,7 +18,9 @@ app.use(requestMetrics);
 app.use("/health", healthRoutes);
 app.use("/metrics", metricsRoutes);
 app.use("/api/v1/auth", authRoutes);
-app.use((req, res) => res.status(404).json({ error: "Not Found" }));
+app.use((req, res) =>
+  res.status(404).json({ error: "Not Found", code: "NOT_FOUND" }),
+);
 app.use(errorHandler);
 
 // Start listening only when this file is the entry point. Tests import `app`
@@ -25,8 +28,10 @@ app.use(errorHandler);
 const isEntry = process.argv[1] !== undefined && fileURLToPath(import.meta.url) === process.argv[1];
 
 if (isEntry) {
+  jwtSecret();
   const port = Number(process.env.PORT ?? 3000);
   const server = app.listen(port, () => console.log(`api listening on ${port}`));
+  
 
   // Listen first, then connect to Redis in the background (#65). If Redis is
   // down when the pod starts, the process stays up: /health answers 503 at
