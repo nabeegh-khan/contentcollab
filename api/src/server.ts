@@ -7,6 +7,10 @@ import { connectRedis } from "./lib/redis.js";
 import { pool } from "./lib/db.js";
 import healthRoutes from "./routes/health.js";
 import metricsRoutes from "./routes/metrics.js";
+import authRoutes from "./routes/auth.js";
+import { jwtSecret } from "./middleware/requireAuth.js";
+import sharesRoutes from "./routes/shares.js";
+import linksRoutes from "./routes/links.js";
 
 const app = express();
 
@@ -15,6 +19,10 @@ app.use(requestLogger);
 app.use(requestMetrics);
 app.use("/health", healthRoutes);
 app.use("/metrics", metricsRoutes);
+app.use("/api/v1/auth", authRoutes);
+app.use((req, res) => res.status(404).json({ error: "Not Found", code: "NOT_FOUND" }));
+app.use("/api/v1/documents/:documentId/shares", sharesRoutes);
+app.use("/api/v1/links", linksRoutes);
 app.use((req, res) => res.status(404).json({ error: "Not Found" }));
 app.use(errorHandler);
 
@@ -23,6 +31,7 @@ app.use(errorHandler);
 const isEntry = process.argv[1] !== undefined && fileURLToPath(import.meta.url) === process.argv[1];
 
 if (isEntry) {
+  jwtSecret();
   const port = Number(process.env.PORT ?? 3000);
   const server = app.listen(port, () => console.log(`api listening on ${port}`));
 
