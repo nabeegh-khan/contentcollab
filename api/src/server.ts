@@ -20,10 +20,9 @@ app.use(requestMetrics);
 app.use("/health", healthRoutes);
 app.use("/metrics", metricsRoutes);
 app.use("/api/v1/auth", authRoutes);
-app.use((req, res) => res.status(404).json({ error: "Not Found", code: "NOT_FOUND" }));
 app.use("/api/v1/documents/:documentId/shares", sharesRoutes);
 app.use("/api/v1/links", linksRoutes);
-app.use((req, res) => res.status(404).json({ error: "Not Found" }));
+app.use((req, res) => res.status(404).json({ error: "Not Found", code: "NOT_FOUND" }));
 app.use(errorHandler);
 
 // Start listening only when this file is the entry point. Tests import `app`

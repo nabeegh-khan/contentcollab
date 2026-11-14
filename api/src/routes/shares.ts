@@ -73,7 +73,8 @@ router.post("/", validate(createShareSchema), async (req, res) => {
       const result = await pool.query(
         `INSERT INTO shares (document_id, user_id, role)
            VALUES ($1, $2, $3)
-           RETURNING id, document_id, user_id, role, expires_at, created_at`,
+           RETURNING id, document_id, user_id, link_token,
+          role, expires_at, created_at`,
         [documentId, user.rows[0].id, req.body.role],
       );
       res.status(201).json(toShare(result.rows[0]));
@@ -96,7 +97,8 @@ router.post("/", validate(createShareSchema), async (req, res) => {
     const result = await pool.query(
       `INSERT INTO shares (document_id, link_token, role, expires_at)
         VALUES ($1, $2, $3, $4)
-        RETURNING id, document_id, link_token, role, expires_at, created_at`,
+        RETURNING id, document_id, user_id, link_token,
+          role, expires_at, created_at`,
       [documentId, token, req.body.role, req.body.expiresAt ?? null],
     );
     res.status(201).json(toShare(result.rows[0]));
