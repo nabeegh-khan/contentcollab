@@ -23,7 +23,7 @@ id=$(printf '%s\n' "$projects" | awk -v name="$PROJECT_NAME" '{ id = $1; $1 = ""
 
 if [ -z "$id" ]; then
   id=$(doctl projects create --name "$PROJECT_NAME" --purpose "$PURPOSE" --environment "$ENVIRONMENT" \
-    --description "ECE1779 Team 22: ContentCollab cluster, load balancer and Spaces bucket" \
+    --description "ECE1779 Team 22: ContentCollab cloud resources (Spaces bucket first)" \
     --format ID --no-header)
   echo "created project"
 else

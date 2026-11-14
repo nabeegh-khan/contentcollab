@@ -102,7 +102,8 @@ resolve DB_PASSWORD 16 random24
 resolve JWT_SECRET 32 random32
 resolve SPACES_KEY 1 prompt
 resolve SPACES_SECRET 1 prompt
-# Exported values would reach kubectl and any plugin it starts; they are in V_* now
+# The earlier kubectl reads ran with these in their environment; from here on (the apply, the
+# restart) no kubectl call or plugin it starts inherits them; they are in V_* now
 unset DB_USER DB_PASSWORD JWT_SECRET SPACES_KEY SPACES_SECRET
 
 # 4. Over stdin (printf is a shell builtin), so no value is in a process argument list

@@ -14,7 +14,7 @@ test("creates the project once, with the documented flags, and prints its id", (
   const r = box.run("do-project.sh");
   assert.equal(r.status, 0, r.out);
   assert.deepEqual(calls().filter((c) => c.startsWith("projects create")), [
-    'projects create --name ContentCollab --purpose Web Application --environment Development --description ECE1779 Team 22: ContentCollab cluster, load balancer and Spaces bucket --format ID --no-header',
+    'projects create --name ContentCollab --purpose Web Application --environment Development --description ECE1779 Team 22: ContentCollab cloud resources (Spaces bucket first) --format ID --no-header',
   ]);
   assert.match(r.stdout, new RegExp(`ContentCollab: ${ID}`));
 });
