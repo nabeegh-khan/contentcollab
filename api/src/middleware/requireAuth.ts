@@ -18,11 +18,11 @@ export const requireAuth: RequestHandler = (req, res, next) => {
   }
 
   const secret = jwtSecret();
-  const payload = jwt.verify(token, secret, {
-    algorithms: ["HS256"],
-  }) as JwtPayload;
-
   try {
+    const payload = jwt.verify(token, secret, {
+      algorithms: ["HS256"],
+    }) as JwtPayload;
+
     if (typeof payload.sub !== "string") {
       throw new HttpError(401, "UNAUTHORIZED", "Unauthorized");
     }

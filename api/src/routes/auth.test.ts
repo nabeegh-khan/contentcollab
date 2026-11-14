@@ -158,9 +158,7 @@ describe("POST /api/v1/auth/login and GET /api/v1/auth/me", () => {
     });
 
     for (const token of ["not-a-jwt", expiredToken]) {
-      const res = await request(app)
-        .get(`${base}/me`)
-        .set("Authorization", `Bearer ${token}`);
+      const res = await request(app).get(`${base}/me`).set("Authorization", `Bearer ${token}`);
 
       expect(res.status).toBe(401);
       expect(res.body.code).toBe("UNAUTHORIZED");

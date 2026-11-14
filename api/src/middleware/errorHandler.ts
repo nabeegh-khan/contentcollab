@@ -18,12 +18,7 @@ function statusCodeName(status: number): string {
 export function errorHandler(err: unknown, req: Request, res: Response, next: NextFunction): void {
   void next;
 
-  if (
-    typeof err === "object" &&
-    err !== null &&
-    "type" in err &&
-    err.type === "entity.too.large"
-  ) {
+  if (typeof err === "object" && err !== null && "type" in err && err.type === "entity.too.large") {
     res.status(413).json({
       error: "Request Body Too Large",
       code: "TOO_LARGE",

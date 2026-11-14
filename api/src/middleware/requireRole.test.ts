@@ -151,4 +151,3 @@ describe("requireRole on an owner-only document route", () => {
     expect(res.body).toEqual({ role: "owner" });
   });
 });
-

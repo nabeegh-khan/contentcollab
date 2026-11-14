@@ -24,6 +24,7 @@ services:
         condition: service_completed_successfully
       redis:
         condition: service_healthy
+    JWT_SECRET: ${JWT_SECRET:change-me}
 
   # Background jobs on the Redis queue; no published port (CON-7)
   worker:
