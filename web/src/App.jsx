@@ -5,10 +5,30 @@ function App() {
   
   useEffect(() => {
     let ignore = false;
+ 
     fetch('/health')
-      .then((res) => { if (!ignore) setStatus(res.ok ? 'up' : 'down'); })
-      .catch(() => { if (!ignore) setStatus('down'); });
-    return <p>{status === 'loading' ? 'Checking...' : status === 'up' ? 'API up' : 'API down'}</p>;
-  }, [])};
+      .then((res) => res.json())
+      .then((body) => {
+        if (!ignore) setStatus(body.status === 'ok' ? 'up' : 'down');
+      })
+      .catch(() => {
+        if (!ignore) setStatus('down');
+      });
+ 
+    return () => {
+      ignore = true;
+    };
+  }, []);
+
+  return (
+    <p>
+      {status === 'loading'
+        ? 'Checking...'
+        : status === 'up'
+          ? 'API up'
+          : 'API down'}
+    </p>
+  );
+}
 
 export default App
