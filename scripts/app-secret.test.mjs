@@ -172,3 +172,20 @@ test("a failed annotation removal is a loud warning and does not hide the applie
   assert.match(r.out, /WARNING: the plain-text last-applied-configuration annotation could not be removed/);
   assert.match(r.out, /Applied app-secrets/);
 });
+
+test("a different DB_PASSWORD over an existing one is refused unless DB_PASSWORD_ROTATED=1", () => {
+  const changed = "new-db-password-0123456789";
+  let r = box.run("app-secret.sh", { env: { ...existing, ...SPACES, DB_PASSWORD: changed } });
+  assert.notEqual(r.status, 0, r.out);
+  assert.match(r.out, /DB_PASSWORD differs from the one in the existing Secret/);
+  assert.ok(!calls().some((c) => c.includes("apply")), "nothing may be applied");
+  assert.ok(!r.out.includes(changed), "the value must not be printed");
+  r = box.run("app-secret.sh", { env: { ...existing, ...SPACES, DB_PASSWORD: changed, DB_PASSWORD_ROTATED: "1" } });
+  assert.equal(r.status, 0, r.out);
+  assert.equal(applied().DB_PASSWORD, changed);
+});
+
+test("the same DB_PASSWORD as the existing one is accepted without DB_PASSWORD_ROTATED", () => {
+  const r = box.run("app-secret.sh", { env: { ...existing, ...SPACES, DB_PASSWORD: "old-db-password-0123456789" } });
+  assert.equal(r.status, 0, r.out);
+});
