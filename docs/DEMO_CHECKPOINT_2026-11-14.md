@@ -1,5 +1,12 @@
 # Checkpoint demo, Saturday 14 November 2026, 3:30pm: five minutes
 
+## Saturday 14 November, 2:20pm: what changed since this page was written
+
+- Nothing new is merged since Friday evening; `main` is ecffbde (docs only since #88).
+- Merge order Nabeegh can run before the call, each updated from `main` today and green there (#118's rerun passed): [#128](https://github.com/nabeegh-khan/contentcollab/pull/128) (CI `docker` job gets a test `JWT_SECRET`; without it #111 and #114 cannot go green), then [#118](https://github.com/nabeegh-khan/contentcollab/pull/118) (its deploy creates the tables on the cluster), then [#98](https://github.com/nabeegh-khan/contentcollab/pull/98) (Spaces key check, needed for uploads), then [#121](https://github.com/nabeegh-khan/contentcollab/pull/121), then #120 and #122.
+- Auth #111: the auth fixes from the 13 November review are in; two small items still block (an invalid `compose.yaml` line, and four docs files carried from an older copy). Not live for the call unless it is fixed, updated after #128 and merged. Shares #114 is ready on its code; it will be approved and merged after #111. Documents #116 has conflicts and waits for #111. Web #86: the stage error is fixed; the build now stops at a missing `web/nginx.conf`.
+- For the five-minute order below, step 5 is therefore the open pull requests and their review state, unless #111 merges first.
+
 Written Friday 13 November, evening, from `main` (cf483ef: #83, #99 and #88 merged), the open pull requests and the cluster. Commands are for Windows PowerShell 5.1, kube context `do-nyc3-contentcollab`. Re-check each "pending" row on the day: it becomes live only when its pull request is merged.
 
 ## What runs live today
@@ -21,7 +28,7 @@ Written Friday 13 November, evening, from `main` (cf483ef: #83, #99 and #88 merg
 | #114 shares | Share by user and by link with expiry | `POST /api/v1/documents/<id>/shares` with `{"email":...,"role":"viewer"}` (`docs/API.md`) |
 | #86 web skeleton, #93 pages | The browser client, locally first | `docker compose up --build web`, then http://localhost:8080 |
 
-As of 13 Nov evening: #88 is merged; #118 is green and awaiting review; #85 is approved by Nabeegh with Eyrika's 12 Nov changes-requested review still standing; #111, #114, #116 and #86 have changes requested.
+As of 13 Nov evening: #88 is merged; #118 is green and awaiting review; #85 (API contract) is merged; #111, #114, #116 and #86 have changes requested.
 
 ## Advanced features: progress to show (pull requests with passing tests)
 
@@ -29,7 +36,7 @@ As of 13 Nov evening: #88 is merged; #118 is green and awaiting review; #85 is a
 |---|---|---|
 | Version comparison (#23) | #123: line and page diff in the worker, `version-diff` job, compare route behind a flag (501 until versions are stored) | the fixture tests: `cd worker; npm test` (12 of 12 on the PR); CI's worker job |
 | Summaries and suggested tags (#26) | #125 (on #123): `summarize` job, stub and Claude providers behind one interface, reply checked before use | the same `npm test` (21 of 21 with #123); runs with the stub until `SUMMARY_PROVIDER=anthropic` and a key are set |
-| Status page, backend (#30) | #124: `GET /api/v1/status` (queue depth, p50/p95, replicas null until RBAC) | the status tests in api/ (9 of 9); live once merged: `curl.exe -s https://contentcollab.app/api/v1/status` |
+| Status page, backend (#30) | #124: `GET /api/v1/status` (queue depth, p50/p95); #126 (on #124): ready replicas through a Role that can only read `deployments/api` | the status tests in api/ (9 of 9); live once merged: `curl.exe -s https://contentcollab.app/api/v1/status` |
 | Restart test (#68) | #120: `scripts/restart-test.sh`, checks the API reconnects without a restart | `node --test scripts/restart-test.test.mjs` (16 of 16); the live run's record in `docs/DEMO_PERSISTENCE.md` once run |
 | Volume kept on claim delete (#104) | #122: `scripts/pv-retain.sh` | its tests (6 of 6); live: the PV's reclaim policy before and after |
 | Service by port name (#107) | #121 | `kubectl -n contentcollab get endpointslice -l kubernetes.io/service-name=api` after it deploys |
