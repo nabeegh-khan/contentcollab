@@ -1,7 +1,11 @@
 import { BrowserRouter, Routes, Route, Link } from 'react-router-dom'; 
+import { Router } from "express";
+import Fs from 'fs/promises'; 
 
-const app = express();
+const app = Router();
 const port = 3000;
+
+const MAX_FILE_SIZE = 50 * 1024 * 1024;
 
 app.post("/auth/register/:email, password, displayName", async (req, res))
 {
@@ -48,6 +52,12 @@ app.post("/auth/login/:email, password", async (req, res))
 
 }
 
+async function fileSize (path) {  
+  const stat = await Fs.stat(path)
+
+  return stat.size
+}
+
 app.post("/documents/:file, title", async (req, res))
 {
   try
@@ -65,9 +75,11 @@ app.post("/documents/:file, title", async (req, res))
         return res.status(400).json({ "error": "type not allowed" });
       }
     }
-    catch (er)
+  
+    const file_size = await fileSize(file);
+    
+    if (file_size > MAX_FILE_SIZE)
     {
-      console.error(er);
       return res.status(413).json({ "error": "file must be <= 50 MB" });
     }
   }
