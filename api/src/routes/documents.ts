@@ -449,7 +449,7 @@ router.delete("/:documentId", requireAuth, requireRole("owner"), async (_req, re
 
     // Record all the objects need to be deleted from Spaces
     const versionsResult = await client.query<{ object_key: string }>(
-      `SELECT object_key
+      `SELECT DISTINCT object_key
          FROM document_versions
          WHERE document_id = $1`,
       [documentId],

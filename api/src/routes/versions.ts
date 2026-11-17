@@ -374,28 +374,6 @@ router.post("/:versionId/revert", requireAuth, requireRole("owner", "editor"), a
     ]);
   }
 
-  // Check the reverted version belongs to this document, and is not the current verison
-  const sourceResult = await pool.query<{
-    object_key: string;
-    filename: string;
-    content_type: string;
-    size: string;
-    checksum: string;
-    current_version_id: string | null;
-  }>(
-    `SELECT v.object_key, v.filename, v.content_type, v.size, v.checksum,
-                d.current_version_id
-         FROM document_versions v
-         JOIN documents d ON d.id = v.document_id
-         WHERE v.id = $1 AND v.document_id = $2`,
-    [sourceVersionId, documentId],
-  );
-
-  const source = sourceResult.rows[0];
-  if (!source) {
-    throw new HttpError(404, "NOT_FOUND", "Version Not Found");
-  }
-
   const newVersionId = randomUUID();
   const client = await pool.connect();
   let committed = false;
