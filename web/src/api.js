@@ -10,8 +10,7 @@ app.post("/auth/register", async (req, res) =>
 {
   try
   {
-
-    const unique = await pool.query("SELECT * FROM users WHERE email = ($1)", [req.body.email]);
+    const unique = await pool.query("SELECT * FROM users WHERE email = ($1);", [req.body.email]);
     
     if (unique.rows.length > 0)
     {
@@ -19,13 +18,14 @@ app.post("/auth/register", async (req, res) =>
     }
     else
     {
-      const task = await pool.query("INSERT INTO users VALUES ($1)", [req.body]);
+      const task = await pool.query("INSERT INTO users VALUES ($1);", [req.body]);
       console.log(task);
       return res.status(201);
     }
   }
     
-  catch (err) {
+  catch (err)
+  {
     console.error(err);
     return res.status(500).json({ error: "Server error" });
   }
@@ -35,7 +35,7 @@ app.post("/auth/login", async (req, res) =>
 {
   try
   {
-      const result = await pool.query("SELECT token, user FROM users WHERE email = ($1) AND password = ($2)", [req.body.email, req.body.password]);
+      const result = await pool.query("SELECT token, user FROM users WHERE email = ($1) AND password = ($2);", [req.body.email, req.body.password]);
 
       if (result.rows.length == 0)
       {
@@ -48,7 +48,8 @@ app.post("/auth/login", async (req, res) =>
       return return res.status(200).json({ "token": token, "user": user });
   }
     
-  catch (err) {
+  catch (err) 
+  {
     console.error(err);
     return res.status(500).json({ error: "Server error" });
   }
@@ -80,11 +81,12 @@ app.post("/documents", async (req, res) =>
       return res.status(400).json({"error": "file type not allowed});
     }
 
-    const task = await pool.query("INSERT INTO documents VALUES ($1)", [req.body]);
+    const task = await pool.query("INSERT INTO documents VALUES ($1);", [req.body]);
     console.log(task);
     return res.status(201);
   
   }
+      
   catch (err) 
   {
     console.error(err);
@@ -94,13 +96,30 @@ app.post("/documents", async (req, res) =>
 
 app.get("/documents", async (req, res) =>
 {
-  
   try
   {
+    const limit = req.body.limit || 20;
+
+    if (limit > 100)
+    {
+      const items = await pool.query("SELECT * FROM documents LIMIT ($1);", [100]);
+    }
+    else if (limit <= 0)
+    {
+      const items = await pool.query("SELECT * FROM documents LIMIT ($1);", [1]);
+    }
+    else
+    {
+      const items = await pool.query("SELECT * FROM documents LIMIT ($1);", [limit]);
+    }
     
+    const nextCursor = req.body.cursor + 1; 
+    
+    return [items, nextCursor];
   }
    
-  catch (err) {
+  catch (err) 
+  {
     console.error(err);
     return res.status(500).json({ error: "Server error" });
   }  
