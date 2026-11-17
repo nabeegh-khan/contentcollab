@@ -35,8 +35,6 @@ app.post("/auth/login", async (req, res) =>
 {
   try
   {
-    try
-    {
       const result = await pool.query("SELECT token, user FROM users WHERE email = ($1) AND password = ($2)", [req.body.email, req.body.password]);
 
       if (result.rows.length == 0)
@@ -48,7 +46,6 @@ app.post("/auth/login", async (req, res) =>
       const user = result[1];
 
       return return res.status(200).json({ "token": token, "user": user });
-    }
   }
     
   catch (err) {
