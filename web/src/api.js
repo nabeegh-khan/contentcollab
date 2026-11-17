@@ -1,12 +1,10 @@
 import { BrowserRouter, Routes, Route, Link } from 'react-router-dom'; 
 import { Router } from "express";
 import { Pool } from "pg";
-import Fs from 'fs/promises'; 
+import Fs from 'fs/promises'; // https://futurestud.io/tutorials/node-js-get-the-size-of-a-file
 
 const app = Router();
 const port = 3000;
-
-const MAX_FILE_SIZE = 50 * 1024 * 1024;
 
 app.post("/auth/register", async (req, res) =>
 {
@@ -29,7 +27,7 @@ app.post("/auth/register", async (req, res) =>
     
   catch (err) {
     console.error(err);
-    res.status(500).json({ error: "Server error" });
+    return res.status(500).json({ error: "Server error" });
   }
 });
 
@@ -49,18 +47,18 @@ app.post("/auth/login", async (req, res) =>
       const token = result[0];
       const user = result[1];
 
-      return res.status(200).json({ "token": token, "user": user });
+      return return res.status(200).json({ "token": token, "user": user });
     }
   }
     
   catch (err) {
     console.error(err);
-    res.status(500).json({ error: "Server error" });
+    return res.status(500).json({ error: "Server error" });
   }
 
 });
 
-async function fileSize (path) {  // https://futurestud.io/tutorials/node-js-get-the-size-of-a-file
+async function find_fileSize (path) {  // https://futurestud.io/tutorials/node-js-get-the-size-of-a-file
   const stat = await Fs.stat(path)
   return stat.size
 }
@@ -69,19 +67,31 @@ app.post("/documents", async (req, res) =>
 {
   try
   {
-    const file_size = await fileSize(req.body.file);
-    const extension = extname(info.filename).toLowerCase();
+    const file_size = await find_fileSize(req.body.file);
+    const MAX_FILE_SIZE = 50 * 1024 * 1024;
+
+    const extension = extname(req.body.file.filename).toLowerCase();
+    const acceptable_exts = [".pdf", ".png", ".jpg", ".jpeg", ".docx", ".xlsx", ".pptx", ".txt", ".md"];
       
     if (file_size > MAX_FILE_SIZE) // https://futurestud.io/tutorials/node-js-get-the-size-of-a-file
     {
       return res.status(413).json({ "error": "file must be <= 50 MB" });
     }
+
+    if (!acceptable_exts.includes(extension))
+    {
+      return res.status(400).json({"error": "file type not allowed});
+    }
+
+    const task = await pool.query("INSERT INTO documents VALUES ($1)", [req.body]);
+    console.log(task);
+    return res.status(201);
   
   }
   catch (err) 
   {
     console.error(err);
-    res.status(500).json({ error: "Server error" });
+    return res.status(500).json({ error: "Server error" });
   }  
 });
 
@@ -95,7 +105,6 @@ app.get("/documents", async (req, res) =>
    
   catch (err) {
     console.error(err);
-    res.status(500).json({ error: "Server error" });
+    return res.status(500).json({ error: "Server error" });
   }  
 });
-
