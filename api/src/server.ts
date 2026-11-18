@@ -9,6 +9,8 @@ import { HTTP_NOT_FOUND } from "./lib/httpStatus.js";
 import { logListening, logRedisGaveUp } from "./lib/startup.js";
 import healthRoutes from "./routes/health.js";
 import metricsRoutes from "./routes/metrics.js";
+import authRoutes from "./routes/auth.js";
+import { jwtSecret } from "./middleware/requireAuth.js";
 
 const app = express();
 
@@ -19,6 +21,7 @@ app.use(requestMetrics);
 app.use(express.json({ limit: "1mb" }));
 app.use("/health", healthRoutes);
 app.use("/metrics", metricsRoutes);
+app.use("/api/v1/auth", authRoutes);
 app.use((req, res) => res.status(HTTP_NOT_FOUND).json(errorBody(HTTP_NOT_FOUND)));
 app.use(errorHandler);
 
@@ -27,6 +30,7 @@ app.use(errorHandler);
 const isEntry = process.argv[1] !== undefined && fileURLToPath(import.meta.url) === process.argv[1];
 
 if (isEntry) {
+  jwtSecret();
   const port = Number(process.env.PORT ?? 3000);
   const server = app.listen(port, () => logListening(port));
 

@@ -17,3 +17,7 @@ images:
 patches:
   - path: api-patch.yaml
   - path: worker-patch.yaml
+
+# preStop drain for the API (ARCHITECTURE D14, #69)
+components:
+  - ../components/graceful-drain

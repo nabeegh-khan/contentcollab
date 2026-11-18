@@ -16,6 +16,7 @@ import {
 
 // Not in httpStatus.ts: no route answers it; it checks the fallback code
 const HTTP_IM_A_TEAPOT = 418;
+import { HttpError } from "../lib/httpError.js";
 import { captureStdout } from "../lib/logCapture.js";
 import { registry } from "../lib/metrics.js";
 import app from "../server.js";
@@ -173,5 +174,46 @@ describe("errorHandler edge cases", () => {
     const line = out.lines().find((l) => l.msg === "request failed");
     expect(line?.level).toBe("error");
     expect(line?.http?.request_id).toBe("rid-1");
+  });
+});
+
+// The routes of #111 throw HttpError with their own message, code and details
+describe("errorHandler with an HttpError", () => {
+  it("answers a 4xx HttpError with its status, message and code, logged at warn", async () => {
+    const err = new HttpError(HTTP_CONFLICT, "CONFLICT", "Email Already Registered");
+    const res = await request(failingApp(err)).get("/fail");
+    expect(res.status).toBe(HTTP_CONFLICT);
+    expect(res.body).toEqual({ error: "Email Already Registered", code: "CONFLICT" });
+    expect(out.lines().find((l) => l.msg === "request failed")?.level).toBe("warn");
+  });
+
+  it("keeps the details of a 400 VALIDATION error", async () => {
+    const details = [{ field: "email", message: "must be an email" }];
+    const err = new HttpError(HTTP_BAD_REQUEST, "VALIDATION", "Validation Failed", details);
+    const res = await request(failingApp(err)).get("/fail");
+    expect(res.status).toBe(HTTP_BAD_REQUEST);
+    expect(res.body).toEqual({ error: "Validation Failed", code: "VALIDATION", details });
+  });
+
+  it("drops details on any other status", async () => {
+    const details = [{ field: "id", message: "unknown" }];
+    const err = new HttpError(HTTP_NOT_FOUND, "NOT_FOUND", "Document Not Found", details);
+    const res = await request(failingApp(err)).get("/fail");
+    expect(res.body).toEqual({ error: "Document Not Found", code: "NOT_FOUND" });
+  });
+
+  it("falls back to the status's code when the HttpError's code is empty", async () => {
+    const res = await request(failingApp(new HttpError(HTTP_FORBIDDEN, "", "Forbidden"))).get(
+      "/fail",
+    );
+    expect(res.body).toEqual({ error: "Forbidden", code: "FORBIDDEN" });
+  });
+
+  it("answers a 5xx HttpError with the fixed 500 body, logged at error", async () => {
+    const err = new HttpError(HTTP_UNAVAILABLE, "UPSTREAM", "secret upstream detail");
+    const res = await request(failingApp(err)).get("/fail");
+    expect(res.status).toBe(HTTP_INTERNAL_ERROR);
+    expect(res.body).toEqual({ error: "Internal Server Error", code: "INTERNAL" });
+    expect(out.lines().find((l) => l.msg === "request failed")?.level).toBe("error");
   });
 });
