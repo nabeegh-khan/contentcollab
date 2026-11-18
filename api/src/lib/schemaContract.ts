@@ -33,20 +33,29 @@ const column =
     );
 
 // A valid UNIQUE constraint or unique index over exactly these columns (INCLUDE
-// columns do not count), not partial and not on an expression
-const uniqueOn = (table: string, columns: string[]) => (db: Queryable) =>
-  exists(
-    db,
-    `SELECT 1 FROM pg_index i
-       JOIN pg_class t ON t.oid = i.indrelid
-      WHERE t.relname = $1 AND t.relnamespace = 'public'::regnamespace
-        AND i.indisunique AND i.indisvalid AND i.indpred IS NULL AND i.indexprs IS NULL
-        AND ARRAY(SELECT a.attname FROM pg_attribute a
-                   WHERE a.attrelid = t.oid
-                     AND a.attnum = ANY ((i.indkey::int2[])[0:i.indnkeyatts - 1])
-                   ORDER BY a.attname) = $2::name[]`,
-    [table, [...columns].sort()],
-  );
+// columns do not count), not on an expression, and not partial unless its predicate
+// is exactly `allowedPredicate` as PostgreSQL prints it (pg_get_expr)
+const uniqueOn =
+  (table: string, columns: string[], allowedPredicate: string | null = null) =>
+  (db: Queryable) =>
+    exists(
+      db,
+      `SELECT 1 FROM pg_index i
+         JOIN pg_class t ON t.oid = i.indrelid
+        WHERE t.relname = $1 AND t.relnamespace = 'public'::regnamespace
+          AND i.indisunique AND i.indisvalid AND i.indexprs IS NULL
+          AND (i.indpred IS NULL
+               OR ($3::text IS NOT NULL AND pg_get_expr(i.indpred, i.indrelid) = $3::text))
+          AND ARRAY(SELECT a.attname FROM pg_attribute a
+                     WHERE a.attrelid = t.oid
+                       AND a.attnum = ANY ((i.indkey::int2[])[0:i.indnkeyatts - 1])
+                     ORDER BY a.attname) = $2::name[]`,
+      [table, [...columns].sort(), allowedPredicate],
+    );
+
+// The 12 Nov decision on reverts (#85, #88): a revert reuses its source's checksum, so the
+// index may leave reverts out; until the second migration lands the full index is still accepted
+const NOT_A_REVERT = "(reverted_from IS NULL)";
 
 // A foreign key from table.column to target
 const foreignKey = (table: string, name: string, target: string) => (db: Queryable) =>
@@ -174,8 +183,9 @@ export const checks: Check[] = [
   },
   {
     id: "versions-checksum-unique",
-    promise: "document_versions is unique on (document_id, checksum) (2.4)",
-    run: uniqueOn("document_versions", ["document_id", "checksum"]),
+    promise:
+      "document_versions is unique on (document_id, checksum), reverts excepted (2.4; 12 Nov decision)",
+    run: uniqueOn("document_versions", ["document_id", "checksum"], NOT_A_REVERT),
   },
   {
     id: "documents-row-version",
