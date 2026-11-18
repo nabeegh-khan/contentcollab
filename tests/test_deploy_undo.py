@@ -184,6 +184,35 @@ class RolloutStep(unittest.TestCase):
         self.assertNotEqual(r.returncode, 0)
         self.assertRegex(r.stdout, r"deployment/api[^\n]*revision[^\n]*unreadable")
         self.assertNotRegex(r.stdout, r"deployment/api[^\n]*not changed by this run")
+        self.assertEqual(self.undone(), ["worker"])
+
+    def test_an_unreadable_revision_before_the_apply_is_not_taken_for_a_new_deployment(self):
+        # A re-run of the same commit (no new revision); the read before the apply fails for the api
+        for svc in ("api", "worker"):
+            self.c.write(f"image-{svc}", f"registry/contentcollab-{svc}:{SHA}")
+        self.c.write("status-fails", "worker")
+        self.c.write("rev-read-fails-before", "api")
+        r = self.c.run(ROLLOUT_STEP)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertEqual(self.undone(), [], "an undo here would go back past what is running")
+        self.assertRegex(r.stdout, r"deployment/api[^\n]*revision[^\n]*unreadable")
+
+    def test_a_first_deploy_counts_a_new_deployment_as_changed(self):
+        # Neither Deployment exists before the apply; the worker then fails
+        self.c.write("absent", "api\nworker")
+        self.c.write("apply-changes", "api\nworker")
+        self.c.write("status-fails", "worker")
+        r = self.c.run(ROLLOUT_STEP)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertEqual(self.undone(), ["api", "worker"])
+
+    def test_a_healthy_deployment_left_alone_is_not_reported_as_an_error(self):
+        # Re-run: the worker fails, the api is healthy and unchanged; only the worker gets an error line
+        for svc in ("api", "worker"):
+            self.c.write(f"image-{svc}", f"registry/contentcollab-{svc}:{SHA}")
+        self.c.write("status-fails", "worker")
+        r = self.c.run(ROLLOUT_STEP)
+        self.assertNotRegex(r.stdout, r"::error::deployment/api")
 
     def test_credentials_are_refreshed_before_the_undo_after_the_watch(self):
         # The final undo can come after a 150 s migration and two 180 s waits: past the 600 s login

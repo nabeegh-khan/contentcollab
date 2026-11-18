@@ -137,18 +137,20 @@ jobs:
           # same commit (no new revision) never undoes past what is running.
           # The smoke step reads the same values (D25, #108)
           for svc in api worker; do
-            rev=$(kubectl -n contentcollab get deployment/$svc -o jsonpath='{.metadata.annotations.deployment\.kubernetes\.io/revision}') \
-              || rev=""   # no Deployment yet: anything after the apply is new
+            # Empty when there is no Deployment yet (--ignore-not-found), so
+            # anything after the apply is new; "unreadable" on any other error
+            rev=$(kubectl -n contentcollab get deployment/$svc --ignore-not-found -o jsonpath='{.metadata.annotations.deployment\.kubernetes\.io/revision}') \
+              || rev="unreadable"
             printf -v "before_$svc" '%s' "$rev"
             echo "REV_BEFORE_$svc=$rev" >> "$GITHUB_ENV"
           done
-          # changed, same, or unreadable (an API error or an expired login:
-          # whether this run changed it is then unknown, so it is not undone
-          # blind, and the run says so)
+          # changed, same, or unreadable (an API error or an expired login,
+          # before or after the apply: whether this run changed it is then
+          # unknown, so it is not undone blind, and the run says so)
           revision_state() {
             local now before="before_$1"
             now=$(kubectl -n contentcollab get deployment/$1 -o jsonpath='{.metadata.annotations.deployment\.kubernetes\.io/revision}') || now=""
-            if [ -z "$now" ]; then echo unreadable
+            if [ -z "$now" ] || [ "${!before}" = unreadable ]; then echo unreadable
             elif [ "$now" != "${!before}" ]; then echo changed
             else echo same
             fi
@@ -159,12 +161,18 @@ jobs:
             kubectl -n contentcollab rollout undo deployment/$1 \
               || echo "::error::undo of deployment/$1 failed: the cluster may run mixed versions"
           }
+          # $2 is "watch" (the Deployment that failed) or "final" (the others,
+          # after the login is renewed). An unreadable one is tried again in
+          # the final pass; a healthy one this run left alone is not an error
           undo_if_changed() {
             case "$(revision_state $1)" in
               changed) undo $1 ;;
-              same) echo "::error::deployment/$1 was not changed by this run (a re-run of the same commit?): not undone" ;;
-              *) echo "::error::deployment/$1: its revision is unreadable, so whether this run changed it is unknown: not undone; check it by hand" ;;
+              same) [ "$2" = watch ] && echo "::error::deployment/$1 was not changed by this run (a re-run of the same commit?): not undone" ;;
+              *) if [ "$2" = watch ]; then echo "::warning::deployment/$1: revision unreadable; tried again after renewing the login"
+                 else echo "::error::deployment/$1: its revision is unreadable, so whether this run changed it is unknown: not undone; check it by hand"
+                 fi ;;
             esac
+            return 0
           }
           failed=0
           # An apply that fails partway may already have started rollouts:
@@ -193,7 +201,7 @@ jobs:
             if ! kubectl -n contentcollab rollout status deployment/$svc --timeout=180s; then
               failed=1
               echo "::error::deployment/$svc did not turn ready"
-              undo_if_changed $svc
+              undo_if_changed $svc watch
             fi
           done
           # One failure undoes every Deployment this run changed, so the
@@ -205,7 +213,7 @@ jobs:
               || echo "::warning::could not renew the cluster login; trying the undo with the current one"
             for svc in api worker; do
               case "$undone" in *" $svc "*) continue ;; esac
-              undo_if_changed $svc
+              undo_if_changed $svc final
             done
           fi
           exit $failed
@@ -235,7 +243,7 @@ jobs:
           for svc in api worker; do
             before="REV_BEFORE_$svc"
             now=$(kubectl -n contentcollab get deployment/$svc -o jsonpath='{.metadata.annotations.deployment\.kubernetes\.io/revision}') || now=""
-            if [ -z "$now" ]; then
+            if [ -z "$now" ] || [ "${!before}" = unreadable ]; then
               echo "::error::deployment/$svc: its revision is unreadable, so whether this run changed it is unknown: not undone; check it by hand"
               continue
             elif [ "$now" = "${!before}" ]; then
