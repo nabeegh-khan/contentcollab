@@ -126,20 +126,46 @@ describe("cachedFor", () => {
     now = TTL_MS - 1;
     expect(await read()).toBe(1);
     now = TTL_MS;
-    expect(await read()).toBe(2);
+    const SECOND_READ = 2;
+    expect(await read()).toBe(SECOND_READ);
   });
 
-  it("does not keep a failed read", async () => {
-    let calls = 0;
+  it("callers that arrive while a read is in flight share it", async () => {
+    let reads = 0;
+    let finish: (n: number) => void = () => {};
     const read = cachedFor(
       1,
+      () => {
+        reads += 1;
+        return new Promise<number>((resolve) => (finish = resolve));
+      },
+      () => 0,
+    );
+    const first = read();
+    const second = read();
+    const ANSWER = 7;
+    finish(ANSWER);
+    expect(await Promise.all([first, second])).toEqual([ANSWER, ANSWER]);
+    expect(reads).toBe(1);
+  });
+
+  it("keeps a failed read until the limit, so a denied or hung apiserver is asked once per window", async () => {
+    const TTL_MS = 5000;
+    let now = 0;
+    let calls = 0;
+    const read = cachedFor(
+      TTL_MS,
       async () => {
         calls += 1;
         throw new Error("down");
       },
-      () => 0,
+      () => now,
     );
     await expect(read()).rejects.toThrow("down");
+    now = TTL_MS - 1;
+    await expect(read()).rejects.toThrow("down");
+    expect(calls).toBe(1);
+    now = TTL_MS;
     await expect(read()).rejects.toThrow("down");
     const TWO_READS = 2;
     expect(calls).toBe(TWO_READS);
