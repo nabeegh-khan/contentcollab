@@ -283,6 +283,21 @@ Sources, checked 13 November 2026: [Kubernetes Jobs](https://kubernetes.io/docs/
 
 Source, checked 13 November 2026: BullMQ `src/classes/queue-getters.ts` (waiting jobs are the `wait` list, read with `LLEN`; prioritized ones a sorted set, `ZCARD`).
 
+### D24. Migrations expand first and contract a release later, checked in CI (decided 18 November, #105)
+
+**Problem.** The migration Job (D20) runs before each rollout, and the rollout is a rolling update (`maxUnavailable: 0, maxSurge: 1`), so the previous API version keeps serving against the new schema until its last pod is replaced (L7 p17, INF-18). A migration whose `up` drops or renames a table or column the previous version still reads makes those requests fail for the length of the rollout. If the smoke check then fails and `deploy.yml` runs `kubectl rollout undo`, the restored pods meet a schema they no longer match. Nothing stopped such a migration: no rule, no check. The second migration for #116 (`reverted_from` and a partial unique index) is the next one to land.
+
+**Decision.** Expand, then contract. Within one release a migration's `up` only adds: tables, nullable columns or columns with defaults, indexes, constraints that the previous version's writes already meet. A drop or rename goes in a later release, once no deployed version reads the old name, and the migration file says so with one marker per object, `contract: <table>` or `contract: <table>.<column>`, in a comment. `scripts/migration-compat.mjs` reads each file in `api/migrations`, looks only at `up`, and fails on any `DROP TABLE`, `ALTER TABLE ... DROP [COLUMN]`, `ALTER TABLE ... RENAME` (table or column) in its SQL, or `pgm.dropTable`, `pgm.dropColumns`, `pgm.dropColumn`, `pgm.renameTable`, `pgm.renameColumn` (the builder's names in node-pg-migrate 9.0.0), whose object has no marker. CI runs it on every push. `down` is not checked: it is run by hand to revert a release and is expected to drop what `up` added.
+
+**Options weighed.**
+- **Blue-green (L7 p18-20):** no mixed versions, but two full environments on a two-node cluster, and the schema is still shared, so it does not remove the problem.
+- **Review only, no check:** rejected. The rule is easy to miss in a large SQL string, and #88's first migration is one `pgm.sql` call of about 160 lines (`1794275662371_init.js:10-170`).
+- **Run the previous release's tests against the new schema in CI:** catches more (type changes, new `NOT NULL` without a default) but needs the previous image and a database in the check; too heavy for the freeze. The marker check covers the two cases the issue names.
+
+**Limits.** The check reads text, not a parsed schema: it does not catch a type change, a new `NOT NULL` on a column old code leaves empty, a dropped view, or SQL built at run time. Dropping a constraint or an index is allowed (it relaxes rather than breaks the old version's queries), so the partial-index change for #116 passes without a marker. A marker is a promise, not a proof: whoever writes it checks that no deployed version reads the object.
+
+Sources, checked 18 November 2026: Lecture 7 p17 (old and new versions coexist during a rolling update) and p18-20 (blue-green); node-pg-migrate 9.0.0 `dist/bundle/index.d.ts` lines 1079-1135 (`dropTable`, `renameTable`, `dropColumns`, `renameColumn`, and `dropColumn` as an alias of `dropColumns`).
+
 ### D0. Service model
 
 Lecture 1 splits cloud services into IaaS (you manage the OS), PaaS (the provider manages the hosts, you ship containers or code) and FaaS (functions run on events). Assignment 1 was IaaS: a droplet, Nginx, PostgreSQL installed by hand. The project is not that. We use managed Kubernetes, where DigitalOcean runs the control plane and the worker nodes' OS and we run containers (PaaS-style on top of the provider's IaaS), object storage as a service for files, and the provider's metrics and alerts. A DigitalOcean Function is an option for one small event-driven job (a thumbnail when a file lands in Spaces) if we want the serverless advanced feature; it is not in the core path. The point for the proposal: we manage containers and data, not machines.
