@@ -92,7 +92,7 @@ test("pages are refused when their tables add up past the limit, each one under 
   const text = (tag: string) => Array.from({ length: perPage }, (_, i) => `${tag} ${i}`).join("\n");
   const before = Array.from({ length: PAGES }, (_, p) => text(`b${p}`));
   const after = Array.from({ length: PAGES }, (_, p) => text(`a${p}`));
-  assert.ok(perPage * perPage < MAX_TABLE_CELLS);
+  assert.ok((perPage + 1) ** 2 < MAX_TABLE_CELLS);
   assert.throws(() => pageDiff(before, after), DiffTooLargeError);
 });
 
