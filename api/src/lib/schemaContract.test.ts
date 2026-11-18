@@ -109,6 +109,17 @@ const mutations: [string[], string][] = [
     `ALTER TABLE comments DROP CONSTRAINT comments_parent_id_fkey;
      ALTER TABLE comments ADD FOREIGN KEY (parent_id) REFERENCES documents(id)`,
   ],
+  // PostgreSQL 18 lets a foreign key be declared and not enforced; it must not count
+  [
+    ["comments-parent-fk"],
+    `ALTER TABLE comments DROP CONSTRAINT comments_parent_id_fkey;
+     ALTER TABLE comments ADD FOREIGN KEY (parent_id) REFERENCES comments(id) NOT ENFORCED`,
+  ],
+  [
+    ["mentions-table"],
+    `ALTER TABLE comment_mentions DROP CONSTRAINT comment_mentions_mentioned_user_id_fkey;
+     ALTER TABLE comment_mentions ADD FOREIGN KEY (mentioned_user_id) REFERENCES users(id) NOT ENFORCED`,
+  ],
   [["comments-anchor"], "ALTER TABLE comments DROP COLUMN anchor"],
   [["comments-anchor"], "ALTER TABLE comments DROP COLUMN anchor, ADD COLUMN anchor INTEGER"],
   [["mentions-table"], "DROP TABLE comment_mentions"],
