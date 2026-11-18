@@ -23,6 +23,10 @@ const ASKED_SUMMARY_CHARS = 600;
 export const DEFAULT_MODEL = "claude-opus-5-5";
 // max_tokens covers thinking too, which is always on for this model; unused tokens cost nothing
 const MAX_OUTPUT_TOKENS = 16000;
+// One call may take a minute and is retried once, so a hung call holds one of the worker's two slots
+// for about two minutes, not the SDK's default of 10 minutes with two retries (SDK 1.3.0 client.d.ts)
+export const REQUEST_TIMEOUT_MS = 60_000;
+export const MAX_RETRIES = 1;
 
 // A tag: lower-case letters and digits, words joined by single hyphens.
 // Accepts "upload-limits", "v2"; rejects "Upper Case", "-x", "a--b". https://regex101.com/?regex=%5E%5Ba-z0-9%5D%2B(-%5Ba-z0-9%5D%2B)*%24

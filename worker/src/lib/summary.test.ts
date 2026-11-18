@@ -11,6 +11,8 @@ import {
   MAX_TAGS,
   MAX_TAG_CHARS,
   DEFAULT_MODEL,
+  REQUEST_TIMEOUT_MS,
+  MAX_RETRIES,
   type MessagesClient,
 } from "./summary.js";
 
@@ -91,6 +93,38 @@ test("a refusal or a cut-off reply fails instead of returning nothing", async ()
     anthropicProvider(cut, DEFAULT_MODEL).summarize("thread", "t"),
     failsWith("max_tokens"),
   );
+});
+
+test("a reply that is not JSON fails with a fixed message, not the model's text", async () => {
+  const documentText = "CONFIDENTIAL-CLAUSE-7";
+  const client = clientReturning({
+    stop_reason: "end_turn",
+    content: [{ type: "text", text: `Sure! ${documentText} {not json` }],
+  });
+  await assert.rejects(
+    anthropicProvider(client, DEFAULT_MODEL).summarize("thread", documentText),
+    (err: unknown) =>
+      err instanceof Error &&
+      err.message === "summary: the reply was not JSON" &&
+      !err.message.includes(documentText),
+  );
+});
+
+test("the model's client has its own time limit and few retries, so one call cannot hold a slot", async () => {
+  const made: unknown[] = [];
+  const provider = providerFromEnv({ SUMMARY_PROVIDER: "anthropic" }, (options) => {
+    made.push(options);
+    return clientReturning({
+      stop_reason: "end_turn",
+      content: [{ type: "text", text: replyText }],
+    });
+  });
+  await provider.summarize("thread", "t");
+  assert.deepEqual(made, [{ timeout: REQUEST_TIMEOUT_MS, maxRetries: MAX_RETRIES }]);
+  const TEN_MINUTES_MS = 600_000;
+  const SDK_DEFAULT_RETRIES = 2;
+  assert.ok(REQUEST_TIMEOUT_MS < TEN_MINUTES_MS);
+  assert.ok(MAX_RETRIES < SDK_DEFAULT_RETRIES);
 });
 
 test("the provider comes from SUMMARY_PROVIDER: the stub unless asked for the model", () => {
