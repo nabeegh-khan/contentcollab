@@ -536,3 +536,20 @@ Traced the red `docker` job to CI starting the API image without a signing key, 
 - Kept the fix in CI, our own scope, and left the auth code alone; the check was committed before the fix and failed first.
 - An independent check of the review drafts corrected one wrong claim (a merge conflict on the web branch that Git does not produce) and changed the shares review from an approval to a comment, since the branch still carries the auth branch's broken Compose line until auth merges.
 - Found in re-review that the auth branch's new Compose line stops `docker compose up` and that four docs files on it are older copies; both are asked of the author, not changed by us. Deferred items went to #129 and #130.
+
+## Pre-freeze audit and review fixes, 18 November 2026
+
+### Prompt
+
+Audit every open issue and pull request against a demo that shows every core requirement, sync the board, give each stale or blocking teammate item a dated note, and bring our own pull requests that were past their review window to ready, each through an independent review and test-first fixes.
+
+### AI Response
+
+Wrote the audit and the critical path (auth, storage, the second migration, documents, shares, then the web pages), drafted the dated notes, ran one independent review per pull request, proposed each fix with a test that failed first, and ran a second check of the fixed lines.
+
+### What Your Team Did With It
+
+- Kept every fix in our own pull requests; teammates' work got comments only. The migration #116 needs was asked of its owner on #88, not built by us.
+- The reviews found real faults, each fixed only after a failing test: a missing contract row for a public endpoint, a character gap in the diff's size cap, model text reaching an error message, and foreign keys that PostgreSQL 18 can leave unenforced.
+- Caught our own mistake: the note on #88 first said to drop a constraint that the 12 November decision keeps in a partial form; corrected the same day, and the schema contract now accepts exactly that form.
+- Closed two draft pull requests that the demo does not need instead of rebasing them before the freeze.
