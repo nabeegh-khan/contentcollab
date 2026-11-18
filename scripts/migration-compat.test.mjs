@@ -178,3 +178,46 @@ test("the CLI exits 1 and names the file and the object; 0 for a clean folder; 2
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("up declared first and exported later is still read (export { up }, module.exports)", () => {
+  const body =
+    'const up = (pgm) => {\n  pgm.dropTable("comments");\n};\nconst down = (pgm) => {};\n';
+  assert.deepEqual(objects(body + "export { up, down };\n"), ["comments"]);
+  assert.deepEqual(objects(body + "module.exports = { up, down };\n"), ["comments"]);
+});
+
+test("a file without an up it can find is an error, not a pass", () => {
+  assert.throws(() => findViolations("export const shorthands = undefined;\n"), /no up/);
+  const dir = mkdtempSync(join(tmpdir(), "migcompat-"));
+  try {
+    writeFileSync(join(dir, "1_odd.js"), "export default { migrate() {} };\n");
+    const r = spawnSync(process.execPath, ["scripts/migration-compat.mjs", dir], {
+      cwd: root,
+      encoding: "utf8",
+    });
+    assert.equal(r.status, 2);
+    assert.match(r.stderr, /1_odd\.js/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a trailing // comment is a comment; i-- and a '--' string are not", () => {
+  assert.deepEqual(
+    objects(migration('pgm.addColumn("t", { c: "int" }); // pgm.dropColumn("t", "c")')),
+    [],
+  );
+  assert.deepEqual(objects(migration('for (let i = 2; i > 0; i--) pgm.dropTable("comments");')), [
+    "comments",
+  ]);
+  assert.deepEqual(objects(migration("const sep = '--'; pgm.dropTable('comments');")), [
+    "comments",
+  ]);
+});
+
+test("a contract marker counts only in a comment, not inside SQL or a string", () => {
+  assert.deepEqual(
+    objects(migration("pgm.sql(\"SELECT 'contract: comments'\");\npgm.dropTable('comments');")),
+    ["comments"],
+  );
+});

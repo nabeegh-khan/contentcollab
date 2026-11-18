@@ -6,13 +6,15 @@ import { pathToFileURL } from "node:url";
 
 // An identifier as written in SQL: optionally schema-qualified and double-quoted ("public"."Users", public.users, users)
 const IDENT = String.raw`(?:"[^"]+"|[A-Za-z_][\w$]*)(?:\s*\.\s*(?:"[^"]+"|[A-Za-z_][\w$]*))?`;
-// The start of up and of down in the export forms node-pg-migrate accepts (ESM const or function, CommonJS)
-const UP_START =
-  /export\s+(?:const|let|var)\s+up\b|export\s+(?:async\s+)?function\s+up\b|exports\.up\s*=/;
+// Where up and down are declared: exported directly, declared and exported later (export { up }, module.exports), or exports.up =
+const UP_START = /\b(?:const|let|var)\s+up\s*=|\b(?:async\s+)?function\s+up\s*\(|\bexports\.up\s*=/;
 const DOWN_START =
-  /export\s+(?:const|let|var)\s+down\b|export\s+(?:async\s+)?function\s+down\b|exports\.down\s*=/;
-// "contract: <table>" or "contract: <table>.<column>" anywhere in a comment of the file
+  /\b(?:const|let|var)\s+down\s*=|\b(?:async\s+)?function\s+down\s*\(|\bexports\.down\s*=/;
+// "contract: <table>" or "contract: <table>.<column>", read only inside comments
 const MARKER = /contract:\s*([A-Za-z_][\w$]*(?:\.[A-Za-z_][\w$]*)?)/gi;
+// Comments: block (SQL and JS); "--" (SQL) and "//" (JS) at a line start or after a space, and "//" after ; , ) or }.
+// "i--", "'--'" and "http://" are not comments, so they are left alone.
+const COMMENTS = /\/\*[\s\S]*?\*\/|(?<=^|[ \t])--[^\n]*|(?<=^|[ \t;,)}])\/\/[^\n]*/gm;
 // What follows DROP inside ALTER TABLE without naming a column (these relax, they do not remove a column)
 const NOT_A_COLUMN = new Set(["constraint", "default", "not", "expression", "identity"]);
 
@@ -24,19 +26,21 @@ function bareName(raw) {
 
 /** Same length as the input, with comments blanked, so offsets and line numbers still match */
 function blankComments(text) {
-  const blank = (m) => m.replace(/[^\n]/g, " ");
-  return text
-    .replace(/\/\*[\s\S]*?\*\//g, blank) // SQL and JS block comments
-    .replace(/--[^\n]*/g, blank) // SQL line comments
-    .replace(/^[ \t]*\/\/[^\n]*/gm, blank); // JS line comments that start a line (keeps URLs inside strings)
+  return text.replace(COMMENTS, (m) => m.replace(/[^\n]/g, " "));
 }
 
-/** [start, end) of up's source; down and anything before up are left out */
+/** The contract markers written in the file's comments, lower-cased */
+function contractMarkers(source) {
+  const comments = source.match(COMMENTS) ?? [];
+  return new Set(comments.flatMap((c) => [...c.matchAll(MARKER)].map((m) => m[1].toLowerCase())));
+}
+
+/** [start, end) of up's source; down and anything before up are left out. No up found is an error */
 function upRange(source) {
-  const up = UP_START.exec(source);
-  if (!up) return [0, 0];
-  const rest = source.slice(up.index + up[0].length);
-  const down = DOWN_START.exec(rest);
+  const code = blankComments(source);
+  const up = UP_START.exec(code);
+  if (!up) throw new Error("no up function found (export const up, function up, or exports.up)");
+  const down = DOWN_START.exec(code.slice(up.index + up[0].length));
   return [up.index, down ? up.index + up[0].length + down.index : source.length];
 }
 
@@ -134,9 +138,9 @@ function builderTargets(text) {
 
 /** Every drop or rename of a table or column in up that has no contract marker, in source order */
 export function findViolations(source) {
-  const markers = new Set([...source.matchAll(MARKER)].map((m) => m[1].toLowerCase()));
+  const markers = contractMarkers(source);
   const [start, end] = upRange(source);
-  const up = blankComments(source.slice(start, end));
+  const up = blankComments(source).slice(start, end);
   const targets = [...builderTargets(up)];
   for (const statement of statements(up)) targets.push(...sqlTargets(statement));
   return targets
@@ -166,7 +170,15 @@ function main(folder) {
   }
   let count = 0;
   for (const file of files) {
-    for (const v of findViolations(readFileSync(join(folder, file), "utf8"))) {
+    let violations;
+    try {
+      violations = findViolations(readFileSync(join(folder, file), "utf8"));
+    } catch (err) {
+      // A file the check cannot read is not a pass
+      console.error(`migration-compat: ${file}: ${err.message}`);
+      return 2;
+    }
+    for (const v of violations) {
       count += 1;
       console.error(
         `${file}:${v.line}: up removes ${v.object} ("${v.statement}"). The previous release may still read it during a rolling update (D24). ` +
