@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Link } from 'react-router-dom'; 
 import Fs from 'fs/promises'; // https://futurestud.io/tutorials/node-js-get-the-size-of-a-file
 
+// https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API/Using_Fetch
 
 function request(path, options)
 {
@@ -12,7 +13,8 @@ function register()
 {
   try
   {
-    const unique = await pool.query("SELECT * FROM users WHERE email = ($1);", [req.body.email]);
+    const url = "/auth/register";
+    const unique = await fetch(url);
     
     if (unique.rows.length > 0)
     {
@@ -20,7 +22,7 @@ function register()
     }
     else
     {
-      const task = await pool.query("INSERT INTO users VALUES ($1);", [req.body]);
+      const task = await response.json();
       console.log(task);
       return res.status(201);
     }
@@ -29,7 +31,7 @@ function register()
   catch (err)
   {
     console.error(err);
-    return res.status(500).json({ error: "Server error" });
+    return res.status(500).json({ error: "Fetch failed" });
   }
 }
 
@@ -37,7 +39,9 @@ function login()
 {
   try
   {
-      const result = await pool.query("SELECT token, user FROM users WHERE email = ($1) AND password = ($2);", [req.body.email, req.body.password]);
+      const url = "/auth/login"; 
+      const task = await fetch(url);
+      const result = await task.json(); 
 
       if (result.rows.length == 0)
       {
@@ -53,7 +57,7 @@ function login()
   catch (err) 
   {
     console.error(err);
-    return res.status(500).json({ error: "Server error" });
+    return res.status(500).json({ error: "Fetch failed" });
   }
 
 }
@@ -67,10 +71,10 @@ function uploadDocument(file, title)
 {
   try
   {
-    const file_size = await find_fileSize(req.body.file);
+    const file_size = await find_fileSize(file);
     const MAX_FILE_SIZE = 50 * 1024 * 1024;
 
-    const extension = extname(req.body.file.filename).toLowerCase();
+    const extension = extname(file.filename).toLowerCase();
     const acceptable_exts = [".pdf", ".png", ".jpg", ".jpeg", ".docx", ".xlsx", ".pptx", ".txt", ".md"];
       
     if (file_size > MAX_FILE_SIZE) // https://futurestud.io/tutorials/node-js-get-the-size-of-a-file
@@ -83,7 +87,7 @@ function uploadDocument(file, title)
       return res.status(400).json({"error": "file type not allowed});
     }
 
-    const task = await pool.query("INSERT INTO documents VALUES ($1);", [req.body]);
+    const task = await fetch();
     console.log(task);
     return res.status(201);
   
@@ -92,7 +96,7 @@ function uploadDocument(file, title)
   catch (err) 
   {
     console.error(err);
-    return res.status(500).json({ error: "Server error" });
+    return res.status(500).json({ error: "Fetch failed" });
   }  
 }
 
@@ -100,22 +104,22 @@ function listDocuments({ limit, cursor })
 {
   try
   {
-    const limit = req.body.limit || 20;
+    const limit = limit || 20;
 
     if (limit > 100)
     {
-      const items = await pool.query("SELECT * FROM documents LIMIT ($1);", [100]);
+      const items = await fetch();
     }
     else if (limit <= 0)
     {
-      const items = await pool.query("SELECT * FROM documents LIMIT ($1);", [1]);
+      const items = await fetch();
     }
     else
     {
-      const items = await pool.query("SELECT * FROM documents LIMIT ($1);", [limit]);
+      const items = await fetch();
     }
     
-    const nextCursor = req.body.cursor + 1; 
+    const nextCursor = cursor + 1; 
     
     return [items, nextCursor];
   }
@@ -123,6 +127,6 @@ function listDocuments({ limit, cursor })
   catch (err) 
   {
     console.error(err);
-    return res.status(500).json({ error: "Server error" });
+    return res.status(500).json({ error: "Fetch failed" });
   }  
 }
