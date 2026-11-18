@@ -503,3 +503,36 @@ Drafted each review with file and line findings and checked each draft separatel
 - Found after approving the schema that it still lacks the revert column agreed on 12 November; posted a correction on the pull request asking for a second migration rather than withdrawing the approval, so the schema and auth are not held up.
 - Kept the migration Job out of the teammates' pull requests and in our own deploy scope, built on the open image-pinning pull request because both change the same step.
 - Committed the tests before each change (12 of 26 failing, then 1 of 27, twice) and applied the review's findings: the failure branch also prints the Job's status and its pod's events, since the deadline terminates the pod and a pod that never started has no log.
+
+## DigitalOcean project, Spaces bucket and the app Secret (#53), 11 November 2026
+
+### Prompt
+
+Prepare issue #53 without touching the account: check Spaces pricing and access-key rules against DigitalOcean's documentation, then write the manifests, scripts and docs for the DigitalOcean project, the bucket and the app Secret. The Secret stays a template with no real values (base64 is not encryption, SEC-10); anything that needs a token or a key becomes a command for Nabeegh to run; the storage and schema work in #88 and #89 is read, not edited.
+
+### AI Response
+
+Spaces access keys can only be created in the Control Panel and the CLI cannot create a bucket, so the plan is a project script, a runbook for the two Control Panel steps, a script that proves the key, and a script that makes the Secret without a file. Reading the code turned up two problems: client-side `kubectl apply` of a filled-in Secret copies every value in plain text into an annotation (the minikube steps did, and `cluster-up.sh` still does), and the migration Job in #88 gives its init container the whole Secret, including the storage keys. Running the scripts for real, against throwaway local servers, found two faults the stub tests could not: a Windows temp path the AWS CLI cannot open, and a loop variable that overwrote a function's local in bash.
+
+### What Your Team Did With It
+
+- Wrote the decision, the options not taken, the cost and the sources into the build log before any script; wrote each test first (the template check failed on the old template, the 24 script tests failed with no scripts) and checked the tests with ten deliberate breakages of the scripts, one of which got through and now has a test.
+- Ran `spaces-verify.sh` with the AWS CLI against a local S3 gateway and `app-secret.sh` with kubectl against a local k3s cluster, using made-up keys and the cluster's own kubeconfig, never the account or the DOKS context. Nothing was created on DigitalOcean: the project, bucket, key and Secret are commands and Control Panel steps for Nabeegh to run (`k8s/README.md`).
+- Changed `cluster-up.sh` to call the new script, then dropped that change: the open PR #94 rewrites the same file and its tests would break. The follow-up is written down for after #94 merges.
+- Read #88 and #89 without editing them. The one point for #88 (its init container should read `DB_USER` by key) is in the build log, and a new test reports it once both are merged.
+
+## Re-reviews before the checkpoint call and the CI signing-key fix (#127), 14 November 2026
+
+### Prompt
+
+Before the 3:30pm checkpoint: unblock CI for the auth and shares pull requests, re-review both against our criteria after their author's fixes, answer the web skeleton's open questions, and update the demo page and meeting agenda from the current state.
+
+### AI Response
+
+Traced the red `docker` job to CI starting the API image without a signing key, proposed a test-only value on both `docker run` lines with a check that fails first, drafted the re-reviews and the web comment, and drafted the agenda and demo updates.
+
+### What Your Team Did With It
+
+- Kept the fix in CI, our own scope, and left the auth code alone; the check was committed before the fix and failed first.
+- An independent check of the review drafts corrected one wrong claim (a merge conflict on the web branch that Git does not produce) and changed the shares review from an approval to a comment, since the branch still carries the auth branch's broken Compose line until auth merges.
+- Found in re-review that the auth branch's new Compose line stops `docker compose up` and that four docs files on it are older copies; both are asked of the author, not changed by us. Deferred items went to #129 and #130.
