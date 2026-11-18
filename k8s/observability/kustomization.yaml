@@ -1,0 +1,28 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# The observability stack of ARCHITECTURE D19, applied and removed on its own
+# by scripts/observability-up.sh and observability-down.sh, so it can be
+# switched off between demos. Part a: Prometheus, kube-state-metrics, Grafana.
+namespace: observability
+
+resources:
+  - namespace.yaml
+  - prometheus/prometheus.yaml
+  - kube-state-metrics.yaml
+  - grafana/grafana.yaml
+
+# Generated with a content hash in the name, so a config change rolls the pod
+configMapGenerator:
+  - name: prometheus-config
+    files:
+      - prometheus/prometheus.yml
+  - name: grafana-datasources
+    files:
+      - grafana/datasources.yaml
+  - name: grafana-dashboard-provider
+    files:
+      - grafana/dashboards.yaml
+  - name: grafana-dashboards
+    files:
+      - grafana/dashboards/contentcollab.json
