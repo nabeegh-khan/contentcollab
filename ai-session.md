@@ -257,6 +257,23 @@ Their own PostgreSQL holds 5432, so the test container never started; the reacha
 - Replied to the teammate by editing the morning's comment, under the same-day rule.
 
 
+## Deploy path pinning, rollback and named port (#82), 7 November 2026
+
+### Prompt
+
+Fix three deploy-path gaps from the Lecture 8 review: pin the image to the commit SHA before `kubectl apply -k`, with no `:latest` left in `k8s/`; undo a failed rollout of the API and the worker; name the API container port `http` and use the name in the Service and both probes. Test first, one issue, one PR, independent check at the end.
+
+### AI Response
+
+Wrote a stdlib test that renders the overlays and reads `deploy.yml`, ran it red (9 of 9 failing), then changed the manifests, the deploy step and the bring-up script. Chose a placeholder tag over a tagless image name because Kubernetes reads a tagless name as `latest`. The rollback loop undoes each failed Deployment and still fails the job.
+
+### What Your Team Did With It
+
+- The test failed on the old files and passes on the new ones; the workflow step itself cannot run until cluster credentials exist (#76), and this is stated in the build log.
+- A regex edit left a control character in `deploy.yml`; the rollback test caught it and it was fixed before the commit.
+- 10 November: the `deploy.yml` part of this work reached `main` through #76, so it is no longer in this PR's diff; the test's workflow checks were tightened after a review showed they passed on a broken rollout step (see the build log, 7 November entry, update of 10 November).
+- 11 November: before merge we tested the Service change on a throwaway k3s cluster and found that switching `targetPort` to the name in the same apply would leave no routable endpoint during the first rollout; the Service keeps the number for now, with a test that fails on the named version (build log, update of 11 November).
+
 ## Datadog install reviewed and hardened (#27, PR #61), 8 November 2026
 
 ### Prompt
@@ -323,3 +340,199 @@ The 7 November meeting put the schema and core features ahead of reviews, so PRs
 - Every round went back to a fresh reviewer until it came back clean. Later rounds caught an undo placed so it could go back one revision too far (fixed before the branch was pushed) and loose wording in the build log (corrected on `main`).
 - One check by mistake ran the real `doctl` against the team account; DigitalOcean refused the only change it tried, and a read-only listing confirmed nothing was created. The test harness now refuses to run unless its stubs are the ones on PATH.
 - Decisions went into ARCHITECTURE D6 and the build log on `main` before the branches were pushed. The PRs are not merged: that, and removing the requested reviewers, waits for Nabeegh.
+
+## Bring-up script checked against current versions and made safe to re-run (#54, PR #94), 11 November 2026
+
+### Prompt
+
+Issue #54: the DOKS bring-up script (Gateway controller, cert-manager, the kubeconfig secret for CI). Check every component version and install path against kubernetes.io, DigitalOcean, cert-manager and NGINX Gateway Fabric docs first. Record the architecture choice in ARCHITECTURE.md and PRACTICES.md. Then harden the script with tests for re-runs, missing variables and a certificate that is not issued. Dry run only; no cluster created or deleted.
+
+### AI Response
+
+The pinned cert-manager (1.19) had reached end of life, and cert-manager 1.21 supports Kubernetes up to 1.36, while an unpinned DOKS create gets 1.37. cert-manager's guide recommends upgrading one minor version at a time, and the setting that enables Gateway API support changed name in 1.21. The running cluster is on 1.37 with cert-manager 1.19.2. DigitalOcean's documented CI pattern is a token plus a 10-minute kubeconfig, not a stored kubeconfig. Proposed changes: checks before any change, a dry-run mode, a stepwise cert-manager upgrade, a certificate wait with cert-manager's status on failure, and stub-driven tests.
+
+### What Your Team Did With It
+
+- Kept the token pattern the deploy workflow already used and recorded why in D13. Recorded the version pins with their sources, and kept the running 1.37 cluster: rebuilding it is the cluster owner's decision.
+- Pushed the tests before the fix so CI showed them failing (11 of 13), then fixed the script.
+- An independent review of the fix found three gaps (a certificate never created was reported as not issued, the worker rollout was not waited for, the Datadog path was untested in dry runs). Each got a test that failed first, then a fix.
+- Ran the dry run against the real cluster and checked that nothing changed. The live upgrade and the CI token wait for Nabeegh.
+
+## Schema contract test for the #37 checklist (#77), 11 November 2026
+
+### Prompt
+
+The schema in #37 carries every promise the proposal makes about data, so we wanted a CI test that fails when one goes missing. We asked for a test written against the #37 checklist and PR #88's migration, shown failing on a bad migration first, with its own claims mutation-tested by someone who had not written it.
+
+### AI Response
+
+A catalog-query checker with 13 checks, scratch databases for isolation, a bad-migration fixture and 15 single-promise changes. A fresh reviewer then changed the checker and the schema and found false passes: a role CHECK of `OR true` or `NOT IN` passed because the check compared quoted text, column types were not checked, any identity column counted as "increasing", and any table named like a mentions table passed.
+
+### What Your Team Did With It
+
+- Replaced the text comparison with a probe on a temporary copy of `shares` inside a rolled-back transaction (four roles accepted, seven other values refused), added type, step, cycle and per-version checks, and grew the change list to 38 rows, each run on #88's migration.
+- Ran the test on the bad migration first (it failed, listing the six broken lines), then on #88's (43 of 43), and a second review round before opening the draft PR.
+- Kept the one item not fixed (`EXISTS` can never be null, so a null guard has nothing to catch) out of the code and in the log.
+
+## CI checks for the migration, the web image and the cloud manifests (part of #70, PR #99), 11 November 2026
+
+### Prompt
+
+The reviews of #88 and #86 promised four CI additions: kubeconform at a supported Kubernetes version, a migration up/down/up step, a web image build and a render check for the infra overlay and migrate Job. We asked for them as small scripts with tests written first, each shown failing on a deliberately broken input, and an independent review before pushing.
+
+### AI Response
+
+Three shell scripts with stub-driven tests (17), workflow changes that skip while the inputs are missing, and local runs against a real Postgres 18 and the real files from #88 and #86. A fresh reviewer then found that the workflow wiring was untested (7 of 7 changed copies passed), that a `yq | grep || true` hid a yq failure, and that the placeholder check missed digits.
+
+### What Your Team Did With It
+
+- Added a test that pins the workflow wiring and killed all of those changes, moved yq output to a file, widened the placeholder check, and re-ran everything.
+- Showed the checks red then green on a runner with a throwaway branch (closed afterwards), and wrote the limits into the PR and the build log: skips that never expire, no check that `down 0` empties the history, a build-only web job.
+
+## A rolling update that drains its pods, and a check that counts failed requests (#69, PR #103), 11 November 2026
+
+### Prompt
+
+Issue #69: prove that the API scales under load and that a rolling update drops no requests. Check the current Kubernetes documentation for the autoscaler, rolling updates, disruption budgets and pod shutdown, record the decision in ARCHITECTURE.md first, then add what is missing, a script that restarts the API under load and counts failed requests, and prove it on a cluster. The local cluster run was stopped for lack of memory, so the proof moves to the DOKS cluster after the rebuild.
+
+### AI Response
+
+The autoscaler, the disruption budget, `maxUnavailable: 0` and the readiness probe were already in the base manifest. The gap is shutdown: the endpoint removal runs alongside SIGTERM, and the API refuses new connections on SIGTERM. Proposed a 10-second `preStop` sleep (the built-in sleep handler, stable since Kubernetes 1.34) as a kustomize component, and a script that runs k6 inside the cluster. A local run showed `/health` fails under load with no rollout, so the script targets `/metrics`.
+
+### What Your Team Did With It
+
+- Wrote the decision into ARCHITECTURE D14 before the code, and corrected it when the plan changed (no local run) and when a review showed two of its claims were wrong: the 25% defaults already come to 0 and 1 for two replicas, and the memory risk was understated.
+- Pushed each batch of tests before the code that satisfies it, so CI showed them failing: 4, 5 and then 6 cases. One case passed on the runner for the wrong reason (it matched bash's wording of an error) and was rewritten to check behaviour.
+- An independent review found three ways the script could report a pass by mistake; each got a failing test first, then a fix.
+- Did not run anything on the cluster: it does not exist yet. The demo page says so and lists what is unverified, and the pull request stays a draft until the numbers are in.
+
+## PRACTICES alignment with the API contract, and lecture 9 rows (#104), 11 November 2026
+
+### Prompt
+
+`docs/PRACTICES.md` API-4 still described offset pagination with a `total`, while `docs/API.md` defines cursor pagination, and a review on #93 had promised to bring the row into line. Lecture 9 had just been posted. We asked for the row to match API.md with an honest source, for one row per lecture 9 practice with page citations, and for a list of what the manifests and code now miss, with no code changes.
+
+### AI Response
+
+A rewritten API-4 and seven new rows from all 98 pages of lecture 9. It found that no lecture or assignment sets a pagination scheme, so the old A1 citation was wrong. It also found one gap: the database volume's Delete reclaim policy, which it opened as #104.
+
+### What Your Team Did With It
+
+- Had the change checked by a new reviewer each round, one who had not written it or seen the earlier rounds, until a round came back clean. Each round checked the slides, the handouts, the manifests and the DigitalOcean and Kubernetes documentation. They found a blank line that broke the API table, a wrong cause for volume loss on cluster teardown (the `--dangerous` flag in `cluster-down.sh`, not the reclaim policy), planned work worded as done, an unsupported A2 citation, and a sentence about the cluster that went stale while the change was being checked. All were fixed before the commit.
+- Left out of this change, and logged as open: an inconsistency inside `docs/API.md` (the API slice's file) and two older rows that no longer agree with the contract.
+
+## PRACTICES rows for lectures 1, 7 and 9, page numbers rechecked (#105, #106), 11 November 2026
+
+### Prompt
+
+The lecture 9 rows had been cited against the 98-page note-taking PDF, while the team keeps the full slides. Lecture 7 had no rows and lecture 1 only two. We asked for every page of the three decks to be read, the lecture 9 citations to be checked against the full slides, rows to be added with page citations, and one issue to be opened for each real gap, with no code changes.
+
+### AI Response
+
+A page map between the two lecture 9 files (two slides are split over two pages in the full version, so citations after p9 move by one, and after p37 by two), corrected citations, six new rows (INF-18 to INF-21, PRC-5, PRC-6) and lecture 1 and 7 pages added to existing rows. It found two gaps: migrations are not required to keep the old API version working during a rolling update (#105), and local scripts do not check the kubectl context (#106).
+
+### What Your Team Did With It
+
+- Checked each new row against the manifests and scripts before writing where it applies, and dropped lecture 1 citations the slides did not support (for "demo live", "pay for what you use" as a reason to destroy resources, and contribution read from Git history).
+- Had the change checked by reviewers who had not written it, a new one each round, and fixed what they found (a migration Job described as existing when it is only planned, a script listed as calling kubectl that does not, a row still placing the cluster in Toronto after the move to nyc3) before committing.
+
+## Two more review passes on the request log and the monitoring scripts (#55, PR #102), 11 November 2026
+
+### Prompt
+
+PR #102 (JSON request logs, bounded metric labels, the error-rate check and the memory-headroom script) had one review. Before it can merge we asked for two more independent passes, the second by a reviewer who had not seen the first: every test shown failing without its change, the error paths (no data, bad input, crash), the log format and label bounds, and every claim in the PR and in D18. Each fault fixed test-first; nothing pushed until the second pass was clean.
+
+### AI Response
+
+The first pass found about thirty items. The most serious were silent all-clears: a node with no reading counted as 0 MiB used, a failing probe below the minimum reported as fine, unreadable lines dropped, a late server error logged as the client aborting. It also found tests that passed with the feature removed and a CRLF README. The second pass found no code fault that blocked a push, but it did find plain-text startup lines, untested bounds, environment-dependent tests and several doc claims that were wrong or stale.
+
+### What Your Team Did With It
+
+- Wrote a failing test for each finding before the fix, in five rounds, and added checks that would have caught the late faults: line endings read from git's index, `--tail=-1` in every documented command, and the logger's output parsed by the check itself.
+- Brought the error bodies in line with our own API contract (`code`), made both scripts exit 2 instead of reporting all clear on bad input, and ran the real server with Redis paused to see the alert fire.
+- Corrected D16, D18, RESEARCH and the demo page where they had gone stale after the cluster rebuild. Left the architecture diagram and the submitted proposal's Datadog line unchanged.
+- Rejected one suggestion: counting aborted requests as failures. They get their own column instead, because a closed browser tab is not a server error.
+
+## The bring-up script follows the rebuilt cluster (#54, PR #94), 11 November 2026
+
+### Prompt
+
+The bring-up script on #94 creates the cluster without `--ha`. Make it create without the paid high-availability control plane and with node autoscaling. Then make it match the rebuilt cluster: its node pool and version, the region and context read from the cluster (nyc3), and the Gateway API CRD opt-out that DOKS 1.37 needed. Write the tests first, record the decision in D13 with sources, and re-check the CI/CD evidence page against the Actions API.
+
+### AI Response
+
+Checked DigitalOcean's doctl reference, its high-availability how-to, its pricing page and its Gateway API guide. Omitting `--ha` turns HA on for 1.36.0 and later, at US$40 a month, and it cannot be turned off. The opt-out for DOKS-managed Gateway API CRDs is the annotation `doks.digitalocean.com/install-policy=external` on each CRD. Proposed `--ha=false`, autoscaling bounds checked before any call, the rebuild's defaults, the context taken from the cluster's own region, and the annotation step before the CRD apply, each with tests. Every run, duration and count on the CI/CD evidence page matched the API.
+
+### What Your Team Did With It
+
+- Committed each batch of tests before its fix: 2 of 30 failed, then 6 of 36. All pass now.
+- Did not set the node pool defaults until the rebuild recorded its actual values, then copied them from that record.
+- An independent review found a test that could not fail on one of its claims, a missing default test and a misleading sentence in D13. All three were fixed before the push.
+- A second review of the final change found an untested warning, a stale paragraph in D13 and two inaccurate sentences in the build log, one of them saying a lint tool was unavailable when it was not. All four were fixed before the push.
+- Noted the deploy path-filter gap on #70 instead of editing `deploy.yml`, because another open pull request changes that file.
+
+## The rollout check reads the rebuilt cluster, and its first live run (#69, PR #103), 11 November 2026
+
+### Prompt
+
+The cluster was rebuilt in nyc3 with one 4 GB node that autoscales to two. Make the rollout script and the demo page read the context and the node limits from the cluster instead of assuming the old Toronto context or two nodes, so the memory check works for one 4 GB node, with tests first and two independent reviews. Then, once the site serves HTTPS on the new cluster, run the scaling and rollout steps and record the numbers.
+
+### AI Response
+
+Proposed printing the context, the nodes and the node autoscaler's bounds read from the cluster, and replacing the 90% memory limit with a check in MiB: every node must have room for the load generator's memory limit plus the extra API pod the rollout adds, read from the Deployment. Wrote failing tests first for each change. Ran the live steps: rollouts under load inside the cluster dropped nothing with or without the drain; through the public URL a rollout lost 28 of about 6,000 requests while the control lost none; the HPA scaled 2 to 5 and back to 2 after five minutes on one node.
+
+### What Your Team Did With It
+
+- Kept a percentage out: 10% of a 4 GB node is less than the load generator may use.
+- Four review rounds found real gaps (a full node let through when another had no metrics, an ignored override, a stale design note, an octal surge value); each got a test that failed first. After our verification rule changed to two full passes plus one delta check, the extra rounds were stopped there.
+- Recorded the public-URL failures as an open question rather than claiming the drain fixed them, and noted that the scale-out to five came from the rollout script's own load, before the stepped test started. A review of the write-up corrected the burst spacing and two statements about what the watch file showed, and the HPA's events were saved as evidence.
+
+## Pull request reviews before the checkpoint, and the migration Job (#117), 13 November 2026
+
+### Prompt
+
+Before the 14 November checkpoint: review the pull requests waiting on the cloud slice (#85, #86, #88, #111, #114, #116) against our review criteria, with each draft checked by a second, independent review before posting. Then build what the cloud slice still owed the core path: something that runs the schema migrations on the cluster before each rollout, tests first.
+
+### AI Response
+
+Drafted each review with file and line findings and checked each draft separately. For the migration, proposed a Kubernetes Job per commit, run from `deploy.yml` between the cluster login and the rollout, skipped while there are no migrations, deleted and recreated on a re-run, with a wait that fails the run before any pod changes, inside the ten-minute cluster login; wrote the tests first.
+
+### What Your Team Did With It
+
+- The second check corrected three findings before the reviews were posted, and fixed wording in others: the deploy and Kubernetes changes in the auth pull request came from an old schema commit, not its author; a draft said updating from `main` would bring in a column that the schema pull request does not yet have; and a cursor fix was incomplete.
+- Found after approving the schema that it still lacks the revert column agreed on 12 November; posted a correction on the pull request asking for a second migration rather than withdrawing the approval, so the schema and auth are not held up.
+- Kept the migration Job out of the teammates' pull requests and in our own deploy scope, built on the open image-pinning pull request because both change the same step.
+- Committed the tests before each change (12 of 26 failing, then 1 of 27, twice) and applied the review's findings: the failure branch also prints the Job's status and its pod's events, since the deadline terminates the pod and a pod that never started has no log.
+
+## DigitalOcean project, Spaces bucket and the app Secret (#53), 11 November 2026
+
+### Prompt
+
+Prepare issue #53 without touching the account: check Spaces pricing and access-key rules against DigitalOcean's documentation, then write the manifests, scripts and docs for the DigitalOcean project, the bucket and the app Secret. The Secret stays a template with no real values (base64 is not encryption, SEC-10); anything that needs a token or a key becomes a command for Nabeegh to run; the storage and schema work in #88 and #89 is read, not edited.
+
+### AI Response
+
+Spaces access keys can only be created in the Control Panel and the CLI cannot create a bucket, so the plan is a project script, a runbook for the two Control Panel steps, a script that proves the key, and a script that makes the Secret without a file. Reading the code turned up two problems: client-side `kubectl apply` of a filled-in Secret copies every value in plain text into an annotation (the minikube steps did, and `cluster-up.sh` still does), and the migration Job in #88 gives its init container the whole Secret, including the storage keys. Running the scripts for real, against throwaway local servers, found two faults the stub tests could not: a Windows temp path the AWS CLI cannot open, and a loop variable that overwrote a function's local in bash.
+
+### What Your Team Did With It
+
+- Wrote the decision, the options not taken, the cost and the sources into the build log before any script; wrote each test first (the template check failed on the old template, the 24 script tests failed with no scripts) and checked the tests with ten deliberate breakages of the scripts, one of which got through and now has a test.
+- Ran `spaces-verify.sh` with the AWS CLI against a local S3 gateway and `app-secret.sh` with kubectl against a local k3s cluster, using made-up keys and the cluster's own kubeconfig, never the account or the DOKS context. Nothing was created on DigitalOcean: the project, bucket, key and Secret are commands and Control Panel steps for Nabeegh to run (`k8s/README.md`).
+- Changed `cluster-up.sh` to call the new script, then dropped that change: the open PR #94 rewrites the same file and its tests would break. The follow-up is written down for after #94 merges.
+- Read #88 and #89 without editing them. The one point for #88 (its init container should read `DB_USER` by key) is in the build log, and a new test reports it once both are merged.
+
+## Re-reviews before the checkpoint call and the CI signing-key fix (#127), 14 November 2026
+
+### Prompt
+
+Before the 3:30pm checkpoint: unblock CI for the auth and shares pull requests, re-review both against our criteria after their author's fixes, answer the web skeleton's open questions, and update the demo page and meeting agenda from the current state.
+
+### AI Response
+
+Traced the red `docker` job to CI starting the API image without a signing key, proposed a test-only value on both `docker run` lines with a check that fails first, drafted the re-reviews and the web comment, and drafted the agenda and demo updates.
+
+### What Your Team Did With It
+
+- Kept the fix in CI, our own scope, and left the auth code alone; the check was committed before the fix and failed first.
+- An independent check of the review drafts corrected one wrong claim (a merge conflict on the web branch that Git does not produce) and changed the shares review from an approval to a comment, since the branch still carries the auth branch's broken Compose line until auth merges.
+- Found in re-review that the auth branch's new Compose line stops `docker compose up` and that four docs files on it are older copies; both are asked of the author, not changed by us. Deferred items went to #129 and #130.

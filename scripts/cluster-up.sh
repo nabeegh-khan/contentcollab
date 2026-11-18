@@ -70,9 +70,17 @@ sed "s|LETSENCRYPT_EMAIL|$LETSENCRYPT_EMAIL|" k8s/doks/cluster-issuer.yaml | kub
 #     L8 p67, p73). IMAGE_TAG defaults to the newest commit on main that
 #     deploy.yml builds for; the registry is checked before anything applies.
 git fetch -q origin main
-: "${IMAGE_TAG:=$(git log -1 --format=%H origin/main -- api k8s .github/workflows/deploy.yml)}"
-rendered=$(kubectl kustomize k8s/doks | sed "s#\(ghcr.io/nabeegh-khan/contentcollab-[a-z]*\):latest#\1:$IMAGE_TAG#g")
-for repo in $(printf '%s\n' "$rendered" | grep -o 'ghcr.io/nabeegh-khan/contentcollab-[a-z]*' | sort -u); do
+: "${IMAGE_TAG:=$(git log -1 --format=%H origin/main -- api worker k8s .github/workflows/deploy.yml)}"   # the paths deploy.yml runs on
+# deploy.yml tags images with the full commit SHA; anything else (empty, a
+# branch name, characters sed would read) stops here
+[[ "$IMAGE_TAG" =~ ^[0-9a-f]{40}$ ]] || { echo "IMAGE_TAG '$IMAGE_TAG' is not a full commit SHA"; exit 1; }
+app='ghcr.io/nabeegh-khan/contentcollab-[a-z0-9-]*'   # every app image repository
+rendered=$(kubectl kustomize k8s/doks | sed "s#\($app\):unpinned#\1:$IMAGE_TAG#g")
+# If the base tag ever changes, the sed above matches nothing: every app image
+# reference (tagged, tagless or by digest) must now end in this tag
+unpinned=$(printf '%s\n' "$rendered" | grep -o "${app}[^[:space:]\"]*" | grep -v ":$IMAGE_TAG\$" || true)
+[ -z "$unpinned" ] || { echo "images not pinned to $IMAGE_TAG: $unpinned"; exit 1; }
+for repo in $(printf '%s\n' "$rendered" | grep -o "$app" | sort -u); do
   name=${repo#ghcr.io/}
   token=$(curl -fsS "https://ghcr.io/token?scope=repository:$name:pull" | sed -n 's/.*"token":"\([^"]*\)".*/\1/p')
   code=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $token" \
