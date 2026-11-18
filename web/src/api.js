@@ -1,12 +1,14 @@
 import { BrowserRouter, Routes, Route, Link } from 'react-router-dom'; 
-import { Router } from "express";
-import { Pool } from "pg";
 import Fs from 'fs/promises'; // https://futurestud.io/tutorials/node-js-get-the-size-of-a-file
 
-const app = Router();
-const port = 3000;
 
-app.post("/auth/register", async (req, res) =>
+function request(path, options)
+{
+  
+  return res.status(401).json({"error": "go back to sign-in"});
+}
+
+function register()
 {
   try
   {
@@ -29,9 +31,9 @@ app.post("/auth/register", async (req, res) =>
     console.error(err);
     return res.status(500).json({ error: "Server error" });
   }
-});
+}
 
-app.post("/auth/login", async (req, res) =>
+function login()
 {
   try
   {
@@ -54,14 +56,14 @@ app.post("/auth/login", async (req, res) =>
     return res.status(500).json({ error: "Server error" });
   }
 
-});
+}
 
 async function find_fileSize (path) {  // https://futurestud.io/tutorials/node-js-get-the-size-of-a-file
   const stat = await Fs.stat(path)
   return stat.size
 }
 
-app.post("/documents", async (req, res) =>
+function uploadDocument(file, title)
 {
   try
   {
@@ -92,9 +94,9 @@ app.post("/documents", async (req, res) =>
     console.error(err);
     return res.status(500).json({ error: "Server error" });
   }  
-});
+}
 
-app.get("/documents", async (req, res) =>
+function listDocuments({ limit, cursor })
 {
   try
   {
@@ -123,4 +125,4 @@ app.get("/documents", async (req, res) =>
     console.error(err);
     return res.status(500).json({ error: "Server error" });
   }  
-});
+}
