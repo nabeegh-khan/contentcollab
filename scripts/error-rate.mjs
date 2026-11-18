@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // The 5xx share per route over a window, read from the API's JSON request log (#55, ARCHITECTURE D18).
-// This is the error-rate check of the demo: no agent in the cluster, only the log.
+// A log-based check beside Prometheus and Grafana (D19, #112), which chart the same share from /metrics:
+// this one needs only kubectl and names the routes from the log.
 //
 //   kubectl -n contentcollab logs -l app=api --since=5m --tail=-1 --prefix | node scripts/error-rate.mjs
 //   THRESHOLD=0.05 MIN_REQUESTS=20 node scripts/error-rate.mjs < saved.log
