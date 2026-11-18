@@ -13,6 +13,7 @@ import {
   HTTP_UNAUTHORIZED,
   HTTP_UNPROCESSABLE,
 } from "../lib/httpStatus.js";
+import { HttpError, type ValidationDetail } from "../lib/httpError.js";
 import { errorFields, log } from "../lib/log.js";
 import { markFailedMidResponse } from "../lib/midResponse.js";
 import { routeLabel } from "../lib/routeLabel.js";
@@ -48,20 +49,42 @@ export function errorBody(status: number): { error: string; code: string } {
   return { error: STATUS_CODES[status] ?? "Error", code: codeFor(status) };
 }
 
-// An error is the client's mistake only when it carries a 4xx status and says
-// its message may be shown (`expose`, which body-parser and http-errors set
-// for a malformed body or one over the size limit). It answers with that
-// status and does not count toward the 5xx error rate. A 4xx status without
-// `expose` (an upstream client's 404, say) is our failure: a 500.
-function clientErrorStatus(err: unknown): number | undefined {
-  const { status, expose } = (err ?? {}) as { status?: unknown; expose?: unknown };
-  const isClientError =
-    expose === true &&
+type ErrorAnswer = { error: string; code: string; details?: ValidationDetail[] };
+
+// The answer to an HttpError our routes threw (#111): its own message and
+// code, the status's code when it gives none, and `details` only on a 400
+// VALIDATION error, as docs/API.md says
+function httpErrorBody(err: HttpError): ErrorAnswer {
+  const code = err.code || codeFor(err.status);
+  const withDetails = err.status === HTTP_BAD_REQUEST && code === "VALIDATION" && err.details;
+  return withDetails
+    ? { error: err.message, code, details: err.details }
+    : { error: err.message, code };
+}
+
+function isClientStatus(status: unknown): status is number {
+  return (
     typeof status === "number" &&
     Number.isInteger(status) &&
     status >= HTTP_CLIENT_ERROR_MIN &&
-    status < HTTP_SERVER_ERROR_MIN;
-  return isClientError ? status : undefined;
+    status < HTTP_SERVER_ERROR_MIN
+  );
+}
+
+// An error is the client's mistake only when it carries a 4xx status and says
+// its message may be shown: an HttpError our routes threw on purpose, or one
+// marked `expose` (which body-parser and http-errors set for a malformed body
+// or one over the size limit). It answers with that status and does not count
+// toward the 5xx error rate. A 4xx status without either (an upstream client's
+// 404, say) is our failure: a 500. So is an HttpError with a 5xx status.
+function clientErrorStatus(err: unknown): number | undefined {
+  if (err instanceof HttpError) return isClientStatus(err.status) ? err.status : undefined;
+  const { status, expose } = (err ?? {}) as { status?: unknown; expose?: unknown };
+  return expose === true && isClientStatus(status) ? status : undefined;
+}
+
+function clientErrorBody(err: unknown, status: number): ErrorAnswer {
+  return err instanceof HttpError ? httpErrorBody(err) : errorBody(status);
 }
 
 // Last middleware in the chain. The client gets the fixed shape of docs/API.md
@@ -88,8 +111,11 @@ export function errorHandler(err: unknown, req: Request, res: Response, next: Ne
     res.destroy();
     return;
   }
-  const status = clientStatus ?? HTTP_INTERNAL_ERROR;
-  res.status(status).json(errorBody(status));
+  if (clientStatus) {
+    res.status(clientStatus).json(clientErrorBody(err, clientStatus));
+  } else {
+    res.status(HTTP_INTERNAL_ERROR).json(errorBody(HTTP_INTERNAL_ERROR));
+  }
   // `next` is part of the error-handler signature Express looks for; nothing follows this handler
   void next;
 }
