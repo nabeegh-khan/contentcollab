@@ -1,12 +1,11 @@
 import { BrowserRouter, Routes, Route, Link } from 'react-router-dom'; 
 import Fs from 'fs/promises'; // https://futurestud.io/tutorials/node-js-get-the-size-of-a-file
 
-// https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API/Using_Fetch
+// https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API/Using_Fetch, https://developer.mozilla.org/en-US/docs/Web/API/Response/status, https://stackoverflow.com/questions/69165892/how-to-throw-an-exception-with-a-status-code
 
 function request(path, options)
 {
   
-  return res.status(401).json({"error": "go back to sign-in"});
 }
 
 function register()
@@ -19,19 +18,21 @@ function register()
     
     if (response != null)
     {
-      return res.status(409).json({"error": "email taken"});
+      const error = new Error("email taken");
+      error.code = 409;
+      throw error;
     }
     else
     {
       console.log(task);
-      return res.status(201);
+      return response.status;
     }
   }
     
   catch (err)
   {
-    console.error(err);
-    return res.status(500).json({ error: "Fetch failed" });
+    err.code = 500; 
+    throw err;
   }
 }
 
@@ -45,26 +46,28 @@ function login()
 
       if (result == null)
       {
-        return res.status(401).json({ "error": "wrong email or password" });
+        const error = new Error("wrong email or password");
+        error.code = 401;
+        throw error;
       }
       
       const token = result[0];
       const user = result[1];
 
-      return return res.status(200).json({ "token": token, "user": user });
+      return task.status, task.json({ "token": token, "user": user });
   }
     
   catch (err) 
   {
-    console.error(err);
-    return res.status(500).json({ error: "Fetch failed" });
+    err.code = 500; 
+    throw err;
   }
 
 }
 
 async function find_fileSize (path) {  // https://futurestud.io/tutorials/node-js-get-the-size-of-a-file
-  const stat = await Fs.stat(path)
-  return stat.size
+  const stat = await Fs.stat(path);
+  return stat.size;
 }
 
 function uploadDocument(file, title)
@@ -79,26 +82,30 @@ function uploadDocument(file, title)
       
     if (file_size > MAX_FILE_SIZE) // https://futurestud.io/tutorials/node-js-get-the-size-of-a-file
     {
-      return res.status(413).json({ "error": "file must be <= 50 MB" });
+      const error = new Error("file must be <= 50 MB");
+      error.code = 413;
+      throw error;
     }
 
     if (!acceptable_exts.includes(extension))
     {
-      return res.status(400).json({"error": "file type not allowed});
+      const error = new Error("file type not allowed");
+      error.code = 400;
+      throw error;
     }
 
     const result = await fetch(file);
     const task = await result.json();
                                   
     console.log(task);
-    return res.status(201);
+    return result.status;
   
   }
       
   catch (err) 
   {
-    console.error(err);
-    return res.status(500).json({ error: "Fetch failed" });
+    err.code = 500; 
+    throw err;
   }  
 }
 
@@ -138,7 +145,7 @@ function listDocuments({ limit, cursor })
    
   catch (err) 
   {
-    console.error(err);
-    return res.status(500).json({ error: "Fetch failed" });
+    err.code = 500; 
+    throw err;
   }  
 }
