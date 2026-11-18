@@ -7,7 +7,7 @@ import type { Latency } from "../lib/status.js";
 export interface StatusSources {
   queue: () => Promise<number>;
   latency: () => Promise<Latency>;
-  /** Ready API replicas, or null while the API cannot read its Deployment (no RBAC yet). */
+  /** Ready API replicas, or null outside a pod, where no Kubernetes API is reachable (server.ts). */
   replicas: () => Promise<{ api: number } | null>;
 }
 
