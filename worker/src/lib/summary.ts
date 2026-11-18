@@ -93,6 +93,19 @@ export interface MessagesClient {
   };
 }
 
+/** JSON.parse's own message quotes the text, which can echo the document; this one never does. */
+function parseReply(text: string): unknown {
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    throw new Error("summary: the reply was not JSON");
+  }
+}
+
+export type ClientOptions = { timeout: number; maxRetries: number };
+type MakeClient = (options: ClientOptions) => MessagesClient;
+const sdkClient: MakeClient = (options) => new Anthropic(options);
+
 export function anthropicProvider(client: MessagesClient, model: string): SummaryProvider {
   return {
     summarize: async (kind, text) => {
@@ -108,13 +121,16 @@ export function anthropicProvider(client: MessagesClient, model: string): Summar
       }
       const block = message.content.find((b) => b.type === "text");
       if (!block || block.type !== "text") throw new Error("summary: the reply had no text");
-      return JSON.parse(block.text) as unknown;
+      return parseReply(block.text);
     },
   };
 }
 
 /** SUMMARY_PROVIDER: "stub" (default) or "anthropic"; the SDK reads its key from the environment. */
-export function providerFromEnv(env: Record<string, string | undefined>): SummaryProvider {
+export function providerFromEnv(
+  env: Record<string, string | undefined>,
+  makeClient: MakeClient = sdkClient,
+): SummaryProvider {
   const name = env.SUMMARY_PROVIDER ?? "stub";
   if (name === "stub") return stubProvider;
   if (name === "anthropic") {
@@ -122,7 +138,10 @@ export function providerFromEnv(env: Record<string, string | undefined>): Summar
     let provider: SummaryProvider | undefined;
     return {
       summarize: (kind, text) => {
-        provider ??= anthropicProvider(new Anthropic(), env.SUMMARY_MODEL ?? DEFAULT_MODEL);
+        provider ??= anthropicProvider(
+          makeClient({ timeout: REQUEST_TIMEOUT_MS, maxRetries: MAX_RETRIES }),
+          env.SUMMARY_MODEL ?? DEFAULT_MODEL,
+        );
         return provider.summarize(kind, text);
       },
     };
