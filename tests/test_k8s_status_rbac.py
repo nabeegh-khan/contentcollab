@@ -53,10 +53,14 @@ class StatusReadAccess(unittest.TestCase):
         self.assertNotIn("ClusterRoleBinding", kinds)
 
     def test_other_workloads_do_not_run_as_the_api_account(self):
-        # Only the API may read its Deployment; the others keep the namespace's default account
-        for name in ("worker", "redis"):
-            pod = one(self.docs, "Deployment", name)["spec"]["template"]["spec"]
-            self.assertNotEqual(pod.get("serviceAccountName"), "api", name)
+        # Only the API may read its Deployment; every other workload (worker, redis, the postgres
+        # StatefulSet, any Job) keeps the namespace's default account
+        workloads = [d for d in self.docs if d["kind"] in ("Deployment", "StatefulSet", "Job", "DaemonSet")]
+        others = [d for d in workloads if d["metadata"]["name"] != "api"]
+        self.assertIn("postgres", {d["metadata"]["name"] for d in others})
+        for d in others:
+            pod = d["spec"]["template"]["spec"]
+            self.assertNotEqual(pod.get("serviceAccountName"), "api", f'{d["kind"]}/{d["metadata"]["name"]}')
 
 
 if __name__ == "__main__":

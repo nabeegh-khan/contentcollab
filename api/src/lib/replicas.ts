@@ -96,15 +96,16 @@ export function inClusterGet(
 }
 
 /**
- * The last successful result of `read` for `ttlMs`, so a public endpoint polled by anyone does not
- * turn every request into an apiserver call. A failed read is not kept.
+ * At most one call to `read` per `ttlMs`, so a public endpoint polled by anyone does not turn every
+ * request into an apiserver call: callers share the read in flight, and its outcome, a value or a
+ * failure (a denied or unreachable apiserver), answers everyone until the window ends.
  */
 export function cachedFor<T>(ttlMs: number, read: () => Promise<T>, now: () => number = Date.now) {
-  let kept: { at: number; value: T } | undefined;
-  return async (): Promise<T> => {
-    if (kept && now() - kept.at < ttlMs) return kept.value;
-    const value = await read();
-    kept = { at: now(), value };
-    return value;
+  let kept: { at: number; result: Promise<T> } | undefined;
+  return (): Promise<T> => {
+    if (kept && now() - kept.at < ttlMs) return kept.result;
+    const result = read();
+    kept = { at: now(), result };
+    return result;
   };
 }
