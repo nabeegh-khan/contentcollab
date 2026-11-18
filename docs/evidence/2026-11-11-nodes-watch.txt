@@ -1,0 +1,13 @@
+21:50:19 NAME             STATUS   ROLES    AGE    VERSION   INSTANCE-TYPE
+21:50:19 default-3aodxs   Ready    <none>   159m   v1.37.0   s-2vcpu-4gb
+21:51:25 default-3aodxs   Ready    <none>   160m   v1.37.0   s-2vcpu-4gb
+21:51:32 default-3aodxs   Ready    <none>   161m   v1.37.0   s-2vcpu-4gb
+21:54:05 default-3aodxs   Ready    <none>   163m   v1.37.0   s-2vcpu-4gb
+21:56:25 default-3aodxs   Ready    <none>   165m   v1.37.0   s-2vcpu-4gb
+21:56:27 default-3aodxs   Ready    <none>   166m   v1.37.0   s-2vcpu-4gb
+22:00:12 default-3aodxs   Ready    <none>   169m   v1.37.0   s-2vcpu-4gb
+22:01:25 default-3aodxs   Ready    <none>   170m   v1.37.0   s-2vcpu-4gb
+22:01:34 default-3aodxs   Ready    <none>   171m   v1.37.0   s-2vcpu-4gb
+22:05:39 default-3aodxs   Ready    <none>   175m   v1.37.0   s-2vcpu-4gb
+22:06:25 default-3aodxs   Ready    <none>   175m   v1.37.0   s-2vcpu-4gb
+22:06:30 default-3aodxs   Ready    <none>   176m   v1.37.0   s-2vcpu-4gb

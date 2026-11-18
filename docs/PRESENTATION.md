@@ -1,6 +1,22 @@
 # Presentation plan: Wednesday 2 December 2026, 1:15pm
 
-What we show, what we say and what we answer, built from the course rubric. Status was checked on 11 November 2026 (about 10:50, Toronto) against `main` at `7d3e60b`, the project board, the open pull requests and the live cluster (read-only `kubectl` and `curl` on `https://contentcollab.app`). The status columns are re-checked on Fri 20 November and Tue 24 November; anything marked "not started" or "in a PR" here is not claimed in the presentation until it works on the cluster.
+What we show, what we say and what we answer, built from the course rubric.
+
+## Status on Saturday 14 November 2026, 2:30pm (supersedes the 11 November status below where they differ)
+
+Checked against `main` at `e4dde4a`, the open pull requests, and the cluster (read-only `kubectl get`, `curl` on `/health`).
+
+- **Cluster.** Rebuilt in nyc3 on 11 November (ARCHITECTURE D13): one `s-2vcpu-4gb` node with autoscaling 1 to 2, Kubernetes 1.37. Live: api 2/2, worker 1/1, redis, postgres, HPA (`cpu: 10%/70%`, 2 to 5), `/health` returns `{"status":"ok","postgres":"ok","redis":"ok"}`. Steps that say "pods on two nodes" in sections 2 and 3 need the second node (pool minimum 2) or must say one node.
+- **CI rollout: runs.** Image pinning with undo (#83) is merged and deployed (run 43518794078, `smoke ok`); `SMOKE_URL` is set. The worker reached the cluster through that rollout. Gaps 3 and 16 are closed.
+- **Schema: merged** (#88, 13 November), and CI runs the migrations up, down and up (#99). **Tables on the cluster: not yet**: the migration Job (#118) creates them on its first deploy after merge. Gap 1 is half closed.
+- **Product routes: none merged.** Auth #111 (two small blockers left), shares #114 (after #111), documents and versions #116 (conflicts), storage #89; web #86 (build needs `nginx.conf`), #93, #91. Comments (#42) starts today on #111's branch. Real-time (#45, #46) has no branch: an owner and date are set at the 14 November meeting, or it moves to a stretch goal and is shown as planned. Gaps 2 and 11 stand.
+- **Autoscaling and rollout under load: measured 11 November** (`docs/BUILD_LOG.md`, #69 section, and `docs/evidence/2026-11-11-*`; PR #103): HPA 2 to 5 and back; in-cluster rollouts with 0 failed requests; through the public URL, 28 of about 6,000 failed during a rollout with drain (cause open). Gap 6 is mostly closed.
+- **In pull requests, not live:** restart test #120 (#68), volume kept on claim delete #122 (#104), Spaces key check #98 (#53), Service by port name #121, JSON logs #102 (#55), Prometheus and Grafana #112 (#109), version diff #123, status endpoint #124/#126, summaries #125 (draft while AI features are paused).
+- **Demo rule from 14 November:** the demo script uses only merged and deployed features; anything else is a slide marked "planned". Slide owners are set at the 14 November meeting (#110).
+
+## Status on 11 November 2026
+
+Status was checked on 11 November 2026 (about 10:50, Toronto) against `main` at `7d3e60b`, the project board, the open pull requests and the live cluster (read-only `kubectl` and `curl` on `https://contentcollab.app`). The status columns are re-checked on Fri 20 November and Tue 24 November; anything marked "not started" or "in a PR" here is not claimed in the presentation until it works on the cluster.
 
 ## 1. What is scored
 
