@@ -214,6 +214,10 @@ jobs:
         with:
           node-version: 24
       - run: node --test scripts/*.test.mjs
+      # A migration's up may not drop or rename a table or column the previous
+      # release still reads, unless it carries a contract marker (#105, D24)
+      - name: Migrations keep the previous release working
+        run: node scripts/migration-compat.mjs api/migrations
 
   # Builds the API image exactly as the deploy workflow will, without pushing it,
   # so a Dockerfile that no longer builds fails the pull request rather than
