@@ -55,8 +55,32 @@ export function parseUpload(
     let uploadInfo: UploadInfo | undefined;
     let uploadPromise: Promise<void> | undefined;
     let failure: Error | undefined;
+    let finalizing = false;
 
-    busboy.on("field", (name, value, info) => {
+    function finish(): void {
+      if (finalizing) return;
+      finalizing = true;
+
+      void (async () => {
+        await uploadPromise; // onFile 的 catch 已把上传失败记入 failure
+
+        if (failure) throw failure;
+        if (!uploadInfo) {
+          throw new HttpError(400, "VALIDATION", "File Required");
+        }
+
+        resolve({
+          ...uploadInfo,
+          ...(title !== undefined ? { title } : {}),
+        });
+      })().catch(reject);
+    }
+
+    busboy.on("field", (
+      name: string, 
+      value: string, 
+      info: { valueTruncated: boolean },
+    ) => {
       if (name !== "title" || info.valueTruncated) {
         failure ??= new HttpError(400, "VALIDATION", "Invalid Upload Field");
         return;
@@ -64,7 +88,11 @@ export function parseUpload(
       title = value;
     });
 
-    busboy.on("file", (name, file, info) => {
+    busboy.on("file", (
+      name: string,
+      file: Readable,
+      info: { filename: string; mimeType: string },
+    ) => {
       if (name !== "file" || !info.filename) {
         failure ??= new HttpError(400, "VALIDATION", "File Required");
         file.resume();
@@ -107,21 +135,13 @@ export function parseUpload(
       failure ??= new HttpError(400, "VALIDATION", "Too Many Parts");
     });
 
-    busboy.on("error", reject);
-
-    busboy.on("close", () => {
-      void (async () => {
-        await uploadPromise;
-        if (failure) throw failure;
-        if (!uploadInfo) {
-          throw new HttpError(400, "VALIDATION", "File Required");
-        }
-        resolve({
-          ...uploadInfo,
-          ...(title !== undefined ? { title } : {}),
-        });
-      })().catch(reject);
+    busboy.on("error", () => {
+      failure ??= new HttpError(400, "VALIDATION", "Invalid Multipart Request");
+      controller.abort();
+      finish();
     });
+    
+    busboy.on("close", finish);
 
     req.pipe(busboy);
   });
