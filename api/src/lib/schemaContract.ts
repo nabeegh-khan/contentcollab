@@ -3,6 +3,8 @@
 // ids of the promises the schema does not keep. Nothing is written to the
 // schema; the role check works on a temporary copy inside a rolled-back
 // transaction.
+// One connection, not a pool: the role check runs BEGIN, SAVEPOINT and ROLLBACK and needs them
+// on the same session (a pg Client or a PoolClient from pool.connect())
 export type Queryable = {
   query: (sql: string, params?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }>;
 };
@@ -57,12 +59,12 @@ const uniqueOn =
 // index may leave reverts out; until the second migration lands the full index is still accepted
 const NOT_A_REVERT = "(reverted_from IS NULL)";
 
-// A foreign key from table.column to target
+// An enforced foreign key from table.column to target (PostgreSQL 18 allows NOT ENFORCED ones)
 const foreignKey = (table: string, name: string, target: string) => (db: Queryable) =>
   exists(
     db,
     `SELECT 1 FROM pg_constraint c
-      WHERE c.contype = 'f' AND c.conrelid = ('public.' || $1)::regclass
+      WHERE c.contype = 'f' AND c.conenforced AND c.conrelid = ('public.' || $1)::regclass
         AND c.confrelid = ('public.' || $3)::regclass
         AND ARRAY(SELECT a.attname FROM pg_attribute a
                    WHERE a.attrelid = c.conrelid AND a.attnum = ANY (c.conkey)) = ARRAY[$2]::name[]`,
@@ -125,9 +127,9 @@ const mentionsTable = (db: Queryable) =>
     `SELECT 1 FROM pg_class t
       WHERE t.relnamespace = 'public'::regnamespace AND t.relkind = 'r' AND t.relname LIKE '%mention%'
         AND EXISTS (SELECT 1 FROM pg_constraint c WHERE c.conrelid = t.oid AND c.contype = 'f'
-                     AND c.confrelid = 'public.comments'::regclass)
+                     AND c.conenforced AND c.confrelid = 'public.comments'::regclass)
         AND EXISTS (SELECT 1 FROM pg_constraint c WHERE c.conrelid = t.oid AND c.contype = 'f'
-                     AND c.confrelid = 'public.users'::regclass)`,
+                     AND c.conenforced AND c.confrelid = 'public.users'::regclass)`,
   );
 
 // "Comments ordered by an increasing id per version": a column on comments that
@@ -178,13 +180,13 @@ export const checks: Check[] = [
   },
   {
     id: "shares-expires-at",
-    promise: "shares.expires_at exists and is a timestamp (2.6)",
+    promise: "shares.expires_at exists and is a timestamp with time zone (2.6)",
     run: column("shares", "expires_at", false, ["timestamp with time zone"]),
   },
   {
     id: "versions-checksum-unique",
     promise:
-      "document_versions is unique on (document_id, checksum), reverts excepted (2.4; 12 Nov decision)",
+      "document_versions is unique on (document_id, checksum), or on it where reverted_from IS NULL (2.4; 12 Nov decision)",
     run: uniqueOn("document_versions", ["document_id", "checksum"], NOT_A_REVERT),
   },
   {
