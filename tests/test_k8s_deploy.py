@@ -165,8 +165,11 @@ class RollbackOnFailedRollout(unittest.TestCase):
             self.body,
             r"if ! kubectl -n contentcollab rollout status deployment/\$svc --timeout=180s; then\n"
             r"failed=1\n"
-            r"if changed \$svc; then undo \$svc\n",
+            r"echo ::error::[^\n]*\n"
+            r"undo_if_changed \$svc\n",
         )
+        decide = "\n".join(self.lines[self.lines.index("undo_if_changed() {"):])
+        self.assertRegex(decide, r"case \$\(revision_state \$1\) in\nchanged\) undo \$1 ;;\n")
         undo = "\n".join(self.lines[self.lines.index("undo() {"):])
         self.assertRegex(undo, r"kubectl -n contentcollab rollout undo deployment/\$1 \\\n\|\| echo ::error::[^\n]*\n")
 

@@ -142,16 +142,29 @@ jobs:
             printf -v "before_$svc" '%s' "$rev"
             echo "REV_BEFORE_$svc=$rev" >> "$GITHUB_ENV"
           done
-          changed() {
+          # changed, same, or unreadable (an API error or an expired login:
+          # whether this run changed it is then unknown, so it is not undone
+          # blind, and the run says so)
+          revision_state() {
             local now before="before_$1"
             now=$(kubectl -n contentcollab get deployment/$1 -o jsonpath='{.metadata.annotations.deployment\.kubernetes\.io/revision}') || now=""
-            [ -n "$now" ] && [ "$now" != "${!before}" ]
+            if [ -z "$now" ]; then echo unreadable
+            elif [ "$now" != "${!before}" ]; then echo changed
+            else echo same
+            fi
           }
           undone=" "
           undo() {
             undone="$undone$1 "
             kubectl -n contentcollab rollout undo deployment/$1 \
               || echo "::error::undo of deployment/$1 failed: the cluster may run mixed versions"
+          }
+          undo_if_changed() {
+            case "$(revision_state $1)" in
+              changed) undo $1 ;;
+              same) echo "::error::deployment/$1 was not changed by this run (a re-run of the same commit?): not undone" ;;
+              *) echo "::error::deployment/$1: its revision is unreadable, so whether this run changed it is unknown: not undone; check it by hand" ;;
+            esac
           }
           failed=0
           # An apply that fails partway may already have started rollouts:
@@ -179,17 +192,20 @@ jobs:
             esac
             if ! kubectl -n contentcollab rollout status deployment/$svc --timeout=180s; then
               failed=1
-              if changed $svc; then undo $svc
-              else echo "::error::deployment/$svc did not turn ready but was not changed by this run (a re-run of the same commit?): not undone"
-              fi
+              echo "::error::deployment/$svc did not turn ready"
+              undo_if_changed $svc
             fi
           done
           # One failure undoes every Deployment this run changed, so the
-          # cluster is not left with an api and a worker from different commits
+          # cluster is not left with an api and a worker from different commits.
+          # This can come after the migration and two waits (up to 510 s), so
+          # the ten-minute login is renewed first, as in the smoke step
           if [ "$failed" = 1 ]; then
+            doctl kubernetes cluster kubeconfig save --expiry-seconds 600 contentcollab \
+              || echo "::warning::could not renew the cluster login; trying the undo with the current one"
             for svc in api worker; do
               case "$undone" in *" $svc "*) continue ;; esac
-              if changed $svc; then undo $svc; fi
+              undo_if_changed $svc
             done
           fi
           exit $failed
@@ -219,7 +235,10 @@ jobs:
           for svc in api worker; do
             before="REV_BEFORE_$svc"
             now=$(kubectl -n contentcollab get deployment/$svc -o jsonpath='{.metadata.annotations.deployment\.kubernetes\.io/revision}') || now=""
-            if [ -z "$now" ] || [ "$now" = "${!before}" ]; then
+            if [ -z "$now" ]; then
+              echo "::error::deployment/$svc: its revision is unreadable, so whether this run changed it is unknown: not undone; check it by hand"
+              continue
+            elif [ "$now" = "${!before}" ]; then
               echo "::error::deployment/$svc was not changed by this run (a re-run of the same commit?): not undone"
               continue
             fi
