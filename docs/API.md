@@ -6,7 +6,7 @@ Base path `/api/v1`. JSON in and out, `Content-Type: application/json`, except f
 
 ## Rules stated once
 
-**Authentication.** `POST /auth/login` returns a JWT; every other route except `/auth/*`, `/health`, `/metrics` and link-token reads sends it as `Authorization: Bearer <token>`. Missing or invalid token: `401`.
+**Authentication.** `POST /auth/login` returns a JWT; every other route except `/auth/*`, `/health`, `/metrics`, `GET /status` (ARCHITECTURE D23) and link-token reads sends it as `Authorization: Bearer <token>`. Missing or invalid token: `401`.
 
 **Roles.** Per document, from the `shares` table: `owner`, `editor`, `commenter`, `viewer`. One middleware loads the caller's share row for `:documentId` before any handler runs. No row: `404` (not `403`, so the existence of a document is not leaked). Wrong role: `403`.
 
@@ -117,6 +117,7 @@ A link share grants its role to anyone with the token until `expiresAt`. Writes 
 |---|---|---|
 | GET | `/health` (no `/api/v1` prefix) | `200 { status: "ok", postgres, redis }`; `503` degraded |
 | GET | `/metrics` (no prefix) | `200` Prometheus text; cluster-internal only |
+| GET | `/status` (public, no token) | `200 { generatedAt, replicas: { api }, queue: { waiting }, latency: { requests, p50Seconds, p95Seconds, overTopBucket, scope } }`, `Cache-Control: no-store`; always `200`: a source that fails is `null` with `error` (`"unavailable"` or the time limit), and `replicas.api` is `null` with no `error` outside a cluster (ARCHITECTURE D23) |
 
 ## Real-time events (Socket.IO)
 

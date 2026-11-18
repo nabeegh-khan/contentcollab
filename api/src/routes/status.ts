@@ -50,7 +50,10 @@ export function statusRoutes(sources: StatusSources, timeoutMs = SOURCE_TIMEOUT_
     ]);
     res.set("Cache-Control", "no-store").json({
       generatedAt: new Date().toISOString(),
-      replicas: replicas.ok && replicas.value ? replicas.value : { api: null },
+      // null from the source means "not in a cluster" (no reason to give); a failure carries its reason
+      replicas: replicas.ok
+        ? (replicas.value ?? { api: null })
+        : { api: null, error: replicas.error },
       queue: queue.ok ? { waiting: queue.value } : { waiting: null, error: queue.error },
       latency: latency.ok
         ? { ...latency.value, scope: "this API pod" }
