@@ -49,7 +49,7 @@ Each row says what we do, where it comes from, and where in ContentCollab it app
 | SEC-1 | Secrets in environment or a secret store, never in code or images; commit only `.env.example` | L2 p72, L3 p30-31, L5 p19-25, project handout | `.env` is ignored; Kubernetes Secrets in the cluster |
 | SEC-2 | Prefer file-mounted secrets to environment variables for passwords and keys, and grant each secret only to the service that needs it | L5 p27-42, L6 p80-81 (Fly.io secrets are app-wide: a stated trade-off) | Database password mounted into api and worker only; Spaces keys into api and worker; nothing into web |
 | SEC-3 | The app connects as its own database role with only the grants it needs, never the superuser | L2 p74-75, A1 handout | `contentcollab` role owns one database |
-| SEC-4 | Protect API routes with a token in the `Authorization` header; leave only `/health` public | L1 p80, L6 p49-50, p77 (A3) | JWT on every route except health and sign-in |
+| SEC-4 | Protect API routes with a token in the `Authorization` header; leave only `/health` public | L1 p80, L6 p49-50, p77 (A3) | JWT on every route except health and sign-in; `/metrics` stays cluster-internal, and `GET /api/v1/status` is public by design (aggregate counts only, no user data; ARCHITECTURE D23) |
 | SEC-5 | Force HTTPS | L6 p62 | TLS at the Gateway with cert-manager and Let's Encrypt; `cluster-up.sh` exits 1 if the certificate is not issued once DNS points at the Gateway (D11, D13) |
 | SEC-6 | Run as a non-root user; SSH with keys only | L2 p49-50, A1 handout | Dockerfiles set a non-root user; pods run with `runAsNonRoot` |
 | SEC-7 | Escape stored text before rendering it as HTML | A1 (query page) | Comment bodies and filenames are rendered as text, never injected as HTML |

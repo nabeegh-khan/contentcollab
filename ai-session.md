@@ -553,3 +553,19 @@ Wrote the audit and the critical path (auth, storage, the second migration, docu
 - The reviews found real faults, each fixed only after a failing test: a missing contract row for a public endpoint, a character gap in the diff's size cap, model text reaching an error message, and foreign keys that PostgreSQL 18 can leave unenforced.
 - Caught our own mistake: the note on #88 first said to drop a constraint that the 12 November decision keeps in a partial form; corrected the same day, and the schema contract now accepts exactly that form.
 - Closed two draft pull requests that the demo does not need instead of rebasing them before the freeze.
+
+## Merge conflicts after the auth merge, 18 November 2026
+
+### Prompt
+
+The auth pull request has merged and five of our pull requests now conflict with main in the API's server file. Merge main into each, keep both sides, run the checks, and hand back the merge commands.
+
+### AI Response
+
+Merged main into each branch and resolved `server.ts`, keeping the auth mount, the startup key check and the new 404 body together with each branch's own route. For the request-log branch, it found that its error handler would answer the auth routes' errors with 500, wrote tests for those errors before changing the handler, then combined the two handlers. An independent check reviewed each resolution.
+
+### What Your Team Did With It
+
+- Pushed the handler tests before the fix: CI failed 16 tests, 12 of them the auth pull request's own. So the merge alone would have broken sign-in error answers, and the fix brought the suite to 155 of 155.
+- Checked the merge order before handing it over, and found that squash-only merging means three of the five branches need one more merge of main after their predecessor lands. The hand-over now lists only the two that merge cleanly, plus a short task for the other three.
+- Corrected a merge message that implied the auth mount protects a later route. Auth is applied per route, and the compare route stays behind its feature flag.
