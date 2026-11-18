@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { lineDiff, pageDiff, MAX_TABLE_CELLS, DiffTooLargeError } from "./diff.js";
+import { lineDiff, pageDiff, MAX_TABLE_CELLS, MAX_INPUT_CHARS, DiffTooLargeError } from "./diff.js";
 
 const fixture = (name: string) =>
   readFileSync(new URL(`./fixtures/diff/${name}`, import.meta.url), "utf8");
@@ -70,6 +70,40 @@ test("a huge version against an empty one is refused too (its lines are the cost
   const huge = "x\n".repeat(lines);
   assert.throws(() => lineDiff("", huge), DiffTooLargeError);
   assert.throws(() => lineDiff(huge, "one line"), DiffTooLargeError);
+});
+
+test("one very long line on each side is refused by size, though its table is tiny", () => {
+  // Two lines make a 2 x 2 table; the cap on characters is what keeps them out of memory
+  const long = "a".repeat(MAX_INPUT_CHARS);
+  assert.throws(() => lineDiff(long, "b"), DiffTooLargeError);
+});
+
+test("pages are refused when their characters add up past the limit, each pair under it", () => {
+  const PAGE_SHARE = 0.4;
+  const page = (ch: string) => ch.repeat(Math.floor(MAX_INPUT_CHARS * PAGE_SHARE));
+  // Each page pair is 0.8 of the limit; the job as a whole is 1.6
+  assert.throws(() => pageDiff([page("a"), page("b")], [page("c"), page("d")]), DiffTooLargeError);
+});
+
+test("pages are refused when their tables add up past the limit, each one under it", () => {
+  // Each changed page alone is under MAX_TABLE_CELLS; together they are over it
+  const PAGES = 2;
+  const perPage = Math.floor(Math.sqrt(MAX_TABLE_CELLS / PAGES)) + 1;
+  const text = (tag: string) => Array.from({ length: perPage }, (_, i) => `${tag} ${i}`).join("\n");
+  const before = Array.from({ length: PAGES }, (_, p) => text(`b${p}`));
+  const after = Array.from({ length: PAGES }, (_, p) => text(`a${p}`));
+  assert.ok(perPage * perPage < MAX_TABLE_CELLS);
+  assert.throws(() => pageDiff(before, after), DiffTooLargeError);
+});
+
+test("long lines that differ only at the end still diff correctly (lines compared by identity)", () => {
+  const LONG = 10_000;
+  const stem = "x".repeat(LONG);
+  const d = lineDiff(`${stem}1\n${stem}2`, `${stem}1\n${stem}3`);
+  assert.deepEqual(
+    d.lines.map((l) => l.op),
+    ["keep", "remove", "add"],
+  );
 });
 
 test("pages are compared by position: unchanged, changed with its line diff, added", () => {

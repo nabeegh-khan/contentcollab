@@ -8,11 +8,43 @@
  */
 export const MAX_TABLE_CELLS = 4_000_000;
 
+/**
+ * Above this many characters, before and after together (all pages of a PDF counted), the diff is
+ * refused: the input, the result and its copy in Redis all grow with it, whatever the line count.
+ */
+export const MAX_INPUT_CHARS = 2_000_000;
+
 export class DiffTooLargeError extends Error {
-  constructor(cells: number) {
-    super(`diff too large: ${cells} table cells, limit ${MAX_TABLE_CELLS}`);
+  constructor(what: "cells" | "chars", size: number) {
+    const limit = what === "cells" ? MAX_TABLE_CELLS : MAX_INPUT_CHARS;
+    const unit = what === "cells" ? "table cells" : "characters";
+    super(`diff too large: ${size} ${unit}, limit ${limit}`);
     this.name = "DiffTooLargeError";
   }
+}
+
+const totalChars = (texts: string[]) => texts.reduce((sum, t) => sum + t.length, 0);
+
+function checkChars(texts: string[]): void {
+  const chars = totalChars(texts);
+  if (chars > MAX_INPUT_CHARS) throw new DiffTooLargeError("chars", chars);
+}
+
+const tableCells = (a: string[], b: string[]) => (a.length + 1) * (b.length + 1);
+
+/**
+ * Each distinct line as a small integer, shared by both sides, so the LCS compares numbers: a long
+ * line costs its length once here, not once per table cell.
+ */
+function internLines(a: string[], b: string[]): { a: Uint32Array; b: Uint32Array } {
+  const ids = new Map<string, number>();
+  const idOf = (line: string) => {
+    const known = ids.get(line);
+    if (known !== undefined) return known;
+    ids.set(line, ids.size);
+    return ids.size - 1;
+  };
+  return { a: Uint32Array.from(a, idOf), b: Uint32Array.from(b, idOf) };
 }
 
 export type DiffLine =
@@ -49,7 +81,7 @@ function splitLines(text: string): string[] {
  * the last line of `a` up, each row from its last column left, since a cell reads the row below it
  * and the cell to its right.
  */
-function lcsTable(a: string[], b: string[]): Uint32Array[] {
+function lcsTable(a: Uint32Array, b: Uint32Array): Uint32Array[] {
   const width = b.length + 1;
   const bottomUp = a.reduceRight<Uint32Array[]>(
     (rows, line) => {
@@ -73,11 +105,18 @@ interface Walk {
   lines: DiffLine[];
 }
 
+interface Sides {
+  a: string[];
+  b: string[];
+  ids: { a: Uint32Array; b: Uint32Array };
+  table: Uint32Array[];
+}
+
 /** One step of the walk through the table; on a tie the removal goes first, so a changed line reads
  * as the old line removed, then the new one added. */
-function step(a: string[], b: string[], table: Uint32Array[], w: Walk): Walk {
+function step({ a, b, ids, table }: Sides, w: Walk): Walk {
   const { i, j, lines } = w;
-  if (i < a.length && j < b.length && a[i] === b[j]) {
+  if (i < a.length && j < b.length && ids.a[i] === ids.b[j]) {
     lines.push({ op: "keep", text: a[i]!, before: i + 1, after: j + 1 });
     return { i: i + 1, j: j + 1, lines };
   }
@@ -90,16 +129,13 @@ function step(a: string[], b: string[], table: Uint32Array[], w: Walk): Walk {
   return { i, j: j + 1, lines };
 }
 
-export function lineDiff(beforeText: string, afterText: string): LineDiff {
-  const a = splitLines(beforeText);
-  const b = splitLines(afterText);
-  const cells = (a.length + 1) * (b.length + 1);
-  if (cells > MAX_TABLE_CELLS) throw new DiffTooLargeError(cells);
-
-  const table = lcsTable(a, b);
+/** The diff of two texts already split and checked against the limits. */
+function diffSplit(a: string[], b: string[]): LineDiff {
+  const ids = internLines(a, b);
+  const sides: Sides = { a, b, ids, table: lcsTable(ids.a, ids.b) };
   // Every step consumes at least one line of a or b, so a.length + b.length steps finish the walk
   const { lines } = Array.from({ length: a.length + b.length }).reduce<Walk>(
-    (w) => (w.i >= a.length && w.j >= b.length ? w : step(a, b, table, w)),
+    (w) => (w.i >= a.length && w.j >= b.length ? w : step(sides, w)),
     { i: 0, j: 0, lines: [] },
   );
   return {
@@ -109,22 +145,45 @@ export function lineDiff(beforeText: string, afterText: string): LineDiff {
   };
 }
 
-function comparePage(
-  page: number,
-  before: string | undefined,
-  after: string | undefined,
-): PageResult {
-  if (before === undefined) return { page, status: "added" };
-  if (after === undefined) return { page, status: "removed" };
-  if (before === after) return { page, status: "unchanged" };
-  return { page, status: "changed", diff: lineDiff(before, after) };
+export function lineDiff(beforeText: string, afterText: string): LineDiff {
+  checkChars([beforeText, afterText]);
+  const a = splitLines(beforeText);
+  const b = splitLines(afterText);
+  const cells = tableCells(a, b);
+  if (cells > MAX_TABLE_CELLS) throw new DiffTooLargeError("cells", cells);
+  return diffSplit(a, b);
 }
 
+type PagePair = { page: number; before: string | undefined; after: string | undefined };
+type SplitPair = { a: string[]; b: string[] };
+
+/** A changed page's lines, split once; the others need no table. */
+function splitChanged({ before, after }: PagePair): SplitPair | null {
+  if (before === undefined || after === undefined || before === after) return null;
+  return { a: splitLines(before), b: splitLines(after) };
+}
+
+function comparePage({ page, before, after }: PagePair, split: SplitPair | null): PageResult {
+  if (before === undefined) return { page, status: "added" };
+  if (after === undefined) return { page, status: "removed" };
+  if (split === null) return { page, status: "unchanged" };
+  return { page, status: "changed", diff: diffSplit(split.a, split.b) };
+}
+
+/** Pages compared by position. The character and table limits apply to the job as a whole, so
+ * many pages each under the limits cannot add up past them. */
 export function pageDiff(beforePages: string[], afterPages: string[]): PageDiff {
+  checkChars([...beforePages, ...afterPages]);
   const count = Math.max(beforePages.length, afterPages.length);
-  const pages = Array.from({ length: count }, (_, k) =>
-    comparePage(k + 1, beforePages[k], afterPages[k]),
-  );
+  const pairs: PagePair[] = Array.from({ length: count }, (_, k) => ({
+    page: k + 1,
+    before: beforePages[k],
+    after: afterPages[k],
+  }));
+  const splits = pairs.map(splitChanged);
+  const cells = splits.reduce((sum, s) => sum + (s ? tableCells(s.a, s.b) : 0), 0);
+  if (cells > MAX_TABLE_CELLS) throw new DiffTooLargeError("cells", cells);
+  const pages = pairs.map((pair, k) => comparePage(pair, splits[k]!));
   const tally = (status: PageResult["status"]) => pages.filter((p) => p.status === status).length;
   return {
     pages,
