@@ -48,7 +48,10 @@ describe("unknown routes", () => {
   it("answer 404 with the JSON error shape", async () => {
     const res = await request(app).get("/no-such-route");
     expect(res.status).toBe(404);
-    expect(res.body).toEqual({ error: "Not Found" });
+    expect(res.body).toEqual({
+      error: "Not Found",
+      code: "NOT_FOUND",
+    });
   });
 });
 
