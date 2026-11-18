@@ -3,13 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import {
-  lineDiff,
-  pageDiff,
-  MAX_TABLE_CELLS,
-  MAX_INPUT_CHARS,
-  DiffTooLargeError,
-} from "./diff.js";
+import { lineDiff, pageDiff, MAX_TABLE_CELLS, MAX_INPUT_CHARS, DiffTooLargeError } from "./diff.js";
 
 const fixture = (name: string) =>
   readFileSync(new URL(`./fixtures/diff/${name}`, import.meta.url), "utf8");
@@ -95,8 +89,7 @@ test("pages are refused when their tables add up past the limit, each one under 
   // Each changed page alone is under MAX_TABLE_CELLS; together they are over it
   const PAGES = 2;
   const perPage = Math.floor(Math.sqrt(MAX_TABLE_CELLS / PAGES)) + 1;
-  const text = (tag: string) =>
-    Array.from({ length: perPage }, (_, i) => `${tag} ${i}`).join("\n");
+  const text = (tag: string) => Array.from({ length: perPage }, (_, i) => `${tag} ${i}`).join("\n");
   const before = Array.from({ length: PAGES }, (_, p) => text(`b${p}`));
   const after = Array.from({ length: PAGES }, (_, p) => text(`a${p}`));
   assert.ok(perPage * perPage < MAX_TABLE_CELLS);
