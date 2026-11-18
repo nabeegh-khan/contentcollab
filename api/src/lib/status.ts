@@ -52,8 +52,10 @@ function quantile(buckets: Bucket[], total: number, q: number): Quantile {
   return { seconds: buckets[buckets.length - 1]?.le ?? null, over: true };
 }
 
+// A prefix matches the route itself or a path below it, never a longer name (/api/v1/statuses)
 const excluded = (route: unknown) =>
-  typeof route === "string" && EXCLUDED_ROUTE_PREFIXES.some((p) => route.startsWith(p));
+  typeof route === "string" &&
+  EXCLUDED_ROUTE_PREFIXES.some((p) => route === p || route.startsWith(`${p}/`));
 
 /**
  * p50 and p95 of this pod's requests since it started, from the request histogram: each is the upper
