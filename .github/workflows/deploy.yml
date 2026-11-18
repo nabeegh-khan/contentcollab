@@ -16,6 +16,9 @@ on:
       - "worker/**"
       - "k8s/**"
       - ".github/workflows/deploy.yml"
+      # Last, so it removes markdown matched above: a README-only change does
+      # not deploy, a change that also touches code does (#108, D25)
+      - "!**/*.md"
 
 # Package names on ghcr.io must be lowercase; the repository name is not
 env:
@@ -129,11 +132,35 @@ jobs:
             kustomize edit set image $REGISTRY/contentcollab-$svc=$REGISTRY/contentcollab-$svc:${{ github.sha }}
           done
           cd ../..
-          kubectl apply -k k8s/doks
+          # Each Deployment's revision before the apply. A Deployment counts as
+          # changed by this run only if its revision moves, so a re-run of the
+          # same commit (no new revision) never undoes past what is running.
+          # The smoke step reads the same values (D25, #108)
+          for svc in api worker; do
+            rev=$(kubectl -n contentcollab get deployment/$svc -o jsonpath='{.metadata.annotations.deployment\.kubernetes\.io/revision}') \
+              || rev=""   # no Deployment yet: anything after the apply is new
+            printf -v "before_$svc" '%s' "$rev"
+            echo "REV_BEFORE_$svc=$rev" >> "$GITHUB_ENV"
+          done
+          changed() {
+            local now before="before_$1"
+            now=$(kubectl -n contentcollab get deployment/$1 -o jsonpath='{.metadata.annotations.deployment\.kubernetes\.io/revision}') || now=""
+            [ -n "$now" ] && [ "$now" != "${!before}" ]
+          }
+          undone=" "
+          undo() {
+            undone="$undone$1 "
+            kubectl -n contentcollab rollout undo deployment/$1 \
+              || echo "::error::undo of deployment/$1 failed: the cluster may run mixed versions"
+          }
+          failed=0
+          # An apply that fails partway may already have started rollouts:
+          # report it and still watch them, rather than ending the step here
+          kubectl apply -k k8s/doks \
+            || { echo "::error::kubectl apply failed partway: still watching, and undoing what this run changed"; failed=1; }
           # A rollout that never turns ready is rolled back here, not by hand,
           # and the job still fails so the run is not green (INF-9). A failed
           # undo is reported and the next Deployment is still checked.
-          failed=0
           for svc in api worker; do
             # A renamed image would leave set image matching nothing, so the
             # apply sets the base placeholder `unpinned`, which cannot be
@@ -150,10 +177,21 @@ jobs:
               *:unpinned) echo "::error::deployment/$svc was applied with the placeholder tag"; failed=1 ;;
               *) echo "::error::deployment/$svc runs $image, not this commit"; failed=1; continue ;;
             esac
-            kubectl -n contentcollab rollout status deployment/$svc --timeout=180s \
-              || { kubectl -n contentcollab rollout undo deployment/$svc \
-                     || echo "::error::undo of deployment/$svc failed: the cluster may run mixed versions"; failed=1; }
+            if ! kubectl -n contentcollab rollout status deployment/$svc --timeout=180s; then
+              failed=1
+              if changed $svc; then undo $svc
+              else echo "::error::deployment/$svc did not turn ready but was not changed by this run (a re-run of the same commit?): not undone"
+              fi
+            fi
           done
+          # One failure undoes every Deployment this run changed, so the
+          # cluster is not left with an api and a worker from different commits
+          if [ "$failed" = 1 ]; then
+            for svc in api worker; do
+              case "$undone" in *" $svc "*) continue ;; esac
+              if changed $svc; then undo $svc; fi
+            done
+          fi
           exit $failed
       # Skipped until SMOKE_URL is set, so deploys do not roll back before DNS
       # and TLS exist
@@ -174,9 +212,17 @@ jobs:
           # the smoke wait; fetch fresh ones so the rollback is not refused
           doctl kubernetes cluster kubeconfig save --expiry-seconds 600 contentcollab \
             || echo "::warning::could not refresh cluster credentials; trying the rollback with the current ones"
-          # Both images come from this commit, so both go back together; one
-          # failed undo does not stop the other
+          # Every Deployment this run changed goes back, together; one that it
+          # did not change (a re-run of the same commit) is reported, since an
+          # undo would go back past what is running. One failed undo does not
+          # stop the other (D25, #108)
           for svc in api worker; do
+            before="REV_BEFORE_$svc"
+            now=$(kubectl -n contentcollab get deployment/$svc -o jsonpath='{.metadata.annotations.deployment\.kubernetes\.io/revision}') || now=""
+            if [ -z "$now" ] || [ "$now" = "${!before}" ]; then
+              echo "::error::deployment/$svc was not changed by this run (a re-run of the same commit?): not undone"
+              continue
+            fi
             { kubectl -n contentcollab rollout undo deployment/$svc \
                 && kubectl -n contentcollab rollout status deployment/$svc --timeout=180s; } \
               || echo "::error::rollback of deployment/$svc failed: the cluster may run mixed versions"
