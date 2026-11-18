@@ -23,9 +23,10 @@ const ASKED_SUMMARY_CHARS = 600;
 export const DEFAULT_MODEL = "claude-opus-5-5";
 // max_tokens covers thinking too, which is always on for this model; unused tokens cost nothing
 const MAX_OUTPUT_TOKENS = 16000;
-// One call may take a minute and is retried once, so a hung call holds one of the worker's two slots
-// for about two minutes, not the SDK's default of 10 minutes with two retries (SDK 1.3.0 client.d.ts)
-export const REQUEST_TIMEOUT_MS = 60_000;
+// Up to 16,000 output tokens with thinking on can take minutes, so one call gets three and one retry:
+// a hung call holds one of the worker's two slots for about six minutes, not the SDK's default of
+// 10 minutes with two retries, about 30 (SDK 1.3.0 client.d.ts)
+export const REQUEST_TIMEOUT_MS = 180_000;
 export const MAX_RETRIES = 1;
 
 // A tag: lower-case letters and digits, words joined by single hyphens.
