@@ -1,0 +1,52 @@
+# Checkpoint demo, Saturday 14 November 2026, 3:30pm: five minutes
+
+## Saturday 14 November, 2:20pm: what changed since this page was written
+
+- Nothing new is merged since Friday evening; `main` is ecffbde (docs only since #88).
+- Merge order Nabeegh can run before the call, each updated from `main` today and green there (#118's rerun passed): [#128](https://github.com/nabeegh-khan/contentcollab/pull/128) (CI `docker` job gets a test `JWT_SECRET`; without it #111 and #114 cannot go green), then [#118](https://github.com/nabeegh-khan/contentcollab/pull/118) (its deploy creates the tables on the cluster), then [#98](https://github.com/nabeegh-khan/contentcollab/pull/98) (Spaces key check, needed for uploads), then [#121](https://github.com/nabeegh-khan/contentcollab/pull/121), then #120 and #122.
+- Auth #111: the auth fixes from the 13 November review are in; two small items still block (an invalid `compose.yaml` line, and four docs files carried from an older copy). Not live for the call unless it is fixed, updated after #128 and merged. Shares #114 is ready on its code; it will be approved and merged after #111. Documents #116 has conflicts and waits for #111. Web #86: the stage error is fixed; the build now stops at a missing `web/nginx.conf`.
+- For the five-minute order below, step 5 is therefore the open pull requests and their review state, unless #111 merges first.
+
+Written Friday 13 November, evening, from `main` (cf483ef: #83, #99 and #88 merged), the open pull requests and the cluster. Commands are for Windows PowerShell 5.1, kube context `do-nyc3-contentcollab`. Re-check each "pending" row on the day: it becomes live only when its pull request is merged.
+
+## What runs live today
+
+| What | Show it with | Evidence |
+|---|---|---|
+| The app on DOKS behind the Gateway with TLS; API, worker, Redis, PostgreSQL on a volume | `curl.exe -s https://contentcollab.app/health` (expect `{"status":"ok","postgres":"ok","redis":"ok"}`); `kubectl -n contentcollab get pods,pvc,hpa` | ARCHITECTURE D13 (nyc3 rebuild) |
+| Deploy on merge: checks, build, image pinned to the commit, rollout, smoke check, undo on failure | [Run 43518794078](https://github.com/nabeegh-khan/contentcollab/actions/runs/43518794078) (merge of #83, 13 Nov): both rollouts, then `smoke ok` | `docs/evidence/ci-cd.md` (the rollback logic run against stand-ins; not exercised on the cluster) |
+| CI runs the migrations up, down and up before the tests (#99) | The `test` job's "Migrations up, down, up" step on any API pull request | Run 43520737569: `main` plus #88, "Migrations complete!" after up, down and up, all 7 CI jobs green |
+| Autoscaling: HPA 2 to 5 on CPU, rollout under load | `kubectl -n contentcollab get hpa api`; the numbers, not a live load (it takes minutes) | `docs/DEMO_SCALING.md`, measured 11 Nov: the HPA went 2 to 5 under the rollout check's in-cluster load (21:49Z), the stepped load (50 then 150 req/s) then ran at five pods with 0 failures, and it was back to 2 at 22:00Z, five minutes after that load ended |
+
+## What becomes live as each pull request merges
+
+| Pull request | Becomes live | Show it with |
+|---|---|---|
+| #118 migration Job (#88 merged) | Tables on the cluster's PostgreSQL, created by `db-migrate-<sha>` before the rollout | The deploy run's "Migrate the database to this commit" step (`condition met`); `kubectl -n contentcollab get jobs` |
+| #111 auth (after its changes and an update from `main`) | Register and log in through the public URL | `Invoke-RestMethod -Method Post -Uri https://contentcollab.app/api/v1/auth/register -ContentType application/json -Body '{"email":"demo@example.com","password":"demo-pass-1","displayName":"Demo"}'` then the same with `/auth/login` and `{"email":...,"password":...}`; the reply has `token` |
+| #116 documents and versions (needs the `reverted_from` migration and the Spaces key, #53) | Upload, list, download, new version, revert | `curl.exe -s -H "Authorization: Bearer $t" -F "file=@sample.pdf" -F "title=Demo" https://contentcollab.app/api/v1/documents` (`$t = (Invoke-RestMethod -Method Post -Uri https://contentcollab.app/api/v1/auth/login -ContentType application/json -Body '{"email":"demo@example.com","password":"demo-pass-1"}').token`) |
+| #114 shares | Share by user and by link with expiry | `POST /api/v1/documents/<id>/shares` with `{"email":...,"role":"viewer"}` (`docs/API.md`) |
+| #86 web skeleton, #93 pages | The browser client, locally first | `docker compose up --build web`, then http://localhost:8080 |
+
+As of 13 Nov evening: #88 is merged; #118 is green and awaiting review; #85 (API contract) is merged; #111, #114, #116 and #86 have changes requested.
+
+## Advanced features: progress to show (pull requests with passing tests)
+
+| Feature | Pull request | Show it with |
+|---|---|---|
+| Version comparison (#23) | #123: line and page diff in the worker, `version-diff` job, compare route behind a flag (501 until versions are stored) | the fixture tests: `cd worker; npm test` (12 of 12 on the PR); CI's worker job |
+| Summaries and suggested tags (#26) | #125 (on #123): `summarize` job, stub and Claude providers behind one interface, reply checked before use | the same `npm test` (21 of 21 with #123); runs with the stub until `SUMMARY_PROVIDER=anthropic` and a key are set |
+| Status page, backend (#30) | #124: `GET /api/v1/status` (queue depth, p50/p95); #126 (on #124): ready replicas through a Role that can only read `deployments/api` | the status tests in api/ (9 of 9); live once merged: `curl.exe -s https://contentcollab.app/api/v1/status` |
+| Restart test (#68) | #120: `scripts/restart-test.sh`, checks the API reconnects without a restart | `node --test scripts/restart-test.test.mjs` (16 of 16); the live run's record in `docs/DEMO_PERSISTENCE.md` once run |
+| Volume kept on claim delete (#104) | #122: `scripts/pv-retain.sh` | its tests (6 of 6); live: the PV's reclaim policy before and after |
+| Service by port name (#107) | #121 | `kubectl -n contentcollab get endpointslice -l kubernetes.io/service-name=api` after it deploys |
+
+## Order, five minutes
+
+1. (1 min) `/health` on the public URL and `kubectl get pods,pvc,hpa`: what runs where, PostgreSQL on a block-storage volume.
+2. (1 min) The #83 deploy run: commit pinned, both rollouts, `smoke ok`; the undo logic and how it was tested (stand-ins) in `ci-cd.md`.
+3. (1 min) The migrations in CI (#99) and, if #118 is merged, the migrate step in the deploy run and the tables on the cluster.
+4. (1 min) Scaling numbers from `DEMO_SCALING.md`, `get hpa api` live.
+5. (1 min) Whatever API route is merged by then (auth first); otherwise the open pull requests, their review state, and the dates the team sets at this call.
+
+Not shown: the restart test on DOKS (#68) unless it was run before the call (its record goes in `docs/DEMO_PERSISTENCE.md`); Prometheus and Grafana (#112, not installed); live load (too long for the slot).

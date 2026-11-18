@@ -1,0 +1,17 @@
+# Provisioned data sources (ARCHITECTURE D19). Fixed uids, so the dashboard
+# JSON refers to them by uid and keeps working after a restart. Loki and
+# Jaeger are added by parts b and c.
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    uid: prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus.observability.svc:9090
+    isDefault: true
+    editable: false
+    jsonData:
+      httpMethod: POST
+      prometheusType: Prometheus
+      timeInterval: 15s

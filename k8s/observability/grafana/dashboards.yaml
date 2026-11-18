@@ -1,0 +1,12 @@
+# Dashboards are read from the files mounted at /etc/grafana/dashboards and
+# cannot be changed in the UI: the repository is the source (ARCHITECTURE D19).
+apiVersion: 1
+
+providers:
+  - name: contentcollab
+    folder: ContentCollab
+    type: file
+    disableDeletion: true
+    allowUiUpdates: false
+    options:
+      path: /etc/grafana/dashboards
