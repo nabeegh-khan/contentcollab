@@ -8,6 +8,12 @@
  */
 export const MAX_TABLE_CELLS = 4_000_000;
 
+/**
+ * Above this many characters, before and after together (all pages of a PDF counted), the diff is
+ * refused: the input, the result and its copy in Redis all grow with it, whatever the line count.
+ */
+export const MAX_INPUT_CHARS = 2_000_000;
+
 export class DiffTooLargeError extends Error {
   constructor(cells: number) {
     super(`diff too large: ${cells} table cells, limit ${MAX_TABLE_CELLS}`);
