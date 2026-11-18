@@ -1,6 +1,7 @@
 # Stand-in kubectl for tests/test_deploy_undo.py (#108): per-Deployment image and revision kept as files in $STUB_DIR.
 # Settings (files in $STUB_DIR): apply-changes (services the apply moves to $STUB_SHA), apply-fails (non-empty: the apply
-# exits 1 after its changes), status-fails (services whose rollout status fails), undo-fails (services whose undo fails).
+# exits 1 after its changes), status-fails (services whose rollout status fails), undo-fails (services whose undo fails),
+# rev-read-fails (services whose revision cannot be read once the file "applied" exists, which the apply creates).
 set -u
 echo "kubectl $*" >> "$STUB_DIR/calls.log"
 args=" $* "
@@ -12,6 +13,7 @@ listed() { grep -qx "$1" "$STUB_DIR/$2" 2>/dev/null; }
 
 case "$args" in
   *" apply -k "*)
+    : > "$STUB_DIR/applied"
     for s in api worker; do
       if listed "$s" apply-changes; then
         echo "registry/contentcollab-$s:$STUB_SHA" > "$STUB_DIR/image-$s"
@@ -20,7 +22,11 @@ case "$args" in
     done
     [ -s "$STUB_DIR/apply-fails" ] && { echo "error: apply failed partway" >&2; exit 1; }
     exit 0 ;;
-  *" get deployment/"*"revision"*) cat "$STUB_DIR/rev-$svc" ;;
+  *" get deployment/"*"revision"*)
+    if [ -e "$STUB_DIR/applied" ] && listed "$svc" rev-read-fails; then
+      echo "error: You must be logged in to the server (Unauthorized)" >&2; exit 1
+    fi
+    cat "$STUB_DIR/rev-$svc" ;;
   *" get deployment/"*"image"*) cat "$STUB_DIR/image-$svc" ;;
   *" rollout status "*) listed "$svc" status-fails && exit 1; exit 0 ;;
   *" rollout undo "*)

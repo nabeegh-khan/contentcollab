@@ -2,7 +2,7 @@
 
 Run from the repository root:  python3 -m unittest tests.test_deploy_undo -v
 Needs bash and PyYAML; no cluster. The step bodies are taken from deploy.yml as written, with
-${{ github.sha }} replaced, and run under `bash -eo pipefail` as GitHub runs them. kubectl, kustomize,
+${{ github.sha }} replaced, and run under `bash -e`, as GitHub runs a step that sets no `shell:`. kubectl, kustomize,
 doctl, curl and sleep are stand-ins first on PATH; tests/testdata/deploy-kubectl-stub.sh keeps each
 Deployment's image and revision. DEPLOY_WORKFLOW points the checks at another copy of deploy.yml.
 """
@@ -52,7 +52,7 @@ class Cluster:
         tools = {
             "kubectl": STUB,
             "kustomize": "exit 0\n",
-            "doctl": "exit 0\n",
+            "doctl": 'echo "doctl $*" >> "$STUB_DIR/calls.log"\n',
             "sleep": "exit 0\n",
             "curl": 'cat "$STUB_DIR/health"\n',
         }
@@ -98,7 +98,7 @@ class Cluster:
             if self.dir.name not in found:
                 raise RuntimeError(f"{tool} resolves to {found!r}, not the stand-in: refusing to run")
         return subprocess.run(
-            [BASH, "-eo", "pipefail", "-c", STUBS_FIRST + step_body(name)],
+            [BASH, "-e", "-c", STUBS_FIRST + step_body(name)],
             cwd=ROOT, env=env, capture_output=True, text=True, timeout=60,
         )
 
@@ -175,6 +175,28 @@ class RolloutStep(unittest.TestCase):
         self.assertIn("worker", self.undone())
         self.assertIn("mixed versions", r.stdout)
 
+    def test_an_unreadable_revision_is_reported_as_unreadable_not_as_unchanged(self):
+        # The worker fails; the api's revision cannot be read after the apply (credentials ran out, say)
+        self.c.write("apply-changes", "api\nworker")
+        self.c.write("status-fails", "worker")
+        self.c.write("rev-read-fails", "api")
+        r = self.c.run(ROLLOUT_STEP)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertRegex(r.stdout, r"deployment/api[^\n]*revision[^\n]*unreadable")
+        self.assertNotRegex(r.stdout, r"deployment/api[^\n]*not changed by this run")
+
+    def test_credentials_are_refreshed_before_the_undo_after_the_watch(self):
+        # The final undo can come after a 150 s migration and two 180 s waits: past the 600 s login
+        self.c.write("apply-changes", "api\nworker")
+        self.c.write("status-fails", "worker")
+        self.c.run(ROLLOUT_STEP)
+        calls = self.c.read("calls.log").splitlines()
+        api_undo = next(i for i, line in enumerate(calls) if "rollout undo deployment/api" in line)
+        self.assertTrue(
+            any("kubeconfig save" in line for line in calls[:api_undo] if line.startswith("doctl")),
+            "no fresh credentials before the final undo",
+        )
+
 
 class SmokeStep(unittest.TestCase):
     def setUp(self):
@@ -210,6 +232,15 @@ class SmokeStep(unittest.TestCase):
         r = self.c.run(SMOKE_STEP, {"REV_BEFORE_api": "7", "REV_BEFORE_worker": "7"})
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertEqual(self.undone(), [])
+
+    def test_an_unreadable_revision_is_reported_as_unreadable(self):
+        self.c.write("applied", "")
+        self.c.write("rev-read-fails", "api")
+        self.c.write("rev-worker", "8")
+        r = self.c.run(SMOKE_STEP, {"REV_BEFORE_api": "7", "REV_BEFORE_worker": "7"})
+        self.assertNotEqual(r.returncode, 0)
+        self.assertRegex(r.stdout, r"deployment/api[^\n]*revision[^\n]*unreadable")
+        self.assertEqual(self.undone(), ["worker"])
 
 
 class MarkdownOnlyPushes(unittest.TestCase):
