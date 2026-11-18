@@ -173,7 +173,21 @@ const mutations: [string[], string][] = [
     ["tags-table", "document-tags-fks"],
     "DROP TABLE tags CASCADE; CREATE VIEW tags AS SELECT gen_random_uuid() AS id, 'x'::text AS name",
   ],
+  // Only the 12 Nov revert predicate may narrow the checksum rule; any other one breaks it
+  [
+    ["versions-checksum-unique"],
+    `ALTER TABLE document_versions DROP CONSTRAINT document_versions_checksum_unique;
+     CREATE UNIQUE INDEX checksum_partial_other ON document_versions (document_id, checksum) WHERE number > 1`,
+  ],
 ];
+
+// The 12 Nov decision on reverts (#85, #88): a revert reuses its source's checksum, so the
+// unique index covers only rows that are not reverts. The checklist must accept that schema.
+const REVERT_DECISION_SQL = `ALTER TABLE document_versions
+     ADD COLUMN reverted_from UUID REFERENCES document_versions(id);
+   ALTER TABLE document_versions DROP CONSTRAINT document_versions_checksum_unique;
+   CREATE UNIQUE INDEX document_versions_checksum_unique
+     ON document_versions (document_id, checksum) WHERE reverted_from IS NULL`;
 
 // Migrations without the script would silently switch the gated part off
 it("has a migrate script whenever api/migrations exists", () => {
@@ -217,6 +231,13 @@ whenMigrateExists("the schema built by `npm run migrate` keeps the checklist", (
     const output = await migrate(MIGRATE_UP, template);
     expect(output).toContain("No migrations to run");
     expect(await read()).toEqual(before);
+  });
+
+  it("accepts the 12 Nov revert schema: checksum unique only where reverted_from IS NULL", async () => {
+    const copy = await createDatabase(template);
+    created.push(copy);
+    await runSql(copy, REVERT_DECISION_SQL);
+    expect(await violationsOf(copy)).toEqual([]);
   });
 
   it.each(mutations)("%j turns red after: %s", async (ids, sql) => {
