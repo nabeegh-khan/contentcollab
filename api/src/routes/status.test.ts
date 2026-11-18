@@ -53,6 +53,20 @@ describe("GET /api/v1/status", () => {
     expect(res.body.latency.requests).toBe(LATENCY.requests);
   });
 
+  it("a replicas source that fails is null with its reason, like the other sources (D23)", async () => {
+    const res = await request(
+      appWith({
+        queue: async () => WAITING,
+        latency: async () => LATENCY,
+        replicas: async () => {
+          throw new Error('deployments.apps "api" is forbidden');
+        },
+      }),
+    ).get("/api/v1/status");
+    expect(res.status).toBe(OK);
+    expect(res.body.replicas).toEqual({ api: null, error: "unavailable" });
+  });
+
   it("a source that never answers (Redis down queues commands) is cut off, not waited for", async () => {
     const SHORT_MS = 50;
     const res = await request(

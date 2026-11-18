@@ -83,6 +83,18 @@ describe("latencyFrom", () => {
   });
 });
 
+describe("latencyFrom exclusions", () => {
+  it("excludes a route only at a path boundary, so /api/v1/statuses still counts", async () => {
+    const h = histogramWith([[SLOW, 1]]);
+    h.observe({ method: "GET", route: "/api/v1/statuses" }, SLOW);
+    h.observe({ method: "GET", route: "/healthz" }, SLOW);
+    h.observe({ method: "GET", route: "/api/v1/status" }, FAST);
+    // "/x", "/api/v1/statuses" and "/healthz" count; "/api/v1/status" itself does not
+    const COUNTED = 3;
+    expect((await latencyFrom(h)).requests).toBe(COUNTED);
+  });
+});
+
 describe("queueDepth", () => {
   it("counts waiting and prioritized jobs of the contentcollab queue", async () => {
     const WAITING = 3;
