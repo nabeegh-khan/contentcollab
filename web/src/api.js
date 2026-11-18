@@ -14,15 +14,15 @@ function register()
   try
   {
     const url = "/auth/register";
-    const unique = await fetch(url);
+    const response = await fetch(url);
+    const task = await response.json();
     
-    if (unique.rows.length > 0)
+    if (response != null)
     {
       return res.status(409).json({"error": "email taken"});
     }
     else
     {
-      const task = await response.json();
       console.log(task);
       return res.status(201);
     }
@@ -43,7 +43,7 @@ function login()
       const task = await fetch(url);
       const result = await task.json(); 
 
-      if (result.rows.length == 0)
+      if (result == null)
       {
         return res.status(401).json({ "error": "wrong email or password" });
       }
@@ -87,7 +87,9 @@ function uploadDocument(file, title)
       return res.status(400).json({"error": "file type not allowed});
     }
 
-    const task = await fetch();
+    const result = await fetch(file);
+    const task = await result.json();
+                                  
     console.log(task);
     return res.status(201);
   
@@ -105,19 +107,29 @@ function listDocuments({ limit, cursor })
   try
   {
     const limit = limit || 20;
+    const url = "/documents";
+    items = [];
 
     if (limit > 100)
     {
-      const items = await fetch();
+      const task = await fetch(url);
+      const result = await task.json(); 
+      items = result.slice(0, 100); // https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array/slice
     }
     else if (limit <= 0)
     {
-      const items = await fetch();
+      const task = await fetch(url);
+      const result = await task.json(); 
+      items = result.slice(0, 1);
     }
     else
     {
-      const items = await fetch();
+      const task = await fetch(url);
+      const result = await task.json(); 
+      items = result.slice(0, limit);
     }
+
+    console.log(items);
     
     const nextCursor = cursor + 1; 
     
