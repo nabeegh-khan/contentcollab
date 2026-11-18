@@ -255,6 +255,21 @@ Sources, checked 11 November 2026: [Prometheus storage](https://prometheus.io/do
 
 Sources, checked 13 November 2026: [Kubernetes Jobs](https://kubernetes.io/docs/concepts/workloads/controllers/job/) (`backoffLimit` default 6, `activeDeadlineSeconds` takes precedence and ends as `DeadlineExceeded`, `ttlSecondsAfterFinished`); [node-pg-migrate CLI](https://salsita.github.io/node-pg-migrate/cli) and the 9.0.0 binary (`bin/node-pg-migrate.js` line 349: without `DATABASE_URL` it uses `PGHOST` with a user and database from the `PG*` variables).
 
+### D25. The deploy undoes only what its own run changed, and all of it (decided 18 November, #108, #70)
+
+**Problem.** The release review of #83 found four gaps in `deploy.yml` (#108): (1) if the api rolls out and the worker does not, only the worker is undone and the run ends red with mixed versions; (2) a failing `kubectl apply` ends the step under `bash -e` before the watch, while Deployments may already be rolling; (3) a re-run of the same commit applies nothing new, so a failure's `rollout undo` goes back one revision past what is running; (4) a markdown-only change under `api/`, `worker/` or `k8s/` starts a full deploy.
+
+**Decision.** Before the apply, the rollout step records each Deployment's revision (the `deployment.kubernetes.io/revision` annotation, read on the cluster on 18 November: 22 on `deployment/api`) and hands it to the smoke step through `GITHUB_ENV`. A Deployment counts as changed by this run when its revision differs afterwards. Only a changed Deployment is undone, by the rollout step or the smoke step; an unchanged one is reported (`not changed by this run`) and the run still fails. A failed apply is reported and the watch still runs. When any Deployment fails, every Deployment this run changed is undone, so no mixed versions are left. `on.push.paths` ends with `"!**/*.md"`, which excludes a markdown file matched by an earlier pattern; a push that also changes code still deploys.
+
+**Options weighed.**
+- **Compare images instead of revisions:** rejected; on a re-run the image is already this commit's, so it cannot tell a new rollout from an old one.
+- **Undo everything on any failure, as the smoke step did:** this is what goes one revision too far on a re-run.
+- **`paths-ignore: ["**/*.md"]`:** not allowed beside `paths` for the same event; the `!` pattern inside `paths` is the documented way.
+
+**Not in this change: item 5 of #108**, the api Deployment's `replicas: 2`, which resets the HPA on each apply. Removing the field from the manifest scales the Deployment to its default of one replica on the next apply unless its last-applied configuration is edited first (Kubernetes HPA task page, "Migrating Deployments and StatefulSets to horizontal autoscaling"). That edit writes to the live cluster, so it waits for the cluster owner, with the steps in the hand-over notes.
+
+Sources, checked 18 November 2026: [GitHub Actions workflow syntax](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax), `on.<push|pull_request|pull_request_target>.<paths|paths-ignore>` ("A matching negative pattern (prefixed with `!`) after a positive match will exclude the path"; "You cannot use both the `paths` and `paths-ignore` filters for the same event"); [Horizontal Pod Autoscaling](https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/) (`spec.replicas` with an HPA).
+
 ### D21. Version comparison: a diff module in the worker, built ahead of the version tables (decided 13 November, #23)
 
 **Problem.** Issue #23 (from an earlier proposal draft) has the worker compute what changed between two versions: a line diff for text, Markdown and code, a page-by-page comparison for PDFs. The version routes (#116) and the file storage (#89, #53) are not merged, so the job cannot read real versions yet.
