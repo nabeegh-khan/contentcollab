@@ -536,3 +536,69 @@ Traced the red `docker` job to CI starting the API image without a signing key, 
 - Kept the fix in CI, our own scope, and left the auth code alone; the check was committed before the fix and failed first.
 - An independent check of the review drafts corrected one wrong claim (a merge conflict on the web branch that Git does not produce) and changed the shares review from an approval to a comment, since the branch still carries the auth branch's broken Compose line until auth merges.
 - Found in re-review that the auth branch's new Compose line stops `docker compose up` and that four docs files on it are older copies; both are asked of the author, not changed by us. Deferred items went to #129 and #130.
+
+## Pre-freeze audit and review fixes, 18 November 2026
+
+### Prompt
+
+Audit every open issue and pull request against a demo that shows every core requirement, sync the board, give each stale or blocking teammate item a dated note, and bring our own pull requests that were past their review window to ready, each through an independent review and test-first fixes.
+
+### AI Response
+
+Wrote the audit and the critical path (auth, storage, the second migration, documents, shares, then the web pages), drafted the dated notes, ran one independent review per pull request, proposed each fix with a test that failed first, and ran a second check of the fixed lines.
+
+### What Your Team Did With It
+
+- Kept every fix in our own pull requests; teammates' work got comments only. The migration #116 needs was asked of its owner on #88, not built by us.
+- The reviews found real faults, each fixed only after a failing test: a missing contract row for a public endpoint, a character gap in the diff's size cap, model text reaching an error message, and foreign keys that PostgreSQL 18 can leave unenforced.
+- Caught our own mistake: the note on #88 first said to drop a constraint that the 12 November decision keeps in a partial form; corrected the same day, and the schema contract now accepts exactly that form.
+- Closed two draft pull requests that the demo does not need instead of rebasing them before the freeze.
+
+## Merge conflicts after the auth merge, 18 November 2026
+
+### Prompt
+
+The auth pull request has merged and five of our pull requests now conflict with main in the API's server file. Merge main into each, keep both sides, run the checks, and hand back the merge commands.
+
+### AI Response
+
+Merged main into each branch and resolved `server.ts`, keeping the auth mount, the startup key check and the new 404 body together with each branch's own route. For the request-log branch, it found that its error handler would answer the auth routes' errors with 500, wrote tests for those errors before changing the handler, then combined the two handlers. An independent check reviewed each resolution.
+
+### What Your Team Did With It
+
+- Pushed the handler tests before the fix: CI failed 16 tests, 12 of them the auth pull request's own. So the merge alone would have broken sign-in error answers, and the fix brought the suite to 155 of 155.
+- Checked the merge order before handing it over, and found that squash-only merging means three of the five branches need one more merge of main after their predecessor lands. The hand-over now lists only the two that merge cleanly, plus a short task for the other three.
+- Corrected a merge message that implied the auth mount protects a later route. Auth is applied per route, and the compare route stays behind its feature flag.
+
+## Migrations that keep the previous release working, 18 November 2026
+
+### Prompt
+
+A rolling update runs the old and the new API against the same database, and the migration Job runs before it. Write down a rule that keeps the old version working, and add a CI check that fails on a migration breaking it, test first.
+
+### AI Response
+
+Proposed expand then contract: within one release a migration's `up` only adds, and a drop or rename waits a release and names each object in a `contract:` comment. Drafted the decision with the options it beat, twelve tests, and a script that reads each migration's `up` (SQL and node-pg-migrate's builder calls) and fails on an unmarked drop or rename.
+
+### What Your Team Did With It
+
+- Wrote the decision before the code and pushed the tests against a stub first: CI's scripts job failed exactly the nine tests that need the check (run 44404221247), then passed with it.
+- Checked the builder's method names in node-pg-migrate 9.0.0's own type definitions rather than from memory, and the `down` count in its CLI source, so the runbook gives the count explicitly.
+- Kept the check to drops and renames, as the issue asks, and wrote down what a text check cannot see (type changes, a new `NOT NULL`). Dropping a constraint passes, so the planned partial-index migration for documents needs no marker.
+
+## Deploy undo that matches what the run changed, 18 November 2026
+
+### Prompt
+
+The deploy workflow can leave an api and a worker from different commits, stops before watching a rollout when the apply fails, and on a re-run can undo one release too far. Fix those and skip markdown-only pushes, with tests that run the workflow's own steps and fail first.
+
+### AI Response
+
+Proposed recording each Deployment's revision before the apply and undoing only the ones whose revision moved, undoing all of those when any fails, reporting a failed apply and still watching, and a `!**/*.md` entry at the end of the paths filter. Drafted a test harness that runs the two step bodies from `deploy.yml` with stand-in commands, and the workflow change.
+
+### What Your Team Did With It
+
+- Wrote the decision before the code and pushed the tests against the old workflow first: 9 of the 14 failed locally, then all passed with the change.
+- Checked the paths-filter rule on GitHub's workflow syntax page and the revision annotation on the cluster (read-only) instead of from memory.
+- Found that on Windows the test's `bash` could resolve to a shell whose `kubectl` is the real one; the harness now refuses to run unless every command resolves to its stand-in, and puts the stand-ins first inside bash itself.
+- Left out the HPA replicas item: removing the field scales the api to one replica on the next apply unless the live object is edited first (Kubernetes HPA page), which is the cluster owner's step.

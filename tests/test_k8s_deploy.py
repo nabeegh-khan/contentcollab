@@ -122,7 +122,12 @@ class ImagePinning(unittest.TestCase):
         lines = shell_lines(rollout_step()["run"])
         # The only directory changes and the only apply: into doks, back, apply doks once
         self.assertEqual([l for l in lines if l.startswith("cd ")], ["cd k8s/doks", "cd ../.."])
-        self.assertEqual([l for l in lines if "kubectl apply" in l], ["kubectl apply -k k8s/doks"])
+        # One apply; a failure is reported and marks the run failed instead of ending the step (#108, D25)
+        applies = [i for i, l in enumerate(lines) if "kubectl apply" in l and not l.startswith("||")]
+        self.assertEqual(len(applies), 1, "one apply")
+        apply_at = applies[0]
+        self.assertEqual(lines[apply_at], "kubectl apply -k k8s/doks \\")
+        self.assertRegex(lines[apply_at + 1], r"^\|\| \{ echo ::error::[^;]*; failed=1; \}$")
         pins = [(words, body, after) for words, body, after in loops(lines)
                 if any("kustomize edit set image" in b for b in body)]
         self.assertEqual(len(pins), 1, "one pin loop")
@@ -132,8 +137,7 @@ class ImagePinning(unittest.TestCase):
                                 "$REGISTRY/contentcollab-$svc=$REGISTRY/contentcollab-$svc:${{ github.sha }}"])
         start = after - len(body) - 2  # index of the `for` line
         self.assertLess(lines.index("cd k8s/doks"), start, "the SHA must be set in the doks overlay")
-        self.assertLess(after, lines.index("kubectl apply -k k8s/doks"),
-                        "the SHA must be set before `apply -k` (one rollout)")
+        self.assertLess(after, apply_at, "the SHA must be set before `apply -k` (one rollout)")
 
     def test_deploy_has_no_second_rollout_through_set_image(self):
         self.assertNotRegex(DEPLOY, r"kubectl[^\n]* set image", "second rollout after apply")
@@ -154,14 +158,20 @@ class RollbackOnFailedRollout(unittest.TestCase):
         self.assertRegex(self.body, r"\*:\$\{\{ github\.sha \}\}\) ;;\n(?:[^\n]*\n)*?\*\) echo [^\n]*; failed=1; continue ;;\nesac")
 
     def test_each_deployment_is_undone_when_its_rollout_fails(self):
-        # The command that runs when `rollout status` fails is the undo itself,
-        # in the app namespace, followed by marking the run failed
+        # A failed `rollout status` marks the run failed and undoes the
+        # Deployment if this run changed it (D25); tests/test_deploy_undo.py
+        # runs the step itself for each case
         self.assertRegex(
             self.body,
-            r"kubectl -n contentcollab rollout status deployment/\$svc --timeout=180s \\\n"
-            r"\|\| \{ kubectl -n contentcollab rollout undo deployment/\$svc \\\n"
-            r"\|\| echo [^\n]*; failed=1; \}",
+            r"if ! kubectl -n contentcollab rollout status deployment/\$svc --timeout=180s; then\n"
+            r"failed=1\n"
+            r"echo ::error::[^\n]*\n"
+            r"undo_if_changed \$svc watch\n",
         )
+        decide = "\n".join(self.lines[self.lines.index("undo_if_changed() {"):])
+        self.assertRegex(decide, r"case \$\(revision_state \$1\) in\nchanged\) undo \$1 ;;\n")
+        undo = "\n".join(self.lines[self.lines.index("undo() {"):])
+        self.assertRegex(undo, r"kubectl -n contentcollab rollout undo deployment/\$1 \\\n\|\| echo ::error::[^\n]*\n")
 
     def test_a_deployment_left_on_the_placeholder_is_undone(self):
         # A pin that matched nothing applies `unpinned`, which cannot be
@@ -178,7 +188,9 @@ class RollbackOnFailedRollout(unittest.TestCase):
         self.assertEqual(shell_lines(step(SMOKE_STEP)["run"])[-1], "exit 1")
 
     def test_job_still_fails_after_the_undo(self):
-        self.assertEqual(self.lines[self.after:], ["exit $failed"], "undo must not turn a failed deploy green")
+        # After the watch only the undo of what this run changed runs, then the exit
+        self.assertEqual(self.lines[-1], "exit $failed", "undo must not turn a failed deploy green")
+        self.assertNotIn("failed=0", self.lines[self.after:])
         self.assertEqual([l for l in self.lines if re.match(r"failed=0\b", l)], ["failed=0"])
         self.assertLess(self.lines.index("failed=0"), self.after - 1)
 
