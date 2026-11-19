@@ -17,9 +17,12 @@ cd "$(dirname "$0")/.."   # paths below are relative to the repository root
 : "${NODE_COUNT:=2}"
 : "${LETSENCRYPT_EMAIL:?set LETSENCRYPT_EMAIL to the address Lets Encrypt notifies about expiry}"
 : "${SECRETS_FILE:=k8s/base/secrets.yaml}"   # git-ignored copy of secrets.example.yaml with real values
+: "${DATADOG_API_KEY:=}"                      # optional: empty skips the Datadog agent
+: "${DATADOG_SITE:=datadoghq.com}"            # the account's site: datadoghq.eu, us3.datadoghq.com, ...
 
 NGF_VERSION="v2.8.0"            # https://docs.nginx.com/nginx-gateway-fabric/install/helm/
 CERT_MANAGER_VERSION="v1.19.2"  # https://cert-manager.io/docs/installation/helm/
+DATADOG_CHART_VERSION="3.269.1" # https://github.com/DataDog/helm-charts/blob/main/charts/datadog/Chart.yaml (8 Nov 2026)
 
 for tool in doctl kubectl helm; do
   command -v "$tool" >/dev/null || { echo "missing: $tool"; exit 1; }
@@ -67,9 +70,17 @@ sed "s|LETSENCRYPT_EMAIL|$LETSENCRYPT_EMAIL|" k8s/doks/cluster-issuer.yaml | kub
 #     L8 p67, p73). IMAGE_TAG defaults to the newest commit on main that
 #     deploy.yml builds for; the registry is checked before anything applies.
 git fetch -q origin main
-: "${IMAGE_TAG:=$(git log -1 --format=%H origin/main -- api k8s .github/workflows/deploy.yml)}"
-rendered=$(kubectl kustomize k8s/doks | sed "s#\(ghcr.io/nabeegh-khan/contentcollab-[a-z]*\):latest#\1:$IMAGE_TAG#g")
-for repo in $(printf '%s\n' "$rendered" | grep -o 'ghcr.io/nabeegh-khan/contentcollab-[a-z]*' | sort -u); do
+: "${IMAGE_TAG:=$(git log -1 --format=%H origin/main -- api worker k8s .github/workflows/deploy.yml)}"   # the paths deploy.yml runs on
+# deploy.yml tags images with the full commit SHA; anything else (empty, a
+# branch name, characters sed would read) stops here
+[[ "$IMAGE_TAG" =~ ^[0-9a-f]{40}$ ]] || { echo "IMAGE_TAG '$IMAGE_TAG' is not a full commit SHA"; exit 1; }
+app='ghcr.io/nabeegh-khan/contentcollab-[a-z0-9-]*'   # every app image repository
+rendered=$(kubectl kustomize k8s/doks | sed "s#\($app\):unpinned#\1:$IMAGE_TAG#g")
+# If the base tag ever changes, the sed above matches nothing: every app image
+# reference (tagged, tagless or by digest) must now end in this tag
+unpinned=$(printf '%s\n' "$rendered" | grep -o "${app}[^[:space:]\"]*" | grep -v ":$IMAGE_TAG\$" || true)
+[ -z "$unpinned" ] || { echo "images not pinned to $IMAGE_TAG: $unpinned"; exit 1; }
+for repo in $(printf '%s\n' "$rendered" | grep -o "$app" | sort -u); do
   name=${repo#ghcr.io/}
   token=$(curl -fsS "https://ghcr.io/token?scope=repository:$name:pull" | sed -n 's/.*"token":"\([^"]*\)".*/\1/p')
   code=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $token" \
@@ -95,3 +106,44 @@ else
   echo "Next: A record contentcollab.app to $addr at the registrar. The certificate is issued on the first HTTPS request."
 fi
 echo "For CI rollouts: set the repository secret DIGITALOCEAN_ACCESS_TOKEN; set the variable SMOKE_URL once DNS and TLS work"
+
+# 6. Datadog agent (#27), only when an API key is in the environment. Last, so
+#    the app and the Gateway address never wait on it or fail with it. The key
+#    goes into a Secret; the chart reads it from there (SEC-1).
+if [ -n "$DATADOG_API_KEY" ]; then
+  # The key is sent to api.$DATADOG_SITE below, so the site must be one of
+  # Datadog's own (docs.datadoghq.com/getting_started/site, 10 Nov 2026); the
+  # key goes inside double quotes in YAML, so letters and digits only
+  case "$DATADOG_SITE" in
+    datadoghq.com|us3.datadoghq.com|us5.datadoghq.com|datadoghq.eu|ddog-gov.com|us2.ddog-gov.com|ap1.datadoghq.com|ap2.datadoghq.com|uk1.datadoghq.com) ;;
+    *) echo "DATADOG_SITE '$DATADOG_SITE' is not a Datadog site (datadoghq.com, datadoghq.eu, us3.datadoghq.com, ...)"; exit 1 ;;
+  esac
+  [[ "$DATADOG_API_KEY" =~ ^[A-Za-z0-9]+$ ]] || { echo "DATADOG_API_KEY has characters other than letters and digits: check what was pasted"; exit 1; }
+  # A wrong key or site would otherwise install cleanly and send nothing.
+  # 200 = valid, 403 = invalid (GET /api/v1/validate, Datadog API spec)
+  code=$(printf 'DD-API-KEY: %s\n' "$DATADOG_API_KEY" | curl -s --max-time 15 -o /dev/null -w '%{http_code}' -H @- \
+    "https://api.$DATADOG_SITE/api/v1/validate" || true)   # 000 when the site is unreachable
+  [ "$code" = "200" ] || { echo "Datadog rejected DATADOG_API_KEY at api.$DATADOG_SITE (HTTP $code): check the key and DATADOG_SITE"; exit 1; }
+  kubectl create namespace datadog --dry-run=client -o yaml | kubectl apply -f -
+  # On a re-run the agents read the key from the Secret only when they start,
+  # and helm leaves them running when the values are unchanged; so every re-run
+  # restarts them (a short gap in agent data), whether or not the key changed
+  installed=false
+  helm status datadog-agent -n datadog >/dev/null 2>&1 && installed=true
+  # Through stdin (printf is a shell builtin), so the key is never in a
+  # process argument list; works the same in Git Bash on Windows. Server-side
+  # apply under its own field manager: with kubectl's default manager the
+  # last-applied-configuration annotation, a second copy, is still written
+  printf 'apiVersion: v1\nkind: Secret\nmetadata:\n  name: datadog-secret\n  namespace: datadog\nstringData:\n  api-key: "%s"\n' "$DATADOG_API_KEY" \
+    | kubectl apply --server-side --field-manager=cluster-up -f -
+  helm upgrade --install datadog-agent datadog --repo https://helm.datadoghq.com \
+    --version "$DATADOG_CHART_VERSION" -n datadog -f k8s/doks/datadog-values.yaml \
+    --set datadog.site="$DATADOG_SITE" --wait --timeout 5m
+  if [ "$installed" = true ]; then
+    kubectl -n datadog rollout restart daemonset/datadog-agent deployment/datadog-agent-cluster-agent
+    kubectl -n datadog rollout status daemonset/datadog-agent --timeout=300s
+    kubectl -n datadog rollout status deployment/datadog-agent-cluster-agent --timeout=300s
+  fi
+else
+  echo "DATADOG_API_KEY not set: Datadog agent not installed (#27)"
+fi

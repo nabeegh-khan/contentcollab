@@ -4,7 +4,7 @@ Upload a document, share it with the right people, and review it together: comme
 
 Team project for ECE1779 Introduction to Cloud Computing, University of Toronto, Fall 2026.
 
-**Status, 6 November:** the schema ([#37](https://github.com/nabeegh-khan/contentcollab/issues/37)) slipped and no feature code is merged yet; recovery dates are in [docs/PLAN.md](docs/PLAN.md#status-and-recovery-6-november). The proposal is on `main` for submission on 7 November. Open for review: test harness [#71](https://github.com/nabeegh-khan/contentcollab/pull/71); cloud pull requests #59, #60, #61, #72, #74, #75, #76, #78, and #62 as a draft.
+**Status, 13 November (evening):** merged to `main`: the Compose and CI harness, the cluster bring-up scripts, the worker, `/metrics`, the Datadog install, the autoscaler load test, replica spreading, the deploy checks gate, smoke checks and alert policies (#62), the listen-before-Redis fix (#75), image pinning with undo on a failed rollout (#83), CI that runs the migrations before the tests (#99) the schema with its first migration (#88) and the reviewed API contract (#85). The cluster runs in nyc3 and serves https://contentcollab.app. The migration Job that creates the tables on the cluster before each rollout is in [#118](https://github.com/nabeegh-khan/contentcollab/pull/118) (green). API contract ([#85](https://github.com/nabeegh-khan/contentcollab/pull/85)) merged 13 November. Feature code in review, changes requested: auth ([#111](https://github.com/nabeegh-khan/contentcollab/pull/111)), shares ([#114](https://github.com/nabeegh-khan/contentcollab/pull/114)), documents and versions ([#116](https://github.com/nabeegh-khan/contentcollab/pull/116)), web skeleton ([#86](https://github.com/nabeegh-khan/contentcollab/pull/86)); also open: storage ([#89](https://github.com/nabeegh-khan/contentcollab/pull/89)), sign-in and document list ([#93](https://github.com/nabeegh-khan/contentcollab/pull/93)), document view ([#91](https://github.com/nabeegh-khan/contentcollab/pull/91)). Cloud and advanced-feature pull requests opened 13 November, each with tests written first: migration Job (#118), restart test (#120), Service by port name (#121), volume kept on claim delete (#122), version diff (#123), status endpoint (#124, #126), summaries and tags (#125); the Spaces setup (#98) is ready for review. What the 14 November checkpoint shows: [docs/DEMO_CHECKPOINT_2026-11-14.md](docs/DEMO_CHECKPOINT_2026-11-14.md). Plan status: [docs/PLAN.md](docs/PLAN.md#status-13-november-evening).
 
 ## Architecture
 
@@ -40,7 +40,7 @@ This is a review tool, not an editor. Live text editing and track changes are ou
 | Frontend | small React app served as static files by its own container |
 | Background jobs | worker container on a Redis queue (BullMQ): Office-to-PDF conversion, bulk imports, thumbnails |
 | Local development | Docker Compose |
-| Monitoring | DigitalOcean metrics and alerts; `/metrics` on the API (Prometheus format), collected with container logs by Datadog |
+| Monitoring | DigitalOcean metrics and alerts; `/metrics` on the API (Prometheus format) and JSON request logs read with `kubectl`; no agent in the cluster (the nodes cannot carry one: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) D18) |
 | CI/CD | GitHub Actions: lint and test on every pull request, build and deploy on merge to `main` |
 
 Advanced features committed in the proposal: security (sign-in, roles, HTTPS, secrets), CI/CD, real-time, and auto-scaling with high availability. Stretch goals: backup and recovery, external email. Everything else on the board is for the final report, not the proposal.
@@ -81,7 +81,7 @@ docs/
 .env.example         environment variable template; copy to .env, which is never committed
 ```
 
-Each folder has a README saying what goes in it, its planned layout, and the practices that apply there. `compose.yaml` lands with the skeleton.
+Each folder has a README saying what goes in it, its layout, and the practices that apply there. `compose.yaml` runs the local stack; `compose.test.yaml` runs the API tests.
 
 ## How we work
 
@@ -96,4 +96,4 @@ Each folder has a README saying what goes in it, its planned layout, and the pra
 
 ## Local setup
 
-Clone, copy `.env.example` to `.env`, then `docker compose up --build`; the API answers at `http://localhost:3000/health`. The Kubernetes manifests run on minikube with `kubectl apply -k k8s/minikube` ([k8s/README.md](k8s/README.md), on #35 until it merges).
+Clone, copy `.env.example` to `.env`, then `docker compose up --build`; the API answers at `http://localhost:3000/health`. The Kubernetes manifests run on minikube with `kubectl apply -k k8s/minikube` ([k8s/README.md](k8s/README.md)).

@@ -90,88 +90,95 @@ jobs:
           token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
       - uses: azure/setup-kubectl@v4
         if: steps.cluster.outputs.present == 'true'
-
       - name: Short-lived cluster credentials
         if: steps.cluster.outputs.present == 'true'
         run: doctl kubernetes cluster kubeconfig save --expiry-seconds 600 contentcollab
-      - name: Run database migration and roll out Deployments
-
+      # The schema moves before any pod does (ARCHITECTURE D20, #117). A
+      # failed migration fails this step, so the rollout below is skipped and
+      # the old pods keep serving on the old schema. Each migration must keep
+      # the previous API version working while both run (#105, L7 p17)
+      - name: Migrate the database to this commit
         if: steps.cluster.outputs.present == 'true'
         run: |
-
-          set -e
-
-          # Apply infrastructure without deploying API or worker
-          kubectl kustomize --load-restrictor LoadRestrictionsNone k8s/doks/infra | kubectl apply -f -
-
-          # Wait for PostgreSQL
-          kubectl -n contentcollab rollout status statefulset/postgres --timeout=180s
-
-          # Run database migration for this commit
-          JOB_NAME="db-migrate-${GITHUB_SHA}"
-          sed "s/__IMAGE_TAG__/${GITHUB_SHA}/g" k8s/doks/migrate-job.yaml | kubectl apply -f -
-
-          kubectl -n contentcollab wait \
-            --for=condition=complete \
-            "job/${JOB_NAME}" \
-            --timeout=180s
-
-          # Deploy API and worker with commit-specific images
-          kubectl kustomize k8s/doks \
-            | sed \
-                -e "s|ghcr.io/nabeegh-khan/contentcollab-api:latest|ghcr.io/nabeegh-khan/contentcollab-api:${GITHUB_SHA}|g" \
-                -e "s|ghcr.io/nabeegh-khan/contentcollab-worker:latest|ghcr.io/nabeegh-khan/contentcollab-worker:${GITHUB_SHA}|g" \
-            | kubectl apply -f -
-
-          # Verify deployments and roll back failures
+          if [ ! -d api/migrations ]; then echo "No api/migrations in this commit: nothing to migrate"; exit 0; fi
+          # A re-run of the same commit finds its earlier Job; a Job's pod
+          # template cannot be changed, so it is replaced, not re-applied
+          kubectl -n contentcollab delete job "db-migrate-${{ github.sha }}" --ignore-not-found --wait=true
+          sed "s/__IMAGE_TAG__/${{ github.sha }}/g" k8s/doks/migrate-job.yaml | kubectl apply -f -
+          # 150 s here plus two 180 s rollouts stays inside the 600 s login
+          # (the Job itself stops at 120 s, activeDeadlineSeconds)
+          if ! kubectl -n contentcollab wait --for=condition=complete "job/db-migrate-${{ github.sha }}" --timeout=150s; then
+            echo "::error::migration Job db-migrate-${{ github.sha }} did not complete: no rollout"
+            kubectl -n contentcollab logs "job/db-migrate-${{ github.sha }}" --tail=100 || true
+            # At the deadline the pod is terminated, and a pod that never
+            # started has no log. The Job's status says that it stopped; the
+            # pod's own events (image pull, missing key) say why, and they
+            # outlive the pod
+            kubectl -n contentcollab describe "job/db-migrate-${{ github.sha }}" || true
+            kubectl -n contentcollab get events --field-selector involvedObject.kind=Pod --sort-by=.lastTimestamp | grep "db-migrate-${{ github.sha }}" || true
+            exit 1
+          fi
+      - name: Roll the Deployments to this commit
+        if: steps.cluster.outputs.present == 'true'
+        run: |
+          # Pin both images to this commit in the overlay, then apply once:
+          # one rollout per merge, and the manifest that is applied names the
+          # image that was built (INF-9)
+          cd k8s/doks
+          for svc in api worker; do
+            kustomize edit set image $REGISTRY/contentcollab-$svc=$REGISTRY/contentcollab-$svc:${{ github.sha }}
+          done
+          cd ../..
+          kubectl apply -k k8s/doks
+          # A rollout that never turns ready is rolled back here, not by hand,
+          # and the job still fails so the run is not green (INF-9). A failed
+          # undo is reported and the next Deployment is still checked.
           failed=0
           for svc in api worker; do
+            # A renamed image would leave set image matching nothing, so the
+            # apply sets the base placeholder `unpinned`, which cannot be
+            # pulled: that rollout never finishes (the old pods keep serving).
+            # It fails the run and goes on to the watch below, whose `rollout
+            # status` waits for the new revision before undoing it; an undo
+            # straight after the apply could go back one revision too far.
+            # Any other image is reported without an undo, since no new
+            # revision may exist to undo
             image=$(kubectl -n contentcollab get deployment/$svc -o jsonpath='{.spec.template.spec.containers[0].image}') \
-              || image="(unreadable)"
-
+              || image="(unreadable)"   # a bare failing assignment would end the step under bash -e
             case "$image" in
-              *:${GITHUB_SHA}) ;;
-              *)
-                echo "::error::deployment/$svc runs $image, not this commit"
-                failed=1
-                continue
-                ;;
+              *:${{ github.sha }}) ;;
+              *:unpinned) echo "::error::deployment/$svc was applied with the placeholder tag"; failed=1 ;;
+              *) echo "::error::deployment/$svc runs $image, not this commit"; failed=1; continue ;;
             esac
-
             kubectl -n contentcollab rollout status deployment/$svc --timeout=180s \
-              || {
-                kubectl -n contentcollab rollout undo deployment/$svc \
-                  || echo "::error::undo of deployment/$svc failed: the cluster may run mixed versions"
-                failed=1
-              }
+              || { kubectl -n contentcollab rollout undo deployment/$svc \
+                     || echo "::error::undo of deployment/$svc failed: the cluster may run mixed versions"; failed=1; }
           done
           exit $failed
-
-      # Smoke test and roll back both Deployments if health check fails
+      # Skipped until SMOKE_URL is set, so deploys do not roll back before DNS
+      # and TLS exist
       - name: Smoke check, roll back on failure
         if: steps.cluster.outputs.present == 'true' && vars.SMOKE_URL != ''
         env:
           SMOKE_URL: ${{ vars.SMOKE_URL }}
         run: |
+          # Reads the body, not just the status: both dependencies must be up.
+          # No -f, so a 503's body (which dependency is down) reaches the log
           for _ in $(seq 1 12); do
             body=$(curl -sS --max-time 5 "$SMOKE_URL/health" || true)
-            if echo "$body" | grep -q '"status":"ok"'; then
-              echo "smoke ok: $body"
-              exit 0
-            fi
+            if echo "$body" | grep -q '"status":"ok"'; then echo "smoke ok: $body"; exit 0; fi
             sleep 5
           done
-
           echo "::error::Smoke check failed (last body: $body): rolling back"
-
+          # The ten-minute credentials may have run out during two rollouts and
+          # the smoke wait; fetch fresh ones so the rollback is not refused
           doctl kubernetes cluster kubeconfig save --expiry-seconds 600 contentcollab \
-            || echo "::warning::could not refresh credentials; trying rollback with current credentials"
-
+            || echo "::warning::could not refresh cluster credentials; trying the rollback with the current ones"
+          # Both images come from this commit, so both go back together; one
+          # failed undo does not stop the other
           for svc in api worker; do
-            {
-              kubectl -n contentcollab rollout undo deployment/$svc \
-                && kubectl -n contentcollab rollout status deployment/$svc --timeout=180s
-            } || echo "::error::rollback of deployment/$svc failed: the cluster may run mixed versions"
+            { kubectl -n contentcollab rollout undo deployment/$svc \
+                && kubectl -n contentcollab rollout status deployment/$svc --timeout=180s; } \
+              || echo "::error::rollback of deployment/$svc failed: the cluster may run mixed versions"
           done
-
           exit 1

@@ -1,50 +1,121 @@
-import type { NextFunction, Request, Response } from "express";
 import { STATUS_CODES } from "node:http";
-import { HttpError } from "../lib/httpError.js";
+import type { NextFunction, Request, Response } from "express";
+import {
+  HTTP_BAD_REQUEST,
+  HTTP_CLIENT_ERROR_MIN,
+  HTTP_CONFLICT,
+  HTTP_FORBIDDEN,
+  HTTP_INTERNAL_ERROR,
+  HTTP_NOT_FOUND,
+  HTTP_PAYLOAD_TOO_LARGE,
+  HTTP_SERVER_ERROR_MIN,
+  HTTP_TOO_MANY_REQUESTS,
+  HTTP_UNAUTHORIZED,
+  HTTP_UNPROCESSABLE,
+} from "../lib/httpStatus.js";
+import { HttpError, type ValidationDetail } from "../lib/httpError.js";
+import { errorFields, log } from "../lib/log.js";
+import { markFailedMidResponse } from "../lib/midResponse.js";
+import { routeLabel } from "../lib/routeLabel.js";
 
-// Last middleware in the chain. The client gets a fixed shape and no detail;
-// the detail goes to the log. Express only treats a 4-argument function as an
-// error handler, so `next` stays even though it is unused.
-function statusCodeName(status: number): string {
-  const name = STATUS_CODES[status];
-  return name
-    ? name
-        .toUpperCase()
-        .replace(/[^A-Z0-9]+/g, "_")
-        .replace(/^_|_$/g, "")
-    : "ERROR";
+// The codes of the error shape in docs/API.md. Another 4xx gets its status
+// name in upper snake case ("IM_A_TEAPOT"); every 5xx is INTERNAL.
+const CODES: Record<number, string> = {
+  [HTTP_BAD_REQUEST]: "VALIDATION",
+  [HTTP_UNPROCESSABLE]: "VALIDATION",
+  [HTTP_UNAUTHORIZED]: "UNAUTHORIZED",
+  [HTTP_FORBIDDEN]: "FORBIDDEN",
+  [HTTP_NOT_FOUND]: "NOT_FOUND",
+  [HTTP_CONFLICT]: "CONFLICT",
+  [HTTP_PAYLOAD_TOO_LARGE]: "TOO_LARGE",
+  [HTTP_TOO_MANY_REQUESTS]: "RATE_LIMITED",
+};
+
+// Apostrophes are dropped, so "I'm a Teapot" reads "Im a Teapot".
+// Try it: https://regex101.com/?regex='
+const APOSTROPHE = /'/g;
+// Each run of characters that is not a letter or digit: the spaces in "Im a Teapot" (and "-" in "Pre-Condition").
+// Try it: https://regex101.com/?regex=%5B%5EA-Za-z0-9%5D%2B
+const NOT_ALPHANUMERIC = /[^A-Za-z0-9]+/g;
+
+function codeFor(status: number): string {
+  if (status >= HTTP_SERVER_ERROR_MIN) return "INTERNAL";
+  const name = (STATUS_CODES[status] ?? "Error").replace(APOSTROPHE, "");
+  return CODES[status] ?? name.replace(NOT_ALPHANUMERIC, "_").toUpperCase();
 }
 
+// The body of every error answer, in the shape of docs/API.md: `{ error, code }`
+export function errorBody(status: number): { error: string; code: string } {
+  return { error: STATUS_CODES[status] ?? "Error", code: codeFor(status) };
+}
+
+type ErrorAnswer = { error: string; code: string; details?: ValidationDetail[] };
+
+// The answer to an HttpError our routes threw (#111): its own message and
+// code, the status's code when it gives none, and `details` only on a 400
+// VALIDATION error, as docs/API.md says
+function httpErrorBody(err: HttpError): ErrorAnswer {
+  const code = err.code || codeFor(err.status);
+  const withDetails = err.status === HTTP_BAD_REQUEST && code === "VALIDATION" && err.details;
+  return withDetails
+    ? { error: err.message, code, details: err.details }
+    : { error: err.message, code };
+}
+
+function isClientStatus(status: unknown): status is number {
+  return (
+    typeof status === "number" &&
+    Number.isInteger(status) &&
+    status >= HTTP_CLIENT_ERROR_MIN &&
+    status < HTTP_SERVER_ERROR_MIN
+  );
+}
+
+// An error is the client's mistake only when it carries a 4xx status and says
+// its message may be shown: an HttpError our routes threw on purpose, or one
+// marked `expose` (which body-parser and http-errors set for a malformed body
+// or one over the size limit). It answers with that status and does not count
+// toward the 5xx error rate. A 4xx status without either (an upstream client's
+// 404, say) is our failure: a 500. So is an HttpError with a 5xx status.
+function clientErrorStatus(err: unknown): number | undefined {
+  if (err instanceof HttpError) return isClientStatus(err.status) ? err.status : undefined;
+  const { status, expose } = (err ?? {}) as { status?: unknown; expose?: unknown };
+  return expose === true && isClientStatus(status) ? status : undefined;
+}
+
+function clientErrorBody(err: unknown, status: number): ErrorAnswer {
+  return err instanceof HttpError ? httpErrorBody(err) : errorBody(status);
+}
+
+// Last middleware in the chain. The client gets the fixed shape of docs/API.md
+// and no detail; the detail goes to the log as one JSON line with the
+// request's ID. Express only treats a 4-argument function as an error handler.
 export function errorHandler(err: unknown, req: Request, res: Response, next: NextFunction): void {
+  const clientStatus = res.headersSent ? undefined : clientErrorStatus(err);
+  log(clientStatus ? "warn" : "error", "request failed", {
+    http: {
+      request_id: res.getHeader("X-Request-Id"),
+      method: req.method,
+      route: routeLabel(req),
+    },
+    // A 4xx error comes from what the client sent, and its message can quote
+    // the body (a JSON parse error does): log only its kind. A server error
+    // is ours, so its message and stack are the evidence.
+    error: clientStatus ? { kind: errorFields(err).kind } : errorFields(err),
+  });
+  if (res.headersSent) {
+    // Too late for a status: the response is cut off, which is what Express's
+    // default handler would do, without its plain-text stack on stderr. The
+    // logger and the metrics count it as a 5xx when the connection closes.
+    markFailedMidResponse(res);
+    res.destroy();
+    return;
+  }
+  if (clientStatus) {
+    res.status(clientStatus).json(clientErrorBody(err, clientStatus));
+  } else {
+    res.status(HTTP_INTERNAL_ERROR).json(errorBody(HTTP_INTERNAL_ERROR));
+  }
+  // `next` is part of the error-handler signature Express looks for; nothing follows this handler
   void next;
-
-  if (
-    typeof err === "object" &&
-    err !== null &&
-    "type" in err &&
-    err.type === "entity.parse.failed"
-  ) {
-    res.status(400).json({ error: "Malformed JSON", code: "VALIDATION" });
-    return;
-  }
-
-  if (err instanceof HttpError) {
-    const code = err.code || statusCodeName(err.status);
-    const body: {
-      error: string;
-      code: string;
-      details?: { field: string; message: string }[];
-    } = { error: err.message, code };
-
-    // details only show up when the status is 400
-    if (err.status === 400 && code === "VALIDATION" && err.details) {
-      body.details = err.details;
-    }
-
-    res.status(err.status).json(body);
-    return;
-  }
-
-  console.error(`${req.method} ${req.originalUrl}`, err);
-  res.status(500).json({ error: "Internal Server Error" });
 }

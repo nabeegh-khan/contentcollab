@@ -1,42 +1,50 @@
-
+# Runs api/migrations against the cluster's PostgreSQL before each rollout
+# (ARCHITECTURE D20, #117, #37). Applied only by deploy.yml's migrate step,
+# which replaces __IMAGE_TAG__ with the commit SHA; it is not in the doks
+# overlay, so `kubectl apply -k k8s/doks` never creates it.
 apiVersion: batch/v1
 kind: Job
 metadata:
+  # One Job per commit: a Job's pod template cannot change after creation,
+  # and the SHA ties each log to its deploy. deploy.yml deletes a Job of the
+  # same name first, so re-running a commit's deploy works
   name: db-migrate-__IMAGE_TAG__
   namespace: contentcollab
+  labels:
+    app: db-migrate
 spec:
-  backoffLimit: 3
+  # A failed migration is read from its log, not retried blindly (D20)
+  backoffLimit: 0
+  activeDeadlineSeconds: 120
+  # The finished Job and its log stay a day, then Kubernetes removes them
   ttlSecondsAfterFinished: 86400
   template:
+    metadata:
+      labels:
+        app: db-migrate
     spec:
       restartPolicy: Never
-
-      initContainers:
-        - name: wait-for-postgres
-          image: postgres:18
-          command: ["/bin/sh", "-c"]
-          args:
-            - |
-              until pg_isready -h postgres -p 5432 -U "$DB_USER" -d "$DB_NAME"; do
-                echo "Waiting for PostgreSQL..."
-                sleep 2
-              done
-          envFrom:
-            - configMapRef:
-                name: app-config
-            - secretRef:
-                name: app-secrets
-
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000 # the `node` user in the API image (SEC-6)
       containers:
         - name: migrate
           image: ghcr.io/nabeegh-khan/contentcollab-api:__IMAGE_TAG__
-          imagePullPolicy: Always
           command: ["npm", "run", "migrate", "--", "up"]
+          # node-pg-migrate uses the PG* variables when DATABASE_URL is not
+          # set (bin/node-pg-migrate.js 9.0.0, line 349). Only the five
+          # database values, not the whole Secret (SEC-2)
           env:
             - name: PGHOST
-              value: postgres
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: DB_HOST
             - name: PGPORT
-              value: "5432"
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: DB_PORT
             - name: PGDATABASE
               valueFrom:
                 configMapKeyRef:
@@ -52,3 +60,10 @@ spec:
                 secretKeyRef:
                   name: app-secrets
                   key: DB_PASSWORD
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi

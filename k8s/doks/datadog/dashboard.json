@@ -1,0 +1,155 @@
+{
+  "title": "ContentCollab: requests, errors and logs",
+  "description": "Request rate, 5xx share and average latency per route from the API's /metrics, and the JSON request log. Import with Dashboards, New Dashboard, Import dashboard JSON (see docs/DEMO_OBSERVABILITY.md).",
+  "layout_type": "ordered",
+  "reflow_type": "auto",
+  "template_variables": [],
+  "widgets": [
+    {
+      "definition": {
+        "type": "note",
+        "content": "Follow one request: copy the `X-Request-Id` response header (browser developer tools, Network tab), then search the log below for `@http.request_id:<value>`. The route is the template (`/documents/:documentId`), never the raw path.",
+        "background_color": "white",
+        "font_size": "14",
+        "text_align": "left",
+        "show_tick": false,
+        "tick_pos": "50%",
+        "tick_edge": "left"
+      }
+    },
+    {
+      "definition": {
+        "type": "timeseries",
+        "title": "Requests per second, by route",
+        "show_legend": true,
+        "legend_layout": "auto",
+        "requests": [
+          {
+            "formulas": [{ "formula": "q1" }],
+            "queries": [
+              {
+                "data_source": "metrics",
+                "name": "q1",
+                "query": "sum:contentcollab.http_requests.count{*} by {route}.as_rate()"
+              }
+            ],
+            "response_format": "timeseries",
+            "display_type": "line"
+          }
+        ]
+      }
+    },
+    {
+      "definition": {
+        "type": "timeseries",
+        "title": "5xx share of requests, by route (%)",
+        "show_legend": true,
+        "legend_layout": "auto",
+        "requests": [
+          {
+            "formulas": [{ "formula": "100 * q1 / q2" }],
+            "queries": [
+              {
+                "data_source": "metrics",
+                "name": "q1",
+                "query": "sum:contentcollab.http_requests.count{status_class:5xx} by {route}.as_count()"
+              },
+              {
+                "data_source": "metrics",
+                "name": "q2",
+                "query": "sum:contentcollab.http_requests.count{*} by {route}.as_count()"
+              }
+            ],
+            "response_format": "timeseries",
+            "display_type": "bars"
+          }
+        ],
+        "markers": [{ "value": "y = 2", "display_type": "error dashed", "label": "alert at 2%" }]
+      }
+    },
+    {
+      "definition": {
+        "type": "query_value",
+        "title": "5xx responses, last 5 minutes",
+        "time": { "live_span": "5m" },
+        "autoscale": true,
+        "precision": 0,
+        "requests": [
+          {
+            "formulas": [{ "formula": "q1" }],
+            "queries": [
+              {
+                "data_source": "metrics",
+                "name": "q1",
+                "query": "sum:contentcollab.http_requests.count{status_class:5xx}.as_count()",
+                "aggregator": "sum"
+              }
+            ],
+            "response_format": "scalar"
+          }
+        ]
+      }
+    },
+    {
+      "definition": {
+        "type": "timeseries",
+        "title": "Average latency, by route (ms)",
+        "show_legend": true,
+        "legend_layout": "auto",
+        "requests": [
+          {
+            "formulas": [{ "formula": "1000 * q1 / q2" }],
+            "queries": [
+              {
+                "data_source": "metrics",
+                "name": "q1",
+                "query": "sum:contentcollab.http_request_duration_seconds.sum{*} by {route}.as_count()"
+              },
+              {
+                "data_source": "metrics",
+                "name": "q2",
+                "query": "sum:contentcollab.http_request_duration_seconds.count{*} by {route}.as_count()"
+              }
+            ],
+            "response_format": "timeseries",
+            "display_type": "line"
+          }
+        ]
+      }
+    },
+    {
+      "definition": {
+        "type": "toplist",
+        "title": "5xx responses by route, last hour",
+        "time": { "live_span": "1h" },
+        "requests": [
+          {
+            "formulas": [{ "formula": "q1", "limit": { "count": 10, "order": "desc" } }],
+            "queries": [
+              {
+                "data_source": "metrics",
+                "name": "q1",
+                "query": "sum:contentcollab.http_errors.count{*} by {route}.as_count()",
+                "aggregator": "sum"
+              }
+            ],
+            "response_format": "scalar"
+          }
+        ]
+      }
+    },
+    {
+      "definition": {
+        "type": "log_stream",
+        "title": "Request log (JSON), newest first",
+        "query": "kube_namespace:contentcollab @http.request_id:*",
+        "indexes": [],
+        "columns": ["@http.method", "@http.route", "@http.status_code", "@duration_ms", "@http.request_id"],
+        "show_date_column": true,
+        "show_message_column": false,
+        "message_display": "inline",
+        "sort": { "column": "time", "order": "desc" }
+      }
+    }
+  ]
+}

@@ -1,23 +1,52 @@
 import express from "express";
 import { fileURLToPath } from "node:url";
-import { errorHandler } from "./middleware/errorHandler.js";
+import { errorBody, errorHandler } from "./middleware/errorHandler.js";
 import { requestLogger } from "./middleware/logger.js";
 import { requestMetrics } from "./middleware/metrics.js";
-import { connectRedis } from "./lib/redis.js";
+import { connectRedis, redis } from "./lib/redis.js";
 import { pool } from "./lib/db.js";
+import { HTTP_NOT_FOUND } from "./lib/httpStatus.js";
+import { logListening, logRedisGaveUp } from "./lib/startup.js";
 import healthRoutes from "./routes/health.js";
 import metricsRoutes from "./routes/metrics.js";
+import { statusRoutes } from "./routes/status.js";
+import { latencyFrom, queueDepth } from "./lib/status.js";
+import { cachedFor, inClusterGet, readyReplicas } from "./lib/replicas.js";
+import { httpDuration } from "./lib/metrics.js";
+import authRoutes from "./routes/auth.js";
+import { jwtSecret } from "./middleware/requireAuth.js";
+import compareRoutes, { compareEnabled } from "./routes/compare.js";
 import authRoutes from "./routes/auth.js";
 import documentRoutes from "./routes/documents.js";
 import versionsRoutes from "./routes/versions.js";
 
 const app = express();
 
-app.use(express.json({ limit: "1mb" }));
+// The logger and the metrics come first, so a request the body parser rejects
+// is still logged with an ID and counted
 app.use(requestLogger);
 app.use(requestMetrics);
+app.use(express.json({ limit: "1mb" }));
 app.use("/health", healthRoutes);
 app.use("/metrics", metricsRoutes);
+// Status page numbers (#30, D23); replicas come from the Kubernetes API in a pod, null elsewhere
+const kubeGet = inClusterGet(process.env);
+// The endpoint is public: at most one apiserver read every few seconds per pod
+const REPLICAS_CACHE_MS = 5000;
+const replicas = kubeGet ? cachedFor(REPLICAS_CACHE_MS, () => readyReplicas(kubeGet)) : null;
+app.use(
+  "/api/v1/status",
+  statusRoutes({
+    // Fail fast while Redis is down instead of queueing commands until the time limit
+    queue: () => (redis.isReady ? queueDepth(redis) : Promise.reject(new Error("redis not ready"))),
+    latency: () => latencyFrom(httpDuration),
+    replicas: () => (replicas ? replicas() : Promise.resolve(null)),
+  }),
+);
+app.use("/api/v1/auth", authRoutes);
+// Version comparison (#23, D21): off unless FEATURE_VERSION_COMPARE=1
+if (compareEnabled(process.env)) app.use("/api/v1/documents", compareRoutes);
+app.use((req, res) => res.status(HTTP_NOT_FOUND).json(errorBody(HTTP_NOT_FOUND)));
 app.use("/api/v1/auth", authRoutes);
 
 app.use("/api/v1/documents", documentRoutes);
@@ -30,9 +59,26 @@ app.use(errorHandler);
 const isEntry = process.argv[1] !== undefined && fileURLToPath(import.meta.url) === process.argv[1];
 
 if (isEntry) {
+  jwtSecret();
   const port = Number(process.env.PORT ?? 3000);
-  await connectRedis();
-  const server = app.listen(port, () => console.log(`api listening on ${port}`));
+  const server = app.listen(port, () => logListening(port));
+
+  // Listen first, then connect to Redis in the background (#65). If Redis is
+  // down when the pod starts, the process stays up: /health answers 503 at
+  // once so readiness keeps traffic away, liveness (the socket) passes, and
+  // the client keeps retrying until Redis is back, without a restart loop.
+  // With node-redis's default retry strategy connect() keeps retrying and
+  // does not reject; the catch is kept for a strategy that gives up. Nothing
+  // reconnects after that and liveness still passes, so the pod would stay
+  // unready until it is restarted by hand: the log says so.
+  const connectInBackground = async () => {
+    try {
+      await connectRedis();
+    } catch (err) {
+      logRedisGaveUp(err);
+    }
+  };
+  void connectInBackground();
 
   // On SIGTERM (Compose stop, Kubernetes rolling update) stop taking new
   // connections, let in-flight requests finish, then close the pool.
