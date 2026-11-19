@@ -35,8 +35,12 @@ describe("parseUpload malformed multipart", () => {
       await uploadFinished;
     });
     void result.then(
-      () => { settled = true; },
-      () => { settled = true; },
+      () => {
+        settled = true;
+      },
+      () => {
+        settled = true;
+      },
     );
 
     await abortObserved;
