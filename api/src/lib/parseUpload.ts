@@ -76,11 +76,7 @@ export function parseUpload(
       })().catch(reject);
     }
 
-    busboy.on("field", (
-      name: string, 
-      value: string, 
-      info: { valueTruncated: boolean },
-    ) => {
+    busboy.on("field", (name: string, value: string, info: { valueTruncated: boolean }) => {
       if (name !== "title" || info.valueTruncated) {
         failure ??= new HttpError(400, "VALIDATION", "Invalid Upload Field");
         return;
@@ -88,40 +84,39 @@ export function parseUpload(
       title = value;
     });
 
-    busboy.on("file", (
-      name: string,
-      file: Readable,
-      info: { filename: string; mimeType: string },
-    ) => {
-      if (name !== "file" || !info.filename) {
-        failure ??= new HttpError(400, "VALIDATION", "File Required");
-        file.resume();
-        return;
-      }
+    busboy.on(
+      "file",
+      (name: string, file: Readable, info: { filename: string; mimeType: string }) => {
+        if (name !== "file" || !info.filename) {
+          failure ??= new HttpError(400, "VALIDATION", "File Required");
+          file.resume();
+          return;
+        }
 
-      const extension = extname(info.filename).toLowerCase();
-      if (!allowedTypes[extension]?.includes(info.mimeType)) {
-        failure ??= new HttpError(400, "VALIDATION", "File Type Not Allowed");
-        file.resume();
-        return;
-      }
+        const extension = extname(info.filename).toLowerCase();
+        if (!allowedTypes[extension]?.includes(info.mimeType)) {
+          failure ??= new HttpError(400, "VALIDATION", "File Type Not Allowed");
+          file.resume();
+          return;
+        }
 
-      uploadInfo = {
-        filename: info.filename,
-        contentType: info.mimeType,
-      };
+        uploadInfo = {
+          filename: info.filename,
+          contentType: info.mimeType,
+        };
 
-      file.on("limit", () => {
-        failure = new HttpError(413, "TOO_LARGE", "File Too Large");
-        controller.abort();
-        file.resume();
-      });
+        file.on("limit", () => {
+          failure = new HttpError(413, "TOO_LARGE", "File Too Large");
+          controller.abort();
+          file.resume();
+        });
 
-      uploadPromise = onFile(file, uploadInfo, controller.signal).catch((error: unknown) => {
-        failure ??= error instanceof Error ? error : new Error(String(error));
-        file.resume();
-      });
-    });
+        uploadPromise = onFile(file, uploadInfo, controller.signal).catch((error: unknown) => {
+          failure ??= error instanceof Error ? error : new Error(String(error));
+          file.resume();
+        });
+      },
+    );
 
     busboy.on("filesLimit", () => {
       failure ??= new HttpError(400, "VALIDATION", "Only One File Is Allowed");
@@ -140,7 +135,7 @@ export function parseUpload(
       controller.abort();
       finish();
     });
-    
+
     busboy.on("close", finish);
 
     req.pipe(busboy);

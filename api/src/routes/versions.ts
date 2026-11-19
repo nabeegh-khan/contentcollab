@@ -380,15 +380,14 @@ router.post("/:versionId/revert", requireAuth, requireRole("owner", "editor"), a
 
   try {
     await client.query("BEGIN");
-  
-    const documentResult = await client.query(
-      `SELECT id FROM documents WHERE id = $1 FOR UPDATE`,
-      [documentId],
-    );
+
+    const documentResult = await client.query(`SELECT id FROM documents WHERE id = $1 FOR UPDATE`, [
+      documentId,
+    ]);
     if (!documentResult.rows[0]) {
       throw new HttpError(404, "NOT_FOUND", "Document Not Found");
     }
-  
+
     const sourceResult = await client.query<{
       object_key: string;
       filename: string;
@@ -405,14 +404,14 @@ router.post("/:versionId/revert", requireAuth, requireRole("owner", "editor"), a
     if (!source) {
       throw new HttpError(404, "NOT_FOUND", "Version Not Found");
     }
-  
+
     const nextNumber = await client.query<{ number: number }>(
       `SELECT COALESCE(MAX(number), 0) + 1 AS number
        FROM document_versions
        WHERE document_id = $1`,
       [documentId],
     );
-  
+
     const result = await client.query<VersionRow>(
       `INSERT INTO document_versions
          (id, document_id, number, filename, content_type,
@@ -433,7 +432,7 @@ router.post("/:versionId/revert", requireAuth, requireRole("owner", "editor"), a
         sourceVersionId,
       ],
     );
-  
+
     await client.query(
       `UPDATE documents
        SET current_version_id = $2,
@@ -442,10 +441,10 @@ router.post("/:versionId/revert", requireAuth, requireRole("owner", "editor"), a
        WHERE id = $1`,
       [documentId, newVersionId],
     );
-  
+
     await client.query("COMMIT");
     committed = true;
-  
+
     const version = result.rows[0]!;
     res.status(201).json({
       id: version.id,

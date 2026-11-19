@@ -61,10 +61,10 @@ async function document(ownerId: string, title = "Test Document"): Promise<strin
   );
   const id = result.rows[0]!.id;
   documentIds.push(id);
-  await pool.query(
-    "INSERT INTO shares (document_id, user_id, role) VALUES ($1, $2, 'owner')",
-    [id, ownerId],
-  );
+  await pool.query("INSERT INTO shares (document_id, user_id, role) VALUES ($1, $2, 'owner')", [
+    id,
+    ownerId,
+  ]);
   return id;
 }
 
@@ -94,7 +94,13 @@ async function version(documentId: string, userId: string, bytes: Buffer): Promi
 beforeAll(async () => {
   process.env.JWT_SECRET = secret;
   await requireServices(
-    [{ name: "PostgreSQL", host: process.env.DB_HOST ?? "localhost", port: Number(process.env.DB_PORT ?? 5432) }],
+    [
+      {
+        name: "PostgreSQL",
+        host: process.env.DB_HOST ?? "localhost",
+        port: Number(process.env.DB_PORT ?? 5432),
+      },
+    ],
     1000,
   );
   await requireDatabase(pool, 1000);
@@ -164,7 +170,9 @@ describe("GET /api/v1/documents", () => {
       .set("Authorization", bearer(owner));
     expect(second.status).toBe(200);
     expect(second.body.items).toHaveLength(1);
-    expect(new Set([...first.body.items, ...second.body.items].map((d: { id: string }) => d.id))).toEqual(new Set(ids));
+    expect(
+      new Set([...first.body.items, ...second.body.items].map((d: { id: string }) => d.id)),
+    ).toEqual(new Set(ids));
     expect(second.body.nextCursor).toBeNull();
   });
 
@@ -209,16 +217,25 @@ describe("POST /api/v1/documents", () => {
       .attach("file", bytes, { filename: "file.txt", contentType: "text/plain" });
 
     expect(res.status).toBe(201);
-    expect(res.body).toEqual(expect.objectContaining({ title: "My Document", role: "owner", tags: [] }));
+    expect(res.body).toEqual(
+      expect.objectContaining({ title: "My Document", role: "owner", tags: [] }),
+    );
     documentIds.push(res.body.id);
     const stored = await pool.query<{
-      number: number; checksum: string; object_key: string; reverted_from: string | null;
-    }>("SELECT number, checksum, object_key, reverted_from FROM document_versions WHERE id = $1", [res.body.currentVersionId]);
-    expect(stored.rows[0]).toEqual(expect.objectContaining({
-      number: 1,
-      checksum: createHash("sha256").update(bytes).digest("hex"),
-      reverted_from: null,
-    }));
+      number: number;
+      checksum: string;
+      object_key: string;
+      reverted_from: string | null;
+    }>("SELECT number, checksum, object_key, reverted_from FROM document_versions WHERE id = $1", [
+      res.body.currentVersionId,
+    ]);
+    expect(stored.rows[0]).toEqual(
+      expect.objectContaining({
+        number: 1,
+        checksum: createHash("sha256").update(bytes).digest("hex"),
+        reverted_from: null,
+      }),
+    );
     expect(objects.get(stored.rows[0]!.object_key)).toEqual(bytes);
   });
 
@@ -227,7 +244,10 @@ describe("POST /api/v1/documents", () => {
     const res = await request(app)
       .post(base)
       .set("Authorization", bearer(owner))
-      .attach("file", Buffer.from("x"), { filename: "file.exe", contentType: "application/octet-stream" });
+      .attach("file", Buffer.from("x"), {
+        filename: "file.exe",
+        contentType: "application/octet-stream",
+      });
     expect(res.status).toBe(400);
     expect(res.body.code).toBe("VALIDATION");
     expect(putStream).not.toHaveBeenCalled();
@@ -248,7 +268,10 @@ describe("POST /api/v1/documents", () => {
     const res = await request(app)
       .post(base)
       .set("Authorization", bearer(owner))
-      .attach("file", Buffer.alloc(50 * 1024 * 1024 + 1), { filename: "huge.txt", contentType: "text/plain" });
+      .attach("file", Buffer.alloc(50 * 1024 * 1024 + 1), {
+        filename: "huge.txt",
+        contentType: "text/plain",
+      });
     expect(res.status).toBe(413);
     expect(res.body.code).toBe("TOO_LARGE");
   });
@@ -282,7 +305,9 @@ describe("GET /api/v1/documents/:documentId", () => {
     await share(id, viewer, "viewer");
     const res = await request(app).get(`${base}/${id}`).set("Authorization", bearer(viewer));
     expect(res.status).toBe(200);
-    expect(res.body).toEqual(expect.objectContaining({ id, ownerId: owner, role: "viewer", tags: [] }));
+    expect(res.body).toEqual(
+      expect.objectContaining({ id, ownerId: owner, role: "viewer", tags: [] }),
+    );
   });
 
   it("returns 404 NOT_FOUND when the caller has no share", async () => {
