@@ -13,7 +13,6 @@ import { statusRoutes } from "./routes/status.js";
 import { latencyFrom, queueDepth } from "./lib/status.js";
 import { cachedFor, inClusterGet, readyReplicas } from "./lib/replicas.js";
 import { httpDuration } from "./lib/metrics.js";
-import authRoutes from "./routes/auth.js";
 import { jwtSecret } from "./middleware/requireAuth.js";
 import compareRoutes, { compareEnabled } from "./routes/compare.js";
 import authRoutes from "./routes/auth.js";
@@ -46,12 +45,11 @@ app.use(
 app.use("/api/v1/auth", authRoutes);
 // Version comparison (#23, D21): off unless FEATURE_VERSION_COMPARE=1
 if (compareEnabled(process.env)) app.use("/api/v1/documents", compareRoutes);
-app.use((req, res) => res.status(HTTP_NOT_FOUND).json(errorBody(HTTP_NOT_FOUND)));
 app.use("/api/v1/auth", authRoutes);
 
 app.use("/api/v1/documents", documentRoutes);
 app.use("/api/v1/documents/:documentId/versions", versionsRoutes);
-app.use((req, res) => res.status(404).json({ error: "Not Found" }));
+app.use((req, res) => res.status(HTTP_NOT_FOUND).json(errorBody(HTTP_NOT_FOUND)));
 app.use(errorHandler);
 
 // Start listening only when this file is the entry point. Tests import `app`

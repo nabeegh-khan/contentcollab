@@ -6,7 +6,7 @@ import { HttpError } from "../lib/httpError.js";
 import { parseUpload } from "../lib/parseUpload.js";
 import { requireAuth } from "../middleware/requireAuth.js";
 import { requireRole } from "../middleware/requireRole.js";
-import { copy, getStream, putStream, remove } from "../lib/storage.js";
+import { getStream, putStream, remove } from "../lib/storage.js";
 import { z } from "zod";
 
 const router = Router({ mergeParams: true });
