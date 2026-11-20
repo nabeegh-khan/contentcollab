@@ -313,6 +313,20 @@ Source, checked 13 November 2026: BullMQ `src/classes/queue-getters.ts` (waiting
 
 Sources, checked 18 November 2026: Lecture 7 p17 (old and new versions coexist during a rolling update) and p18-20 (blue-green); node-pg-migrate 9.0.0 `dist/bundle/index.d.ts` lines 1079-1135 (`dropTable`, `renameTable`, `dropColumns`, `renameColumn`, and `dropColumn` as an alias of `dropColumns`).
 
+### D26. A lost PostgreSQL connection is logged, not fatal (decided 19 November, #68)
+
+**Problem.** The restart test (D15) on DOKS on 19 November kept the marker row through the postgres pod deletion, then failed: both API containers restarted. The previous container's log ended with a printed `pg` client object and the Node.js version line, so the process had crashed; the liveness probe is a TCP check (`k8s/base/api.yaml`) and did not cause it. `api/src/lib/db.ts` creates one `Pool` and adds no `error` listener. When the server goes away, the idle clients in the pool emit `error` through the pool, and Node throws an `error` event that has no listener as an uncaught exception.
+
+**Decision.** `db.ts` adds one `pool.on("error", ...)` listener that writes one `error` line through `lib/log.ts` (`msg: "postgres idle client error"`, with `errorFields`) and does nothing else. The pool has already terminated that client and removed it, so the next query opens a new connection. While PostgreSQL is down, queries fail and the error handler answers them as before, and the readiness probe (`/health`, which runs `SELECT 1`) takes the pod out of the Service until PostgreSQL answers again. The process stays up, so recovery does not wait for a container restart and its back-off.
+
+**Options weighed.**
+- **Exit on the error and let Kubernetes restart the container:** what happens today, by accident. It drops every in-flight request, including ones that never touch the database, and adds restart back-off to PostgreSQL's own restart time.
+- **Reconnect or retry inside the listener:** not needed; the pool opens a new client on the next query, and a retry here would add a second retry layer.
+
+**Not claimed.** That a query in flight when the server goes away succeeds (it fails and is answered as a 5xx), or anything about a client checked out with `pool.connect()` (none in `api/src` today; such a client needs its own listener while it is checked out).
+
+Source, checked 19 November 2026: node-postgres, [Pool API, `error` event](https://node-postgres.com/apis/pool#error): an idle client "will be automatically terminated and removed from the pool", and "if a pool emits an error event and no listeners are added node will emit an uncaught error and potentially crash your node process".
+
 ### D0. Service model
 
 Lecture 1 splits cloud services into IaaS (you manage the OS), PaaS (the provider manages the hosts, you ship containers or code) and FaaS (functions run on events). Assignment 1 was IaaS: a droplet, Nginx, PostgreSQL installed by hand. The project is not that. We use managed Kubernetes, where DigitalOcean runs the control plane and the worker nodes' OS and we run containers (PaaS-style on top of the provider's IaaS), object storage as a service for files, and the provider's metrics and alerts. A DigitalOcean Function is an option for one small event-driven job (a thumbnail when a file lands in Spaces) if we want the serverless advanced feature; it is not in the core path. The point for the proposal: we manage containers and data, not machines.
