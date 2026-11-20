@@ -17,7 +17,7 @@ unlist() { grep -vx "$1" "$STUB_DIR/$2" > "$STUB_DIR/$2.tmp" 2>/dev/null; mv "$S
 case "$args" in
   *" apply -k "*)
     : > "$STUB_DIR/applied"
-    for s in api worker; do
+    for s in api worker web; do
       if listed "$s" apply-changes; then
         if listed "$s" absent; then unlist "$s" absent; echo 0 > "$STUB_DIR/rev-$s"; fi
         echo "registry/contentcollab-$s:$STUB_SHA" > "$STUB_DIR/image-$s"

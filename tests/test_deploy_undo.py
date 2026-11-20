@@ -31,6 +31,11 @@ STUBS_FIRST = (
 )
 ROLLOUT_STEP = "Roll the Deployments to this commit"
 SMOKE_STEP = "Smoke check, roll back on failure"
+# Every Deployment the deploy pins, watches and undoes together (D25, D26)
+DEPLOYMENTS = ("api", "worker", "web")
+ALL = "\n".join(DEPLOYMENTS)
+# Revisions the rollout step hands the smoke step, one per Deployment
+BEFORE = {f"REV_BEFORE_{svc}": "7" for svc in DEPLOYMENTS}
 
 
 def workflow():
@@ -43,7 +48,7 @@ def step_body(name):
 
 
 class Cluster:
-    """A temporary folder with the stand-ins and the state of two Deployments on an older commit."""
+    """A temporary folder with the stand-ins and the state of the Deployments on an older commit."""
 
     def __init__(self):
         self.dir = Path(tempfile.mkdtemp(prefix="deployundo-"))
@@ -60,7 +65,7 @@ class Cluster:
             path = bin_dir / tool
             path.write_text("#!/usr/bin/env bash\n" + body, newline="\n")
             path.chmod(0o755)
-        for svc in ("api", "worker"):
+        for svc in DEPLOYMENTS:
             self.write(f"image-{svc}", f"registry/contentcollab-{svc}:previous")
             self.write(f"rev-{svc}", "7")
         self.write("health", '{"status":"ok"}')
@@ -115,40 +120,48 @@ class RolloutStep(unittest.TestCase):
         return sorted(line.split("deployment/")[1].split()[0] for line in self.c.calls("rollout undo"))
 
     def test_a_clean_rollout_undoes_nothing(self):
-        self.c.write("apply-changes", "api\nworker")
+        self.c.write("apply-changes", ALL)
         r = self.c.run(ROLLOUT_STEP)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertEqual(self.undone(), [])
 
     def test_revisions_before_the_apply_reach_the_smoke_step(self):
-        self.c.write("apply-changes", "api\nworker")
+        self.c.write("apply-changes", ALL)
         self.c.run(ROLLOUT_STEP)
-        self.assertEqual(self.c.env_file(), {"REV_BEFORE_api": "7", "REV_BEFORE_worker": "7"})
+        self.assertEqual(self.c.env_file(), BEFORE)
 
-    def test_a_failed_worker_also_undoes_the_api_this_run_changed(self):
+    def test_a_failed_worker_also_undoes_the_others_this_run_changed(self):
         # #108 item 1: no mixed versions left behind
-        self.c.write("apply-changes", "api\nworker")
+        self.c.write("apply-changes", ALL)
         self.c.write("status-fails", "worker")
         r = self.c.run(ROLLOUT_STEP)
         self.assertNotEqual(r.returncode, 0)
-        self.assertEqual(self.undone(), ["api", "worker"])
+        self.assertEqual(self.undone(), ["api", "web", "worker"])
 
-    def test_a_failed_api_also_undoes_the_worker_this_run_changed(self):
-        self.c.write("apply-changes", "api\nworker")
+    def test_a_failed_api_also_undoes_the_others_this_run_changed(self):
+        self.c.write("apply-changes", ALL)
         self.c.write("status-fails", "api")
         r = self.c.run(ROLLOUT_STEP)
         self.assertNotEqual(r.returncode, 0)
-        self.assertEqual(self.undone(), ["api", "worker"])
+        self.assertEqual(self.undone(), ["api", "web", "worker"])
+
+    def test_a_failed_web_also_undoes_the_api_and_worker_this_run_changed(self):
+        # D26: the web Deployment is one of the set
+        self.c.write("apply-changes", ALL)
+        self.c.write("status-fails", "web")
+        r = self.c.run(ROLLOUT_STEP)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertEqual(self.undone(), ["api", "web", "worker"])
 
     def test_a_failed_apply_is_reported_the_watch_runs_and_changes_are_undone(self):
         # #108 item 2: the apply moved both, then failed partway
-        self.c.write("apply-changes", "api\nworker")
+        self.c.write("apply-changes", ALL)
         self.c.write("apply-fails", "yes")
         r = self.c.run(ROLLOUT_STEP)
         self.assertNotEqual(r.returncode, 0)
         self.assertIn("apply", r.stdout.lower())
-        self.assertEqual(len(self.c.calls("rollout status")), 2, "both Deployments are still watched")
-        self.assertEqual(self.undone(), ["api", "worker"])
+        self.assertEqual(len(self.c.calls("rollout status")), 3, "every Deployment is still watched")
+        self.assertEqual(self.undone(), ["api", "web", "worker"])
 
     def test_a_failed_apply_that_changed_nothing_undoes_nothing(self):
         self.c.write("apply-fails", "yes")
@@ -158,7 +171,7 @@ class RolloutStep(unittest.TestCase):
 
     def test_a_rerun_of_the_same_commit_does_not_undo_past_what_is_running(self):
         # #108 item 3: the earlier run already deployed this commit; this apply creates no revision
-        for svc in ("api", "worker"):
+        for svc in DEPLOYMENTS:
             self.c.write(f"image-{svc}", f"registry/contentcollab-{svc}:{SHA}")
         self.c.write("status-fails", "worker")
         r = self.c.run(ROLLOUT_STEP)
@@ -167,7 +180,7 @@ class RolloutStep(unittest.TestCase):
         self.assertIn("not changed by this run", r.stdout)
 
     def test_a_failed_undo_is_reported_and_the_other_is_still_undone(self):
-        self.c.write("apply-changes", "api\nworker")
+        self.c.write("apply-changes", ALL)
         self.c.write("status-fails", "api")
         self.c.write("undo-fails", "api")
         r = self.c.run(ROLLOUT_STEP)
@@ -177,18 +190,18 @@ class RolloutStep(unittest.TestCase):
 
     def test_an_unreadable_revision_is_reported_as_unreadable_not_as_unchanged(self):
         # The worker fails; the api's revision cannot be read after the apply (credentials ran out, say)
-        self.c.write("apply-changes", "api\nworker")
+        self.c.write("apply-changes", ALL)
         self.c.write("status-fails", "worker")
         self.c.write("rev-read-fails", "api")
         r = self.c.run(ROLLOUT_STEP)
         self.assertNotEqual(r.returncode, 0)
         self.assertRegex(r.stdout, r"deployment/api[^\n]*revision[^\n]*unreadable")
         self.assertNotRegex(r.stdout, r"deployment/api[^\n]*not changed by this run")
-        self.assertEqual(self.undone(), ["worker"])
+        self.assertEqual(self.undone(), ["web", "worker"])
 
     def test_an_unreadable_revision_before_the_apply_is_not_taken_for_a_new_deployment(self):
         # A re-run of the same commit (no new revision); the read before the apply fails for the api
-        for svc in ("api", "worker"):
+        for svc in DEPLOYMENTS:
             self.c.write(f"image-{svc}", f"registry/contentcollab-{svc}:{SHA}")
         self.c.write("status-fails", "worker")
         self.c.write("rev-read-fails-before", "api")
@@ -198,25 +211,25 @@ class RolloutStep(unittest.TestCase):
         self.assertRegex(r.stdout, r"deployment/api[^\n]*revision[^\n]*unreadable")
 
     def test_a_first_deploy_counts_a_new_deployment_as_changed(self):
-        # Neither Deployment exists before the apply; the worker then fails
-        self.c.write("absent", "api\nworker")
-        self.c.write("apply-changes", "api\nworker")
+        # No Deployment exists before the apply; the worker then fails
+        self.c.write("absent", ALL)
+        self.c.write("apply-changes", ALL)
         self.c.write("status-fails", "worker")
         r = self.c.run(ROLLOUT_STEP)
         self.assertNotEqual(r.returncode, 0)
-        self.assertEqual(self.undone(), ["api", "worker"])
+        self.assertEqual(self.undone(), ["api", "web", "worker"])
 
     def test_a_healthy_deployment_left_alone_is_not_reported_as_an_error(self):
         # Re-run: the worker fails, the api is healthy and unchanged; only the worker gets an error line
-        for svc in ("api", "worker"):
+        for svc in DEPLOYMENTS:
             self.c.write(f"image-{svc}", f"registry/contentcollab-{svc}:{SHA}")
         self.c.write("status-fails", "worker")
         r = self.c.run(ROLLOUT_STEP)
         self.assertNotRegex(r.stdout, r"::error::deployment/api")
 
     def test_credentials_are_refreshed_before_the_undo_after_the_watch(self):
-        # The final undo can come after a 150 s migration and two 180 s waits: past the 600 s login
-        self.c.write("apply-changes", "api\nworker")
+        # The final undo can come after a 150 s migration and three 120 s waits (D26), near the 600 s login
+        self.c.write("apply-changes", ALL)
         self.c.write("status-fails", "worker")
         self.c.run(ROLLOUT_STEP)
         calls = self.c.read("calls.log").splitlines()
@@ -236,29 +249,29 @@ class SmokeStep(unittest.TestCase):
     def undone(self):
         return sorted(line.split("deployment/")[1].split()[0] for line in self.c.calls("rollout undo"))
 
-    def test_a_failed_smoke_check_undoes_both_deployments_this_run_changed(self):
-        for svc in ("api", "worker"):
+    def test_a_failed_smoke_check_undoes_every_deployment_this_run_changed(self):
+        for svc in DEPLOYMENTS:
             self.c.write(f"rev-{svc}", "8")
-        r = self.c.run(SMOKE_STEP, {"REV_BEFORE_api": "7", "REV_BEFORE_worker": "7"})
+        r = self.c.run(SMOKE_STEP, BEFORE)
         self.assertNotEqual(r.returncode, 0)
-        self.assertEqual(self.undone(), ["api", "worker"])
+        self.assertEqual(self.undone(), ["api", "web", "worker"])
 
     def test_a_failed_smoke_check_on_a_rerun_undoes_nothing_and_fails(self):
         # #108 item 3: revisions did not move in this run
-        r = self.c.run(SMOKE_STEP, {"REV_BEFORE_api": "7", "REV_BEFORE_worker": "7"})
+        r = self.c.run(SMOKE_STEP, BEFORE)
         self.assertNotEqual(r.returncode, 0)
         self.assertEqual(self.undone(), [])
         self.assertIn("not changed by this run", r.stdout)
 
     def test_only_the_deployment_this_run_changed_is_undone(self):
         self.c.write("rev-api", "8")
-        r = self.c.run(SMOKE_STEP, {"REV_BEFORE_api": "7", "REV_BEFORE_worker": "7"})
+        r = self.c.run(SMOKE_STEP, BEFORE)
         self.assertNotEqual(r.returncode, 0)
         self.assertEqual(self.undone(), ["api"])
 
     def test_a_healthy_service_passes(self):
         self.c.write("health", '{"status":"ok","postgres":"ok","redis":"ok"}')
-        r = self.c.run(SMOKE_STEP, {"REV_BEFORE_api": "7", "REV_BEFORE_worker": "7"})
+        r = self.c.run(SMOKE_STEP, BEFORE)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertEqual(self.undone(), [])
 
@@ -266,7 +279,7 @@ class SmokeStep(unittest.TestCase):
         self.c.write("applied", "")
         self.c.write("rev-read-fails", "api")
         self.c.write("rev-worker", "8")
-        r = self.c.run(SMOKE_STEP, {"REV_BEFORE_api": "7", "REV_BEFORE_worker": "7"})
+        r = self.c.run(SMOKE_STEP, BEFORE)
         self.assertNotEqual(r.returncode, 0)
         self.assertRegex(r.stdout, r"deployment/api[^\n]*revision[^\n]*unreadable")
         self.assertEqual(self.undone(), ["worker"])

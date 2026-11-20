@@ -21,6 +21,8 @@ ROLLOUT_STEP = "Roll the Deployments to this commit"
 
 
 SMOKE_STEP = "Smoke check, roll back on failure"
+# Every Deployment the deploy builds, pins, watches and undoes together (D25, D26)
+DEPLOYMENTS = ("api", "worker", "web")
 
 
 def jobs():
@@ -132,7 +134,7 @@ class ImagePinning(unittest.TestCase):
                 if any("kustomize edit set image" in b for b in body)]
         self.assertEqual(len(pins), 1, "one pin loop")
         words, body, after = pins[0]
-        self.assertEqual(words, "api worker", "both images must be pinned")
+        self.assertEqual(words, " ".join(DEPLOYMENTS), "every image must be pinned")
         self.assertEqual(body, ["kustomize edit set image "
                                 "$REGISTRY/contentcollab-$svc=$REGISTRY/contentcollab-$svc:${{ github.sha }}"])
         start = after - len(body) - 2  # index of the `for` line
@@ -152,8 +154,8 @@ class RollbackOnFailedRollout(unittest.TestCase):
         self.words, body, self.after = watch[0]
         self.body = "\n".join(body)
 
-    def test_both_deployments_are_watched(self):
-        self.assertEqual(self.words, "api worker")
+    def test_every_deployment_is_watched(self):
+        self.assertEqual(self.words, " ".join(DEPLOYMENTS))
         # A Deployment not running this commit's image fails the run
         self.assertRegex(self.body, r"\*:\$\{\{ github\.sha \}\}\) ;;\n(?:[^\n]*\n)*?\*\) echo [^\n]*; failed=1; continue ;;\nesac")
 
@@ -220,6 +222,93 @@ class NamedApiPort(unittest.TestCase):
     def test_both_probes_use_the_name(self):
         self.assertEqual(self.api["readinessProbe"]["httpGet"]["port"], "http")
         self.assertEqual(self.api["livenessProbe"]["tcpSocket"]["port"], "http")
+
+
+class WebImageInTheDeploy(unittest.TestCase):
+    """D26: the web image is built, pushed and rolled back with the api and worker."""
+
+    def test_the_build_matrix_has_every_image(self):
+        self.assertEqual(jobs()["build"]["strategy"]["matrix"]["service"], list(DEPLOYMENTS))
+
+    def test_a_web_change_starts_a_deploy(self):
+        workflow = yaml.safe_load(DEPLOY)
+        on = workflow.get("on", workflow.get(True))  # PyYAML reads the key `on` as True
+        self.assertIn("web/**", on["push"]["paths"])
+
+    def test_the_smoke_check_undoes_every_deployment(self):
+        smoke = [words for words, body, _ in loops(shell_lines(step(SMOKE_STEP)["run"]))
+                 if any("rollout undo" in b for b in body)]
+        self.assertEqual(smoke, [" ".join(DEPLOYMENTS)])
+
+    def test_the_final_undo_covers_every_deployment(self):
+        lines = shell_lines(rollout_step()["run"])
+        final = [words for words, body, _ in loops(lines)
+                 if any("undo_if_changed $svc final" in b for b in body)]
+        self.assertEqual(final, [" ".join(DEPLOYMENTS)])
+
+    def test_revisions_are_recorded_for_every_deployment(self):
+        lines = shell_lines(rollout_step()["run"])
+        recorded = [words for words, body, _ in loops(lines)
+                    if any("REV_BEFORE_$svc" in b for b in body)]
+        self.assertEqual(recorded, [" ".join(DEPLOYMENTS)])
+
+
+class WebServing(unittest.TestCase):
+    """D26: the web Deployment, its Service, and the Gateway route for `/`."""
+
+    def setUp(self):
+        self.docs = render("doks")
+        self.web = deployment(self.docs, "web")
+        self.container = self.web["spec"]["template"]["spec"]["containers"][0]
+        self.service = next(d for d in self.docs
+                            if d["kind"] == "Service" and d["metadata"]["name"] == "web")
+
+    def test_named_port_and_probes_by_name(self):
+        self.assertEqual(self.container["ports"], [{"name": "http", "containerPort": 80}])
+        self.assertEqual(self.container["readinessProbe"]["httpGet"], {"path": "/", "port": "http"})
+        self.assertEqual(self.container["livenessProbe"]["tcpSocket"]["port"], "http")
+
+    def test_image_is_the_web_package_on_the_placeholder_tag(self):
+        self.assertEqual(self.container["image"], "ghcr.io/nabeegh-khan/contentcollab-web:unpinned")
+
+    def test_two_replicas_never_below_two_during_a_rollout(self):
+        self.assertEqual(self.web["spec"]["replicas"], 2)
+        self.assertEqual(self.web["spec"]["strategy"]["rollingUpdate"]["maxUnavailable"], 0)
+
+    def test_requests_and_limits(self):
+        for kind in ("requests", "limits"):
+            self.assertEqual(set(self.container["resources"][kind]), {"cpu", "memory"}, kind)
+
+    def test_nothing_from_the_app_config_reaches_the_web_pod(self):
+        # SEC-2: nothing into web
+        self.assertNotIn("envFrom", self.container)
+        self.assertNotIn("env", self.container)
+
+    def test_service_targets_the_named_port(self):
+        self.assertEqual(self.service["spec"]["selector"], {"app": "web"})
+        self.assertEqual([p["targetPort"] for p in self.service["spec"]["ports"]], ["http"])
+
+    def test_root_goes_to_web_and_the_api_paths_stay_on_the_api(self):
+        routes = {d["metadata"]["name"]: d for d in self.docs if d["kind"] == "HTTPRoute"}
+        web = routes["web"]
+        self.assertEqual(web["spec"]["parentRefs"], [{"name": "contentcollab"}])
+        self.assertEqual(web["spec"]["hostnames"], routes["api"]["spec"]["hostnames"])
+        [rule] = web["spec"]["rules"]
+        self.assertEqual(rule["matches"], [{"path": {"type": "PathPrefix", "value": "/"}}])
+        self.assertEqual(rule["backendRefs"],
+                         [{"name": "web", "port": self.service["spec"]["ports"][0]["port"]}])
+        # Gateway API prefers the exact match, then the longest prefix (D26),
+        # so these keep reaching the API beside `/`
+        api_matches = [m["path"] for r in routes["api"]["spec"]["rules"] for m in r["matches"]]
+        for path in ({"type": "PathPrefix", "value": "/api"},
+                     {"type": "PathPrefix", "value": "/socket.io"},
+                     {"type": "Exact", "value": "/health"}):
+            self.assertIn(path, api_matches)
+
+    def test_minikube_runs_the_local_web_build(self):
+        c = deployment(render("minikube"), "web")["spec"]["template"]["spec"]["containers"][0]
+        self.assertEqual(c["image"], "contentcollab-web:dev")
+        self.assertEqual(c["imagePullPolicy"], "Never")
 
 
 MIGRATE_STEP = "Migrate the database to this commit"
@@ -343,13 +432,14 @@ class MigrateBeforeRollout(unittest.TestCase):
         self.assertNotIn("shell", self.step)
 
     def test_inside_the_ten_minute_credential(self):
-        # D20: migrate wait plus both rollouts, under the 600 s credential
-        # with a minute to spare (the smoke check fetches fresh credentials)
+        # D20, D26: migrate wait plus one rollout wait per watched Deployment,
+        # under the 600 s credential with a minute to spare (the smoke check
+        # fetches fresh credentials)
         migrate = [int(t) for t in re.findall(r"--timeout=(\d+)s", self.step["run"])]
         rollout = [int(t) for t in re.findall(r"rollout status [^\n]*--timeout=(\d+)s", rollout_step()["run"])]
         self.assertEqual(len(migrate), 1, "one wait in the migrate step")
         self.assertEqual(len(rollout), 1, "one rollout wait, run once per Deployment")
-        self.assertLessEqual(migrate[0] + 2 * rollout[0], 540)
+        self.assertLessEqual(migrate[0] + len(DEPLOYMENTS) * rollout[0], 540)
 
 
 if __name__ == "__main__":
