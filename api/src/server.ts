@@ -9,6 +9,7 @@ import { HTTP_NOT_FOUND } from "./lib/httpStatus.js";
 import { logListening, logRedisGaveUp } from "./lib/startup.js";
 import healthRoutes from "./routes/health.js";
 import metricsRoutes from "./routes/metrics.js";
+import { validateStorageConfig } from "./lib/storage.js";
 import { statusRoutes } from "./routes/status.js";
 import { latencyFrom, queueDepth } from "./lib/status.js";
 import { cachedFor, inClusterGet, readyReplicas } from "./lib/replicas.js";
@@ -57,6 +58,7 @@ const isEntry = process.argv[1] !== undefined && fileURLToPath(import.meta.url) 
 if (isEntry) {
   jwtSecret();
   const port = Number(process.env.PORT ?? 3000);
+  validateStorageConfig();
   const server = app.listen(port, () => logListening(port));
 
   // Listen first, then connect to Redis in the background (#65). If Redis is

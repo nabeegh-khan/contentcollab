@@ -602,3 +602,37 @@ Proposed recording each Deployment's revision before the apply and undoing only 
 - Checked the paths-filter rule on GitHub's workflow syntax page and the revision annotation on the cluster (read-only) instead of from memory.
 - Found that on Windows the test's `bash` could resolve to a shell whose `kubectl` is the real one; the harness now refuses to run unless every command resolves to its stand-in, and puts the stand-ins first inside bash itself.
 - Left out the HPA replicas item: removing the field scales the api to one replica on the next apply unless the live object is edited first (Kubernetes HPA page), which is the cluster owner's step.
+
+## API that survives a PostgreSQL restart, 19 November 2026
+
+### Prompt
+
+The restart test on DOKS kept the data through a postgres pod deletion, but both API containers crashed, and the previous log ended with a printed pg client object. The pool in `db.ts` has no `error` listener. Fix it so the API logs the lost connection and stays up, with a test that fails first.
+
+### AI Response
+
+Proposed one `pool.on("error")` listener that writes a structured `error` line through `lib/log.ts` and does nothing else, since node-postgres has already removed the client and opens a new one on the next query, and a Jest test that emits `error` on the exported pool. Drafted the decision (D26), the test and the change.
+
+### What Your Team Did With It
+
+- Read the node-postgres Pool page for the `error` event instead of relying on memory, and checked the probes and `/health` in the repo before writing the decision.
+- Pushed the test before the fix: it failed with "Unhandled error", the same path as the crash in the pod.
+- An independent review found the log line dropped PostgreSQL's error code (57P01 on a server shutdown); a second test was added first and the code is now kept, the same way the Redis client does it.
+- Left out pool timeouts and the container running `npm` as PID 1; both are follow-ups, after 24 November.
+
+## A minimal browser client for the demo, 19 November 2026
+
+### Prompt
+
+The demo needs a page in a browser and none works yet. Build the smallest client on the merged `web/` skeleton, only against routes that are on main, with the rest shown disabled; serve it at `/` behind the existing Gateway and deploy it like the API. Tests first, and leave the open frontend pull requests alone.
+
+### AI Response
+
+Checked which routes are on main (auth and status only), then proposed one `request()` helper per the API contract, live sign-in and register pages, the documents and document view as disabled controls, a `web` Deployment, Service and HTTPRoute, and the web image in the deploy beside the api and worker. Drafted the decision row, the tests and the code.
+
+### What Your Team Did With It
+
+- Wrote the decision (ARCHITECTURE D26) before the code, and committed each set of tests before the code that makes it pass: 24 of 61 deploy and manifest tests failed before the Kubernetes change.
+- Kept #93 and #91 open and untouched; the skeleton's own files changed by two lines in `main.jsx` and new scripts in `package.json`.
+- Checked routing precedence in the Gateway API v1.6 reference, the nginx non-root note on Docker Hub, package visibility in GitHub Docs and package release dates on npm, instead of from memory.
+- An independent review found that the first deploy would push a private image the cluster cannot pull, and that the sign-in page was also served over plain HTTP. The route now uses the HTTPS listener only, and the package is created and made public by hand before merging. With three Deployments, each rollout wait is 120 s so the deploy stays inside its ten-minute cluster login.

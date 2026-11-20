@@ -1,0 +1,10 @@
+Target: context do-nyc3-contentcollab, namespace contentcollab, marker restart-test-1795139215-3095
+Claim: pvc-6a857bd4-b129-4206-9d31-fd3827574e20 do-block-storage
+NOTICE:  relation "restart_test" already exists, skipping
+wrote marker; node: default-3aodxs
+ok    after deleting the postgres pod (22s since start)
+ok    the API reconnected after deleting the postgres pod without a restart
+ok    after restarting the api, read by an API pod (52s since start)
+ok    after scaling postgres to 0 and back to 1 (75s since start)
+ok    the API reconnected after scaling postgres to 0 and back to 1 without a restart
+PASS: the marker survived 3 of 3 events
