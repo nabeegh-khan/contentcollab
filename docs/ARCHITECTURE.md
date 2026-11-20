@@ -313,6 +313,27 @@ Source, checked 13 November 2026: BullMQ `src/classes/queue-getters.ts` (waiting
 
 Sources, checked 18 November 2026: Lecture 7 p17 (old and new versions coexist during a rolling update) and p18-20 (blue-green); node-pg-migrate 9.0.0 `dist/bundle/index.d.ts` lines 1079-1135 (`dropTable`, `renameTable`, `dropColumns`, `renameColumn`, and `dropColumn` as an alias of `dropColumns`).
 
+### D26. A minimal browser client for the 24 November demo, on the merged `web/` skeleton (decided 19 November, #48, #49)
+
+**Problem.** D8's demo is a user in a browser. Nine days after #48 and #49 were opened no page works: #93 (sign-in and list) has changes requested (`node --check` fails, no request bodies, no `Authorization` header) and #91 (document view) has no review; the freeze is Saturday 21 November, 5 pm for this client. The web image is built in CI but never deployed: no Deployment and no route, so `/` on contentcollab.app answers 404 (checked 19 November).
+
+**Decision.** A minimal client on its own branch, in `web/` on the skeleton merged in #86 (React, Vite, Nginx), with the smallest edit to the skeleton's files: `main.jsx` renders a new root, and the skeleton's API health line stays in its footer.
+- One helper, `web/src/api/client.js`, makes every call as `docs/API.md` states it: base `/api/v1`, JSON bodies, `Authorization: Bearer <token>`; a non-2xx answer is thrown as an error that keeps the real status and the `{ error, code, details }` body. An upload (`FormData`) goes without a `Content-Type`, so the browser sets the multipart boundary.
+- Pages are built only against routes on `main` on 19 November: sign in and register (`/auth/register`, `/auth/login`, `/auth/me`). Documents (list with `limit` and `cursor`, upload) and the document view (download, versions, comments, live comments) appear as disabled controls marked "after 24 Nov": their routes (#116, #135, #136) are neither merged nor approved. Each is enabled when its route lands.
+- Plain CSS, no component library, no router. Every user-supplied string is rendered as text (SEC-7).
+- Serving: a `web` Deployment and Service in `k8s/base` (two replicas, named port, readiness probe on `/`, image `contentcollab-web` with the same `unpinned` placeholder the API uses), and an HTTPRoute `web` on the existing Gateway for `/`. `/api`, `/socket.io` and `/health` keep reaching the API: Gateway API gives an exact match and then the longest prefix precedence across routes.
+- CI: a `web-test` job runs lint, format check and the tests (Vitest with jsdom, `fetch` mocked). The deploy builds and pushes the web image with the api and worker, pins it to the commit, watches its rollout and undoes it with the others (D25). With three Deployments the rollout wait is 120 s each instead of 180 s, so the migration wait and three waits (150 + 3 x 120 = 510 s) stay inside the 600-second login; rolling two Deployments took 30 s on 18 November (`docs/evidence/ci-cd.md`).
+
+**Options weighed.**
+- **API-only demo (curl and the status endpoint):** no new code, but the demo in D8 is a second browser seeing a comment arrive, which curl cannot show.
+- **Editing #93 and #91:** they are teammates' pull requests; they stay open and are neither replaced nor rewritten by this change.
+- **The `nginxinc/nginx-unprivileged` image:** would let the web pod run with `runAsNonRoot` (SEC-6), but it changes the skeleton's Dockerfile and port. The official image runs as is; a follow-up for the skeleton's owner.
+- **Leaving the web Deployment out of the deploy's watch:** a failed web rollout would leave the run green; rejected.
+
+**Limits.** The token is kept in `sessionStorage`, so a script injected into the page could read it; the client adds no third-party script and renders text as text. There is no refresh: an expired token (24 h) returns the user to sign in. Unless #116 is approved before Saturday, only the auth pages are live for the demo. The skeleton's `FROM nginx` carries no version tag (CON-3), left to its owner.
+
+Sources, checked 19 November 2026: Gateway API v1.6 API reference, `HTTPRouteRule.matches` ("precedence must be given to the match having: 'Exact' path match. 'Prefix' path match with largest number of characters", <https://gateway-api.sigs.k8s.io/reference/api-spec/1.6/spec/>); Docker Hub, official `nginx` image, "Running nginx as a non-root user" (needs its own config, or the `nginxinc/nginx-unprivileged` image); the npm registry for vitest 5.1.0 (published 2 November 2026), jsdom 30.1.3 (15 October), @testing-library/react 16.3.3 (27 August) and @testing-library/dom 10.4.2 (13 September).
+
 ### D0. Service model
 
 Lecture 1 splits cloud services into IaaS (you manage the OS), PaaS (the provider manages the hosts, you ship containers or code) and FaaS (functions run on events). Assignment 1 was IaaS: a droplet, Nginx, PostgreSQL installed by hand. The project is not that. We use managed Kubernetes, where DigitalOcean runs the control plane and the worker nodes' OS and we run containers (PaaS-style on top of the provider's IaaS), object storage as a service for files, and the provider's metrics and alerts. A DigitalOcean Function is an option for one small event-driven job (a thumbnail when a file lands in Spaces) if we want the serverless advanced feature; it is not in the core path. The point for the proposal: we manage containers and data, not machines.
