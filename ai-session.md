@@ -602,3 +602,20 @@ Proposed recording each Deployment's revision before the apply and undoing only 
 - Checked the paths-filter rule on GitHub's workflow syntax page and the revision annotation on the cluster (read-only) instead of from memory.
 - Found that on Windows the test's `bash` could resolve to a shell whose `kubectl` is the real one; the harness now refuses to run unless every command resolves to its stand-in, and puts the stand-ins first inside bash itself.
 - Left out the HPA replicas item: removing the field scales the api to one replica on the next apply unless the live object is edited first (Kubernetes HPA page), which is the cluster owner's step.
+
+## API that survives a PostgreSQL restart, 19 November 2026
+
+### Prompt
+
+The restart test on DOKS kept the data through a postgres pod deletion, but both API containers crashed, and the previous log ended with a printed pg client object. The pool in `db.ts` has no `error` listener. Fix it so the API logs the lost connection and stays up, with a test that fails first.
+
+### AI Response
+
+Proposed one `pool.on("error")` listener that writes a structured `error` line through `lib/log.ts` and does nothing else, since node-postgres has already removed the client and opens a new one on the next query, and a Jest test that emits `error` on the exported pool. Drafted the decision (D26), the test and the change.
+
+### What Your Team Did With It
+
+- Read the node-postgres Pool page for the `error` event instead of relying on memory, and checked the probes and `/health` in the repo before writing the decision.
+- Pushed the test before the fix: it failed with "Unhandled error", the same path as the crash in the pod.
+- An independent review found the log line dropped PostgreSQL's error code (57P01 on a server shutdown); a second test was added first and the code is now kept, the same way the Redis client does it.
+- Left out pool timeouts and the container running `npm` as PID 1; both are follow-ups, after 24 November.
