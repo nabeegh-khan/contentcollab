@@ -1,24 +1,24 @@
-import Fs from 'fs/promises'; // https://futurestud.io/tutorials/node-js-get-the-size-of-a-file
+// sources used: https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API/Using_Fetch, https://developer.mozilla.org/en-US/docs/Web/API/Response/status, https://stackoverflow.com/questions/69165892/how-to-throw-an-exception-with-a-status-code
 
-// https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API/Using_Fetch, https://developer.mozilla.org/en-US/docs/Web/API/Response/status, https://stackoverflow.com/questions/69165892/how-to-throw-an-exception-with-a-status-code
-
-function request(path, options)
+function request(path, options) // https://jasonwatmore.com/fetch-add-bearer-token-authorization-header-to-http-request
 {
-  
+  const url = "/api/v1/${path}";
+  const token = process.env.API_KEY;
+  const header = {'Authorization': 'Bearer ${token}'};
+  fetch(url, {method: "GET", header, options}).then(response => response.json().then(console.log)).catch(console.error); // https://stackoverflow.com/questions/68824056/how-to-assign-bearer-token-to-authorization-header-in-javascript
 }
 
 export async function register()
 {
   try
   {
-    const url = "/auth/register";
+    const url = request("auth/register", null);
     const response = await fetch(url, {method: "POST"});
     const task = await response.json();
     
-    if (response.status === 409)
+    if (!response.ok)
     {
-      const error = new Error("email taken");
-      throw error;
+      throw new Error(`Response status: ${response.status}`);
     }
     else
     {
@@ -29,8 +29,7 @@ export async function register()
     
   catch (err)
   {
-    err.code = 500; 
-    throw err;
+    console.error(err.message);
   }
 }
 
@@ -38,14 +37,13 @@ export async function login()
 {
   try
   {
-      const url = "/auth/login"; 
+      const url = request("auth/login", null); 
       const response = await fetch(url, {method: "POST"});
       const result = await response.json(); 
 
-      if (response.status === 401)
+      if (!response.ok)
       {
-        const error = new Error("wrong email or password");
-        throw error;
+        throw new Error(`Response status: ${response.status}`);
       }
 
       return response.status, response.json(result);
@@ -53,8 +51,7 @@ export async function login()
     
   catch (err) 
   {
-    err.code = 500; 
-    throw err;
+    console.error(err.message);
   }
 
 }
@@ -96,8 +93,7 @@ export async function uploadDocument(file, title)
       
   catch (err) 
   {
-    err.code = 500; 
-    throw err;
+    console.error(err.message);
   }  
 }
 
@@ -106,7 +102,7 @@ export async function listDocuments({ limit, cursor })
   try
   {
     const lim = limit || 20;
-    const url = "/documents";
+    const url = request("documents", {lim, cursor});
     let items = [];
 
     if (lim > 100)
@@ -137,8 +133,7 @@ export async function listDocuments({ limit, cursor })
    
   catch (err) 
   {
-    err.code = 500; 
-    throw err;
+    console.error(err.message);
   }  
 }
 
