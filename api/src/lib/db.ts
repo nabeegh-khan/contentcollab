@@ -18,8 +18,12 @@ export const pool = new Pool({
 // no listener Node throws it and the process exits (ARCHITECTURE D26, #68).
 // The pool has already removed that client and the next query opens a new one,
 // so the error is only logged; readiness keeps traffic away meanwhile.
+// PostgreSQL's code (57P01 when the server is shut down) is kept, as redis.ts does.
 pool.on("error", (err) => {
-  log("error", "postgres idle client error", { error: errorFields(err) });
+  const code = (err as { code?: unknown }).code;
+  log("error", "postgres idle client error", {
+    error: { ...errorFields(err), ...(typeof code === "string" ? { code } : {}) },
+  });
 });
 
 // Used by /health and by readiness: a trivial query proves the connection works.
