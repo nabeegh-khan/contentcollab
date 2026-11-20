@@ -30,11 +30,14 @@ describe("pool error event", () => {
     pool.emit("error", lostConnection(), {});
 
     const errors = output.lines().filter((line) => line.level === "error");
-    expect(errors).toHaveLength(1);
-    expect(errors[0].msg).toBe("postgres idle client error");
-    expect(errors[0].error).toMatchObject({
-      kind: "Error",
-      message: "Connection terminated unexpectedly",
-    });
+    expect(errors).toEqual([
+      expect.objectContaining({
+        msg: "postgres idle client error",
+        error: expect.objectContaining({
+          kind: "Error",
+          message: "Connection terminated unexpectedly",
+        }),
+      }),
+    ]);
   });
 });
