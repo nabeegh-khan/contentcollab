@@ -236,7 +236,7 @@ test("a migration file the check cannot read (.ts, .sql) or an empty folder is a
       writeFileSync(join(dir, name), "DROP TABLE comments;\n");
       const r = run();
       assert.equal(r.status, 2, name);
-      assert.match(r.stderr, new RegExp(name.replace(".", "\.")));
+      assert.match(r.stderr, new RegExp(name.replace(".", "\\.")));
       rmSync(join(dir, name));
     }
     assert.equal(run().status, 0, "the .js file alone is clean");
