@@ -33,7 +33,44 @@ describe("Root", () => {
     render(<Root />);
 
     expect(screen.getByRole("heading", { name: "Sign in" })).toBeTruthy();
-    expect(await screen.findByText("API up")).toBeTruthy();
+    expect(await screen.findByLabelText("Service status: operational")).toBeTruthy();
+    expect(screen.queryByText("API up")).toBeNull();
+  });
+
+  it("shows a footer with the team name", () => {
+    routeFetch({ "/health": health });
+
+    render(<Root />);
+
+    expect(screen.getByRole("contentinfo").textContent).toContain("ContentCollab, ECE1779 Team 22");
+  });
+
+  it("marks the status dot as checking until /health answers", () => {
+    vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
+
+    render(<Root />);
+
+    expect(screen.getByLabelText("Checking service status")).toBeTruthy();
+  });
+
+  it("marks the status dot unavailable when /health reports a problem", async () => {
+    routeFetch({ "/health": () => json(503, { status: "degraded" }) });
+
+    render(<Root />);
+
+    expect(await screen.findByLabelText("Service status: unavailable")).toBeTruthy();
+  });
+
+  it("marks the status dot unavailable when /health cannot be reached", async () => {
+    routeFetch({
+      "/health": () => {
+        throw new TypeError("Failed to fetch");
+      },
+    });
+
+    render(<Root />);
+
+    expect(await screen.findByLabelText("Service status: unavailable")).toBeTruthy();
   });
 
   it("after sign-in shows the user, the pages, and keeps the token", async () => {
