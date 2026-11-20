@@ -1,5 +1,6 @@
 # Traffic entry (D11): one Gateway terminates TLS, HTTPRoutes send /api and
-# /socket.io to the API. The `web` route is added when that container exists.
+# /socket.io to the API, and the `web` route sends everything else to the
+# browser client (D26).
 # Needs the Gateway API CRDs, a controller and cert-manager installed first
 # (scripts/cluster-up.sh, stage 3).
 apiVersion: gateway.networking.k8s.io/v1
@@ -48,3 +49,23 @@ spec:
       backendRefs:
         - name: api
           port: 3000
+---
+# Everything the api route does not take goes to the browser client. Gateway
+# API prefers an exact match, then the longest prefix, across routes, so
+# /api, /socket.io and /health above still reach the API (D26)
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: web
+spec:
+  parentRefs:
+    - name: contentcollab
+  hostnames: ["contentcollab.app"]
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: web
+          port: 80

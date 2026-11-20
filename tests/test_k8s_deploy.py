@@ -162,10 +162,11 @@ class RollbackOnFailedRollout(unittest.TestCase):
     def test_each_deployment_is_undone_when_its_rollout_fails(self):
         # A failed `rollout status` marks the run failed and undoes the
         # Deployment if this run changed it (D25); tests/test_deploy_undo.py
-        # runs the step itself for each case
+        # runs the step itself for each case. The wait's length is bounded by
+        # test_inside_the_ten_minute_credential (D26)
         self.assertRegex(
             self.body,
-            r"if ! kubectl -n contentcollab rollout status deployment/\$svc --timeout=180s; then\n"
+            r"if ! kubectl -n contentcollab rollout status deployment/\$svc --timeout=\d+s; then\n"
             r"failed=1\n"
             r"echo ::error::[^\n]*\n"
             r"undo_if_changed \$svc watch\n",
