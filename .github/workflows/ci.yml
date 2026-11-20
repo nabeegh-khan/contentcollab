@@ -250,7 +250,7 @@ jobs:
         # JWT_SECRET is a fixed public test value: since #111 the server does
         # not start without one (#127, scripts/ci-docker-env.test.mjs).
         run: |
-          docker run -d --name api --network host -e PORT=3000 -e REDIS_HOST=127.0.0.1 -e JWT_SECRET=ci-test-only-not-a-real-key contentcollab-api:pr
+          docker run -d --name api --network host -e PORT=3000 -e REDIS_HOST=127.0.0.1 -e JWT_SECRET=ci-test-only-not-a-real-key -e SPACES_ENDPOINT=https://tor1.digitaloceanspaces.com -e SPACES_REGION=tor1 -e SPACES_BUCKET=ci-test-bucket -e SPACES_KEY=ci-test-key -e SPACES_SECRET=ci-test-secret contentcollab-api:pr
           for _ in $(seq 1 20); do
             body=$(curl -s -m 3 http://localhost:3000/health || true)
             case "$body" in *'"redis":"ok"'*) echo "answered: $body"; exit 0 ;; esac
@@ -264,7 +264,7 @@ jobs:
         # restart-loops a pod over a dependency outage. Then Redis starts on
         # that port and the same process must report it ok, without a restart.
         run: |
-          docker run -d --name api-noredis --network host -e PORT=3002 -e REDIS_HOST=127.0.0.1 -e REDIS_PORT=6399 -e JWT_SECRET=ci-test-only-not-a-real-key contentcollab-api:pr
+          docker run -d --name api-noredis --network host -e PORT=3002 -e REDIS_HOST=127.0.0.1 -e REDIS_PORT=6399 -e JWT_SECRET=ci-test-only-not-a-real-key -e SPACES_ENDPOINT=https://tor1.digitaloceanspaces.com -e SPACES_REGION=tor1 -e SPACES_BUCKET=ci-test-bucket -e SPACES_KEY=ci-test-key -e SPACES_SECRET=ci-test-secret contentcollab-api:pr
           down=""
           for _ in $(seq 1 20); do
             body=$(curl -s -m 1 http://localhost:3002/health || true)
