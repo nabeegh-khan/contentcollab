@@ -16,7 +16,8 @@ export class ApiError extends Error {
 
 function buildHeaders(body, token) {
   const headers = { Accept: "application/json" };
-  if (body !== undefined && !(body instanceof FormData)) headers["Content-Type"] = "application/json";
+  if (body !== undefined && !(body instanceof FormData))
+    headers["Content-Type"] = "application/json";
   if (token) headers.Authorization = `Bearer ${token}`;
   return headers;
 }

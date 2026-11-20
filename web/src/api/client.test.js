@@ -99,7 +99,9 @@ describe("request", () => {
   });
 
   it("throws 400 VALIDATION with the field details", async () => {
-    const details = [{ field: "password", message: "Too small: expected string to have >=8 characters" }];
+    const details = [
+      { field: "password", message: "Too small: expected string to have >=8 characters" },
+    ];
     mockFetch(jsonResponse(400, { error: "Validation Failed", code: "VALIDATION", details }));
 
     const error = await caught(request("/auth/register", { method: "POST", body: {} }));
