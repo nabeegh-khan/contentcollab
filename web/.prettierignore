@@ -1,4 +1,4 @@
-# Prettier checks the client added for the demo (ARCHITECTURE D26). The skeleton's
+# Prettier checks the client added for the demo (ARCHITECTURE D27). The skeleton's
 # files from #86 keep their author's formatting and are left to their owner.
 node_modules
 dist

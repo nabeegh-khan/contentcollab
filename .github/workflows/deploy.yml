@@ -109,7 +109,7 @@ jobs:
           # template cannot be changed, so it is replaced, not re-applied
           kubectl -n contentcollab delete job "db-migrate-${{ github.sha }}" --ignore-not-found --wait=true
           sed "s/__IMAGE_TAG__/${{ github.sha }}/g" k8s/doks/migrate-job.yaml | kubectl apply -f -
-          # 150 s here plus three 120 s rollouts stays inside the 600 s login (D26)
+          # 150 s here plus three 120 s rollouts stays inside the 600 s login (D27)
           # (the Job itself stops at 120 s, activeDeadlineSeconds)
           if ! kubectl -n contentcollab wait --for=condition=complete "job/db-migrate-${{ github.sha }}" --timeout=150s; then
             echo "::error::migration Job db-migrate-${{ github.sha }} did not complete: no rollout"
@@ -200,7 +200,7 @@ jobs:
               *) echo "::error::deployment/$svc runs $image, not this commit"; failed=1; continue ;;
             esac
             # 120 s each: three waits after a 150 s migration fit the 600 s
-            # login; rolling two Deployments took 30 s on 18 Nov (D26)
+            # login; rolling two Deployments took 30 s on 18 Nov (D27)
             if ! kubectl -n contentcollab rollout status deployment/$svc --timeout=120s; then
               failed=1
               echo "::error::deployment/$svc did not turn ready"

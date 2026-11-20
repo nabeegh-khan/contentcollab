@@ -31,7 +31,7 @@ STUBS_FIRST = (
 )
 ROLLOUT_STEP = "Roll the Deployments to this commit"
 SMOKE_STEP = "Smoke check, roll back on failure"
-# Every Deployment the deploy pins, watches and undoes together (D25, D26)
+# Every Deployment the deploy pins, watches and undoes together (D25, D27)
 DEPLOYMENTS = ("api", "worker", "web")
 ALL = "\n".join(DEPLOYMENTS)
 # Revisions the rollout step hands the smoke step, one per Deployment
@@ -146,7 +146,7 @@ class RolloutStep(unittest.TestCase):
         self.assertEqual(self.undone(), ["api", "web", "worker"])
 
     def test_a_failed_web_also_undoes_the_api_and_worker_this_run_changed(self):
-        # D26: the web Deployment is one of the set
+        # D27: the web Deployment is one of the set
         self.c.write("apply-changes", ALL)
         self.c.write("status-fails", "web")
         r = self.c.run(ROLLOUT_STEP)
@@ -229,7 +229,7 @@ class RolloutStep(unittest.TestCase):
         self.assertNotRegex(r.stdout, r"::error::deployment/api")
 
     def test_credentials_are_refreshed_before_the_undo_after_the_watch(self):
-        # The final undo can come after a 150 s migration and three 120 s waits (D26), near the 600 s login
+        # The final undo can come after a 150 s migration and three 120 s waits (D27), near the 600 s login
         self.c.write("apply-changes", ALL)
         self.c.write("status-fails", "worker")
         self.c.run(ROLLOUT_STEP)

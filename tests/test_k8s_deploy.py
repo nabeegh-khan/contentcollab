@@ -21,7 +21,7 @@ ROLLOUT_STEP = "Roll the Deployments to this commit"
 
 
 SMOKE_STEP = "Smoke check, roll back on failure"
-# Every Deployment the deploy builds, pins, watches and undoes together (D25, D26)
+# Every Deployment the deploy builds, pins, watches and undoes together (D25, D27)
 DEPLOYMENTS = ("api", "worker", "web")
 
 
@@ -163,7 +163,7 @@ class RollbackOnFailedRollout(unittest.TestCase):
         # A failed `rollout status` marks the run failed and undoes the
         # Deployment if this run changed it (D25); tests/test_deploy_undo.py
         # runs the step itself for each case. The wait's length is bounded by
-        # test_inside_the_ten_minute_credential (D26)
+        # test_inside_the_ten_minute_credential (D27)
         self.assertRegex(
             self.body,
             r"if ! kubectl -n contentcollab rollout status deployment/\$svc --timeout=\d+s; then\n"
@@ -226,7 +226,7 @@ class NamedApiPort(unittest.TestCase):
 
 
 class WebImageInTheDeploy(unittest.TestCase):
-    """D26: the web image is built, pushed and rolled back with the api and worker."""
+    """D27: the web image is built, pushed and rolled back with the api and worker."""
 
     def test_the_build_matrix_has_every_image(self):
         self.assertEqual(jobs()["build"]["strategy"]["matrix"]["service"], list(DEPLOYMENTS))
@@ -255,7 +255,7 @@ class WebImageInTheDeploy(unittest.TestCase):
 
 
 class WebServing(unittest.TestCase):
-    """D26: the web Deployment, its Service, and the Gateway route for `/`."""
+    """D27: the web Deployment, its Service, and the Gateway route for `/`."""
 
     def setUp(self):
         self.docs = render("doks")
@@ -300,7 +300,7 @@ class WebServing(unittest.TestCase):
         self.assertEqual(rule["matches"], [{"path": {"type": "PathPrefix", "value": "/"}}])
         self.assertEqual(rule["backendRefs"],
                          [{"name": "web", "port": self.service["spec"]["ports"][0]["port"]}])
-        # Gateway API prefers the exact match, then the longest prefix (D26),
+        # Gateway API prefers the exact match, then the longest prefix (D27),
         # so these keep reaching the API beside `/`
         api_matches = [m["path"] for r in routes["api"]["spec"]["rules"] for m in r["matches"]]
         for path in ({"type": "PathPrefix", "value": "/api"},
@@ -435,7 +435,7 @@ class MigrateBeforeRollout(unittest.TestCase):
         self.assertNotIn("shell", self.step)
 
     def test_inside_the_ten_minute_credential(self):
-        # D20, D26: migrate wait plus one rollout wait per watched Deployment,
+        # D20, D27: migrate wait plus one rollout wait per watched Deployment,
         # under the 600 s credential with a minute to spare (the smoke check
         # fetches fresh credentials)
         migrate = [int(t) for t in re.findall(r"--timeout=(\d+)s", self.step["run"])]
@@ -449,7 +449,7 @@ class MigrateBeforeRollout(unittest.TestCase):
 
     def test_the_smoke_rollback_fits_its_fresh_login(self):
         # After the smoke check renews the 600 s login it undoes and waits for
-        # each Deployment in turn; a minute is left for the undo calls (D26)
+        # each Deployment in turn; a minute is left for the undo calls (D27)
         waits = [int(t) for t in re.findall(r"rollout status [^\n]*--timeout=(\d+)s", step(SMOKE_STEP)["run"])]
         self.assertEqual(len(waits), 1, "one rollback wait, run once per Deployment")
         self.assertLessEqual(len(DEPLOYMENTS) * waits[0], 540 - 60)
