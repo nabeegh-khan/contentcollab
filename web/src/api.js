@@ -1,5 +1,8 @@
 // sources used: https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API/Using_Fetch, https://developer.mozilla.org/en-US/docs/Web/API/Response/status, https://stackoverflow.com/questions/69165892/how-to-throw-an-exception-with-a-status-code
 
+import path from 'path'; // https://www.w3schools.com/nodejs/nodejs_path.asp
+
+
 function request(path, options) // https://jasonwatmore.com/fetch-add-bearer-token-authorization-header-to-http-request
 {
   const url = "/api/v1/${path}";
@@ -63,8 +66,6 @@ export async function uploadDocument(file, title)
   {
     const file_size = file.size;
     const MAX_FILE_SIZE = 50 * 1024 * 1024;
-
-    const path = require('path'); // https://www.tutorialspoint.com/nodejs/nodejs_path_extname_method.htm
 
     const extension = path.extname(file.name).toLowerCase();
     const acceptable_exts = [".pdf", ".png", ".jpg", ".jpeg", ".docx", ".xlsx", ".pptx", ".txt", ".md"];
