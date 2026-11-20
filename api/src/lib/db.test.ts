@@ -3,8 +3,14 @@ import { afterAll, afterEach, beforeEach, describe, expect, it } from "@jest/glo
 import { captureStdout } from "./logCapture.js";
 import { pool } from "./db.js";
 
-// What node-postgres passes when PostgreSQL goes away under an idle client
+// One error node-postgres passes when PostgreSQL goes away under an idle client
 const lostConnection = (): Error => new Error("Connection terminated unexpectedly");
+
+// What a graceful PostgreSQL shutdown sends first: FATAL 57P01, carried as a code
+const adminShutdown = (): Error =>
+  Object.assign(new Error("terminating connection due to administrator command"), {
+    code: "57P01",
+  });
 
 describe("pool error event", () => {
   let output: ReturnType<typeof captureStdout>;
@@ -38,6 +44,15 @@ describe("pool error event", () => {
           message: "Connection terminated unexpectedly",
         }),
       }),
+    ]);
+  });
+
+  it("keeps PostgreSQL's error code in the line", () => {
+    pool.emit("error", adminShutdown(), {});
+
+    const errors = output.lines().filter((line) => line.level === "error");
+    expect(errors).toEqual([
+      expect.objectContaining({ error: expect.objectContaining({ code: "57P01" }) }),
     ]);
   });
 });
