@@ -62,6 +62,35 @@ describe("AuthPage", () => {
     ]);
   });
 
+  it("after a register that worked and a sign-in that failed, retries only the sign-in", async () => {
+    const user = { id: "u1", email: "a@b.co", displayName: "Ann" };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(json(201, user))
+      .mockRejectedValueOnce(new TypeError("Failed to fetch"))
+      .mockResolvedValueOnce(json(200, { token: "t0k", user }));
+    vi.stubGlobal("fetch", fetchMock);
+    const onSignedIn = vi.fn();
+    render(<AuthPage onSignedIn={onSignedIn} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Need an account? Register" }));
+    fill("Email", "a@b.co");
+    fill("Password", "pass1234");
+    fill("Display name", "Ann");
+    fireEvent.click(screen.getByRole("button", { name: "Create account" }));
+
+    expect((await screen.findByRole("alert")).textContent).toBe("Could not reach the server.");
+    expect(screen.getByRole("heading", { name: "Sign in" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+
+    await vi.waitFor(() => expect(onSignedIn).toHaveBeenCalledWith({ token: "t0k", user }));
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "/api/v1/auth/register",
+      "/api/v1/auth/login",
+      "/api/v1/auth/login",
+    ]);
+  });
+
   it("shows the API's message for a taken email and stays on the form", async () => {
     vi.stubGlobal(
       "fetch",
@@ -86,7 +115,7 @@ describe("AuthPage", () => {
       "fetch",
       vi
         .fn()
-        .mockResolvedValue(json(400, { error: "Validation Failed", code: "VALIDATION", details })),
+        .mockResolvedValue(json(400, { error: "Invalid Request", code: "VALIDATION", details })),
     );
     render(<AuthPage onSignedIn={() => {}} />);
 
@@ -95,7 +124,7 @@ describe("AuthPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
 
     const alert = await screen.findByRole("alert");
-    expect(alert.textContent).toContain("Validation Failed");
+    expect(alert.textContent).toContain("Invalid Request");
     expect(alert.textContent).toContain("password: at least 8 characters");
   });
 

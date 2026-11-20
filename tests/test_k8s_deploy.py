@@ -292,7 +292,9 @@ class WebServing(unittest.TestCase):
     def test_root_goes_to_web_and_the_api_paths_stay_on_the_api(self):
         routes = {d["metadata"]["name"]: d for d in self.docs if d["kind"] == "HTTPRoute"}
         web = routes["web"]
-        self.assertEqual(web["spec"]["parentRefs"], [{"name": "contentcollab"}])
+        # HTTPS listener only: the sign-in form is never served over plain HTTP
+        # (port 80 is for the Let's Encrypt challenge, gateway.yaml)
+        self.assertEqual(web["spec"]["parentRefs"], [{"name": "contentcollab", "sectionName": "https"}])
         self.assertEqual(web["spec"]["hostnames"], routes["api"]["spec"]["hostnames"])
         [rule] = web["spec"]["rules"]
         self.assertEqual(rule["matches"], [{"path": {"type": "PathPrefix", "value": "/"}}])
@@ -441,6 +443,16 @@ class MigrateBeforeRollout(unittest.TestCase):
         self.assertEqual(len(migrate), 1, "one wait in the migrate step")
         self.assertEqual(len(rollout), 1, "one rollout wait, run once per Deployment")
         self.assertLessEqual(migrate[0] + len(DEPLOYMENTS) * rollout[0], 540)
+        # A wait too short to roll a Deployment would undo healthy releases;
+        # rolling two took 30 s on 18 Nov (docs/evidence/ci-cd.md)
+        self.assertGreaterEqual(rollout[0], 60)
+
+    def test_the_smoke_rollback_fits_its_fresh_login(self):
+        # After the smoke check renews the 600 s login it undoes and waits for
+        # each Deployment in turn; a minute is left for the undo calls (D26)
+        waits = [int(t) for t in re.findall(r"rollout status [^\n]*--timeout=(\d+)s", step(SMOKE_STEP)["run"])]
+        self.assertEqual(len(waits), 1, "one rollback wait, run once per Deployment")
+        self.assertLessEqual(len(DEPLOYMENTS) * waits[0], 540 - 60)
 
 
 if __name__ == "__main__":

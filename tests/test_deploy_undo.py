@@ -154,7 +154,7 @@ class RolloutStep(unittest.TestCase):
         self.assertEqual(self.undone(), ["api", "web", "worker"])
 
     def test_a_failed_apply_is_reported_the_watch_runs_and_changes_are_undone(self):
-        # #108 item 2: the apply moved both, then failed partway
+        # #108 item 2: the apply moved all three, then failed partway
         self.c.write("apply-changes", ALL)
         self.c.write("apply-fails", "yes")
         r = self.c.run(ROLLOUT_STEP)
@@ -179,13 +179,14 @@ class RolloutStep(unittest.TestCase):
         self.assertEqual(self.undone(), [])
         self.assertIn("not changed by this run", r.stdout)
 
-    def test_a_failed_undo_is_reported_and_the_other_is_still_undone(self):
+    def test_a_failed_undo_is_reported_and_the_others_are_still_undone(self):
         self.c.write("apply-changes", ALL)
         self.c.write("status-fails", "api")
         self.c.write("undo-fails", "api")
         r = self.c.run(ROLLOUT_STEP)
         self.assertNotEqual(r.returncode, 0)
-        self.assertIn("worker", self.undone())
+        # The failed api undo is still attempted; web and worker are undone
+        self.assertEqual(self.undone(), ["api", "web", "worker"])
         self.assertIn("mixed versions", r.stdout)
 
     def test_an_unreadable_revision_is_reported_as_unreadable_not_as_unchanged(self):
