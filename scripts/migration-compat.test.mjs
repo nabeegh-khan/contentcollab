@@ -221,3 +221,36 @@ test("a contract marker counts only in a comment, not inside SQL or a string", (
     ["comments"],
   );
 });
+
+test("a migration file the check cannot read (.ts, .sql) or an empty folder is an error, not a pass", () => {
+  const dir = mkdtempSync(join(tmpdir(), "migcompat-"));
+  const run = () =>
+    spawnSync(process.execPath, ["scripts/migration-compat.mjs", dir], {
+      cwd: root,
+      encoding: "utf8",
+    });
+  try {
+    assert.equal(run().status, 2, "no migrations at all");
+    for (const name of ["1_x.sql", "2_y.ts", "3_z.mts"]) {
+      writeFileSync(join(dir, "0_ok.js"), migration(sql("CREATE TABLE notes (id UUID);")));
+      writeFileSync(join(dir, name), "DROP TABLE comments;\n");
+      const r = run();
+      assert.equal(r.status, 2, name);
+      assert.match(r.stderr, new RegExp(name.replace(".", "\.")));
+      rmSync(join(dir, name));
+    }
+    assert.equal(run().status, 0, "the .js file alone is clean");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a column named like a keyword is flagged when COLUMN or quotes make it a column", () => {
+  const drop = (text) => objects(migration(sql(text)));
+  assert.deepEqual(drop("ALTER TABLE t DROP COLUMN identity;"), ["t.identity"]);
+  assert.deepEqual(drop("ALTER TABLE t DROP COLUMN expression;"), ["t.expression"]);
+  assert.deepEqual(drop('ALTER TABLE t DROP "default";'), ["t.default"]);
+  // still relaxing: no COLUMN keyword, unquoted
+  assert.deepEqual(drop("ALTER TABLE t ALTER COLUMN c DROP DEFAULT;"), []);
+  assert.deepEqual(drop("ALTER TABLE t DROP CONSTRAINT k;"), []);
+});

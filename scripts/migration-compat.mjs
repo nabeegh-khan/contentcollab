@@ -15,8 +15,11 @@ const MARKER = /contract:\s*([A-Za-z_][\w$]*(?:\.[A-Za-z_][\w$]*)?)/gi;
 // Comments: block (SQL and JS); "--" (SQL) and "//" (JS) at a line start or after a space, and "//" after ; , ) or }.
 // "i--", "'--'" and "http://" are not comments, so they are left alone.
 const COMMENTS = /\/\*[\s\S]*?\*\/|(?<=^|[ \t])--[^\n]*|(?<=^|[ \t;,)}])\/\/[^\n]*/gm;
-// What follows DROP inside ALTER TABLE without naming a column (these relax, they do not remove a column)
+// What follows a bare DROP inside ALTER TABLE without naming a column (these relax, they do not remove a column)
 const NOT_A_COLUMN = new Set(["constraint", "default", "not", "expression", "identity"]);
+// Extensions node-pg-migrate 9.0.0 reads; only the JavaScript ones can be checked, the rest are an error
+const CHECKED = /\.(c|m)?js$/;
+const UNCHECKABLE = /\.(sql|ts|cts|mts)$/;
 
 /** Last part of a possibly schema-qualified, possibly quoted name, lower-cased: "public"."Users" -> users */
 function bareName(raw) {
@@ -72,12 +75,12 @@ function sqlTargets(statement) {
     const table = bareName(alter[1]);
     const actions = s.slice(alter.index + alter[0].length);
     const base = alter.index + alter[0].length;
-    const drop = new RegExp(String.raw`\bDROP\s+(?:COLUMN\s+)?(?:IF\s+EXISTS\s+)?(${IDENT})`, "gi");
+    const drop = new RegExp(String.raw`\bDROP\s+(COLUMN\s+)?(?:IF\s+EXISTS\s+)?(${IDENT})`, "gi");
     for (let m; (m = drop.exec(actions));) {
-      const column = bareName(m[1]);
-      // "ALTER COLUMN x DROP DEFAULT" and "DROP CONSTRAINT k" leave every column in place
-      if (!NOT_A_COLUMN.has(column))
-        found.push({ object: `${table}.${column}`, index: base + m.index });
+      const column = bareName(m[2]);
+      // "ALTER COLUMN x DROP DEFAULT" and "DROP CONSTRAINT k" leave every column in place; COLUMN or quotes make it a column
+      const keyword = !m[1] && !m[2].startsWith('"') && NOT_A_COLUMN.has(column);
+      if (!keyword) found.push({ object: `${table}.${column}`, index: base + m.index });
     }
     const renameTable = /\bRENAME\s+TO\b/i.exec(actions);
     if (renameTable) found.push({ object: table, index: base + renameTable.index });
@@ -161,9 +164,20 @@ function main(folder) {
   }
   let files;
   try {
-    files = readdirSync(folder)
-      .filter((f) => /\.(c|m)?js$/.test(f) && statSync(join(folder, f)).isFile())
-      .sort();
+    const all = readdirSync(folder).filter((f) => statSync(join(folder, f)).isFile());
+    const unreadable = all.filter((f) => UNCHECKABLE.test(f));
+    if (unreadable.length) {
+      // A migration the check cannot read is not a pass
+      console.error(
+        `migration-compat: cannot check ${unreadable.join(", ")}: only .js, .cjs and .mjs migrations are read`,
+      );
+      return 2;
+    }
+    files = all.filter((f) => CHECKED.test(f)).sort();
+    if (files.length === 0) {
+      console.error(`migration-compat: no migration files in ${folder}`);
+      return 2;
+    }
   } catch (err) {
     console.error(`migration-compat: cannot read ${folder}: ${err.message}`);
     return 2;

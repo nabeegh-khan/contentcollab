@@ -202,7 +202,8 @@ jobs:
       - run: npm test
 
   # Node's built-in test runner over the operational scripts (no
-  # dependencies), e.g. the HPA readiness check the load test relies on (#69)
+  # dependencies), e.g. the HPA readiness check the load test relies on (#69) and
+  # the migration check (#105)
   scripts:
     runs-on: ubuntu-latest
     permissions:
