@@ -30,9 +30,10 @@ spec:
       labels:
         app: web
     spec:
-      # The official nginx image as the skeleton builds it; its master process
-      # needs root (Docker Hub, "Running nginx as a non-root user"), so no
-      # runAsNonRoot here. Moving to nginx-unprivileged is the follow-up (D26).
+      # The official nginx image as the skeleton builds it, run as is: running
+      # it as another user needs its own config (Docker Hub, "Running nginx
+      # as a non-root user"), so no runAsNonRoot here. Moving to
+      # nginx-unprivileged is the follow-up (D26).
       # No ConfigMap or Secret: the page holds nothing private (SEC-2)
       containers:
         - name: web

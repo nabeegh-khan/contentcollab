@@ -208,7 +208,7 @@ jobs:
             fi
           done
           # One failure undoes every Deployment this run changed, so the
-          # cluster is not left with an api and a worker from different commits.
+          # cluster is not left running Deployments from different commits.
           # This can come after the migration and three waits (up to 510 s), so
           # the ten-minute login is renewed first, as in the smoke step
           if [ "$failed" = 1 ]; then
@@ -254,7 +254,7 @@ jobs:
               continue
             fi
             { kubectl -n contentcollab rollout undo deployment/$svc \
-                && kubectl -n contentcollab rollout status deployment/$svc --timeout=180s; } \
+                && kubectl -n contentcollab rollout status deployment/$svc --timeout=120s; } \
               || echo "::error::rollback of deployment/$svc failed: the cluster may run mixed versions"
           done
           exit 1

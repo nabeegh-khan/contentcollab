@@ -37,7 +37,11 @@ export default function AuthPage({ onSignedIn }) {
     setBusy(true);
     setErrors([]);
     try {
-      if (registering) await register({ email, password, displayName });
+      if (registering) {
+        await register({ email, password, displayName });
+        // The account exists now: a retry after a failed sign-in signs in, not registers again
+        setMode("signin");
+      }
       onSignedIn(await login({ email, password }));
     } catch (error) {
       setErrors(errorLines(error));
@@ -62,8 +66,8 @@ export default function AuthPage({ onSignedIn }) {
         )}
         {errors.length > 0 && (
           <div role="alert" className="error">
-            {errors.map((line) => (
-              <p key={line}>{line}</p>
+            {errors.map((line, index) => (
+              <p key={index}>{line}</p>
             ))}
           </div>
         )}

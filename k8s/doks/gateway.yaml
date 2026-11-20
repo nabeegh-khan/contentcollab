@@ -52,7 +52,8 @@ spec:
 ---
 # Everything the api route does not take goes to the browser client. Gateway
 # API prefers an exact match, then the longest prefix, across routes, so
-# /api, /socket.io and /health above still reach the API (D26)
+# /api, /socket.io and /health above still reach the API (D26). HTTPS
+# listener only, so the sign-in form is never served over plain HTTP
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
@@ -60,6 +61,7 @@ metadata:
 spec:
   parentRefs:
     - name: contentcollab
+      sectionName: https
   hostnames: ["contentcollab.app"]
   rules:
     - matches:
