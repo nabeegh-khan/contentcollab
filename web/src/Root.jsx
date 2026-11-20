@@ -1,4 +1,4 @@
-// The app shell: sign-in gate, the signed-in pages, and the skeleton's API health line in the footer.
+// The app shell: sign-in gate, the signed-in pages, and the footer status dot.
 import { useEffect, useState } from "react";
 import App from "./App.jsx";
 import { me } from "./api/auth.js";

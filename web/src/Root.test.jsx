@@ -46,7 +46,10 @@ describe("Root", () => {
   });
 
   it("marks the status dot as checking until /health answers", () => {
-    vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => new Promise(() => {})),
+    );
 
     render(<Root />);
 
