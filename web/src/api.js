@@ -5,9 +5,9 @@ import path from 'path'; // https://www.w3schools.com/nodejs/nodejs_path.asp
 
 function request(path, options) // https://jasonwatmore.com/fetch-add-bearer-token-authorization-header-to-http-request
 {
-  const url = "/api/v1/${path}";
+  const url = `/api/v1/${path}`;
   const token = process.env.API_KEY;
-  const header = {'Authorization': 'Bearer ${token}'};
+  onst header = {"Authorization" : `Bearer ${token}`};
   fetch(url, {method: "GET", header, options}).then(response => response.json().then(console.log)).catch(console.error); // https://stackoverflow.com/questions/68824056/how-to-assign-bearer-token-to-authorization-header-in-javascript
 }
 
