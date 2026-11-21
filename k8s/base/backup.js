@@ -21,7 +21,8 @@ const date = new Date();
 const today = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
 const backupFile= `pg-backup-${today}.tar`;
 
-const upload = async (name) => { // https://github.com/digitalocean/postgres-spaces-backups/blob/main/src/backup.ts 
+// https://github.com/digitalocean/postgres-spaces-backups/blob/main/src/backup.ts 
+const upload = async (name) => { 
 
     const params = {
     Bucket: bucket,
@@ -29,15 +30,32 @@ const upload = async (name) => { // https://github.com/digitalocean/postgres-spa
     Body: createReadStream(path),
     };
     
-    const command = new PutObjectCommand(params); // https://docs.aws.amazon.com/AWSJavaScriptSDK/v3/latest/client/s3/command/PutObjectCommand/
+    // https://docs.aws.amazon.com/AWSJavaScriptSDK/v3/latest/client/s3/command/PutObjectCommand/
+    const command = new PutObjectCommand(params);
     await client.send(command);
 };
 
+const dump = async () => {
+
+};
+
+const del = async () => {
+
+};
+
+// https://github.com/digitalocean/postgres-spaces-backups/blob/main/src/backup.ts 
+export const backup = async () => {
+    await dump();
+    await upload(backupFile);
+    await del();
+};
+
+// https://www.npmjs.com/package/cron
 const job = new CronJob(
     '0 0 * * *', // time (midnight)
     function() {
-        upload(backupFile);
+        backup();
     },
     true, // start
     'America/Toronto' // time zone
-); // https://www.npmjs.com/package/cron
+);
