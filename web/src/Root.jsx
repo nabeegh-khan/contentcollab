@@ -7,6 +7,7 @@ import AuthPage from "./pages/AuthPage.jsx";
 import DocumentPage from "./pages/DocumentPage.jsx";
 import DocumentsPage from "./pages/DocumentsPage.jsx";
 import { clearToken, loadToken, saveToken } from "./session.js";
+import { useRoute } from "./useRoute.js";
 import "./app.css";
 
 const SIGNED_OUT = { status: "signedOut", user: null };
@@ -49,8 +50,24 @@ function useSession() {
   return { session, signIn, signOut };
 }
 
+function SignedInPage({ route, token, user }) {
+  if (route.name === "version") {
+    return (
+      <DocumentPage
+        key={route.versionId}
+        token={token}
+        user={user}
+        documentId={route.documentId}
+        versionId={route.versionId}
+      />
+    );
+  }
+  return <DocumentsPage />;
+}
+
 export default function Root() {
   const { session, signIn, signOut } = useSession();
+  const route = useRoute();
 
   return (
     <div className="shell">
@@ -69,10 +86,7 @@ export default function Root() {
         {session.status === "checking" && <p>Checking your sign-in...</p>}
         {session.status === "signedOut" && <AuthPage onSignedIn={signIn} />}
         {session.status === "signedIn" && (
-          <>
-            <DocumentsPage />
-            <DocumentPage />
-          </>
+          <SignedInPage route={route} token={loadToken()} user={session.user} />
         )}
       </main>
       <footer className="bar">

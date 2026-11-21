@@ -1,5 +1,5 @@
 // Tests for the root: sign-in gate, a stored token checked with /auth/me, and sign out.
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import Root from "./Root.jsx";
 import { loadToken, saveToken } from "./session.js";
@@ -89,7 +89,7 @@ describe("Root", () => {
 
     expect(await screen.findByText("Signed in as Ann")).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Documents" })).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "Document" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "Document" })).toBeNull();
     expect(loadToken()).toBe("t0k");
   });
 
@@ -141,5 +141,30 @@ describe("Root", () => {
 
     expect(screen.getByRole("heading", { name: "Sign in" })).toBeTruthy();
     expect(loadToken()).toBeNull();
+  });
+
+  it("opens the version in the address after sign-in, and follows the address when it changes", async () => {
+    const DOC = "11111111-1111-4111-8111-111111111111";
+    const VER = "22222222-2222-4222-8222-222222222222";
+    saveToken("t0k");
+    window.location.hash = `#/documents/${DOC}/versions/${VER}`;
+    routeFetch({
+      "/health": health,
+      "/api/v1/auth/me": () => json(200, ANN),
+      [`/api/v1/documents/${DOC}/versions/${VER}/comments`]: () =>
+        json(200, { items: [], nextCursor: null }),
+    });
+
+    render(<Root />);
+
+    expect(await screen.findByRole("heading", { name: "Document" })).toBeTruthy();
+    expect(await screen.findByText("No comments yet.")).toBeTruthy();
+
+    act(() => {
+      window.location.hash = "";
+    });
+
+    expect(await screen.findByRole("heading", { name: "Documents" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "Document" })).toBeNull();
   });
 });
