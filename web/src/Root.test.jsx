@@ -90,6 +90,7 @@ describe("Root", () => {
     expect(await screen.findByText("Signed in as Ann")).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Documents" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Document" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Share a document" })).toBeTruthy();
     expect(loadToken()).toBe("t0k");
   });
 

@@ -1,0 +1,78 @@
+// A small form to share a document with a user by email and a role (#114's POST /documents/:id/shares).
+import { useState } from "react";
+import { createShare } from "../api/shares.js";
+import { ApiError } from "../api/client.js";
+
+const ROLES = ["viewer", "commenter", "editor"];
+
+// What each refusal means for the person at the form
+function refusal(error) {
+  if (error instanceof ApiError) {
+    if (error.status === 404) return "No user has that email, or you do not own this document.";
+    if (error.status === 409) return "That user already has a share on this document.";
+    if (error.status === 403) return "Only the owner of a document can share it.";
+    return error.message;
+  }
+  return "Something went wrong. Try again.";
+}
+
+export default function ShareForm({ token }) {
+  const [documentId, setDocumentId] = useState("");
+  const [email, setEmail] = useState("");
+  const [role, setRole] = useState("viewer");
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(null);
+  const [problem, setProblem] = useState(null);
+
+  async function submit(event) {
+    event.preventDefault();
+    setDone(null);
+    setProblem(null);
+    const doc = documentId.trim();
+    const who = email.trim();
+    if (!doc || !who) {
+      setProblem("Enter a document id and an email.");
+      return;
+    }
+    setBusy(true);
+    try {
+      await createShare(token, doc, { email: who, role });
+      setDone(`Shared with ${who} as ${role}.`);
+    } catch (error) {
+      setProblem(refusal(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="card">
+      <h3>Share a document</h3>
+      <form onSubmit={submit}>
+        <label className="field">
+          <span>Document id</span>
+          <input type="text" value={documentId} onChange={(e) => setDocumentId(e.target.value)} />
+        </label>
+        <label className="field">
+          <span>Email of the user</span>
+          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+        </label>
+        <label className="field">
+          <span>Role</span>
+          <select value={role} onChange={(e) => setRole(e.target.value)}>
+            {ROLES.map((name) => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+          </select>
+        </label>
+        {problem && <p role="alert">{problem}</p>}
+        {done && <p role="status">{done}</p>}
+        <button type="submit" disabled={busy}>
+          Share
+        </button>
+      </form>
+    </section>
+  );
+}
