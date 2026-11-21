@@ -13,13 +13,19 @@
 // Optional: BASE (https://contentcollab.app), NAMESPACE (contentcollab), API_PORT (3000),
 // MAX_SOCKETS (12), TIMEOUT_MS (10000), EVIDENCE_DIR (docs/evidence). The output also goes to
 // <EVIDENCE_DIR>/<UTC date and time>-cross-replica.txt. Exit 0 on PASS, 1 on FAIL or a bad setting.
+//
+// DIRECT=1 (recommended): the two sockets are opened on two named API pods through `kubectl port-forward`,
+// so no connection is counted and no pod has to be guessed; the comment is still posted through the
+// public URL. It proves the Redis adapter carries an event between pods. The default (Gateway) mode counts
+// ESTABLISHED connections, which the Gateway's short-lived HTTP connections can disturb: the first run on
+// 21 Nov ended "attribution not confirmed" although both sockets had received the comment.
 
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import { crossReplicaCheck, parseEstablished } from "./cross-replica-lib.mjs";
+import { crossReplicaCheck, parseEstablished, parseForwardPort } from "./cross-replica-lib.mjs";
 
 const run = promisify(execFile);
 const env = process.env;
@@ -88,11 +94,70 @@ async function countConnections(pod) {
   return parseEstablished(stdout, PORT);
 }
 
-function openSocket(token) {
+// `kubectl port-forward` to one pod on a free local port; resolves once kubectl prints the port it chose
+const forwards = [];
+function startForward(pod) {
+  return new Promise((resolve, reject) => {
+    const child = spawn("kubectl", ["-n", NS, "port-forward", `pod/${pod}`, `:${PORT}`], {
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    forwards.push(child);
+    const timer = setTimeout(() => reject(new Error(`port-forward to ${pod}: no port within ${TIMEOUT_MS} ms`)), TIMEOUT_MS);
+    let output = "";
+    child.stdout.on("data", (chunk) => {
+      output += chunk;
+      const port = parseForwardPort(output);
+      if (port) {
+        clearTimeout(timer);
+        resolve(port);
+      }
+    });
+    child.on("exit", (code) => {
+      clearTimeout(timer);
+      reject(new Error(`port-forward to ${pod} ended with code ${code}`));
+    });
+  });
+}
+
+// Ends every port-forward and waits for it to be gone. Exiting while a child's pipes were still closing
+// made Node on Windows abort with a libuv assertion (exit code 3221226505) after a passing run, 21 Nov.
+function stopForwards() {
+  return Promise.all(
+    forwards.map(
+      (child) =>
+        new Promise((done) => {
+          if (child.exitCode !== null || child.signalCode !== null) return done();
+          const timer = setTimeout(done, 3000);
+          child.once("exit", () => {
+            clearTimeout(timer);
+            done();
+          });
+          child.stdout.destroy();
+          child.stderr.destroy();
+          child.kill();
+        }),
+    ),
+  );
+}
+
+// Direct mode: one socket on each of the first two ready pods, so which pod holds which is known
+async function placeDirect(pods, token, placed) {
+  const byPod = new Map();
+  for (const pod of pods.slice(0, 2)) {
+    const port = await startForward(pod);
+    log(`port-forward to ${pod} on 127.0.0.1:${port}`);
+    const socket = await openSocket(token, `http://127.0.0.1:${port}`);
+    placed.push(socket);
+    byPod.set(pod, { socket });
+  }
+  return byPod;
+}
+
+function openSocket(token, url = BASE) {
   return new Promise((resolve, reject) => {
     const seen = new Set(); // bodies of the comments this socket received
     const waiters = [];
-    const socket = io(BASE, {
+    const socket = io(url, {
       path: "/socket.io",
       transports: ["websocket"],
       auth: { token },
@@ -151,6 +216,7 @@ const deps = {
   listPods,
   countConnections,
   openSocket,
+  ...(env.DIRECT === "1" ? { placeDirect } : {}),
   login: async () => {
     const body = JSON.stringify({ email: env.EMAIL, password: env.PASSWORD });
     return (await api(`${BASE}/api/v1/auth/login`, { method: "POST", body }, null)).token;
@@ -170,10 +236,12 @@ const deps = {
 
 let result;
 try {
-  log(`cross-replica check against ${BASE}, version ${env.VERSION_ID}`);
+  log(`cross-replica check against ${BASE}, version ${env.VERSION_ID}, mode ${env.DIRECT === "1" ? "direct (port-forward)" : "gateway (attributed by connection counts)"}`);
   result = await crossReplicaCheck(deps);
 } catch (error) {
   result = { ok: false, reason: error.message, pods: [] };
+} finally {
+  await stopForwards();
 }
 log(
   result.ok
@@ -187,4 +255,8 @@ const stamp = new Date().toISOString().replace(/[:.]/g, "-");
 const file = `${dir}/${stamp}-cross-replica.txt`;
 writeFileSync(file, `${lines.join("\n")}\n`);
 console.log(`written ${file}`);
-process.exit(result.ok ? 0 : 1);
+// Let Node end by itself once its handles have closed: calling process.exit() while they were still
+// closing aborted it on Windows after a passing run (libuv assertion, exit code 3221226505, 21 Nov).
+// The timer is a backstop only (unref'd, so it never keeps the process alive).
+process.exitCode = result.ok ? 0 : 1;
+setTimeout(() => process.exit(process.exitCode), 10000).unref();

@@ -14,6 +14,12 @@ export function parseEstablished(text, port) {
   return count;
 }
 
+// The local port in kubectl port-forward's "Forwarding from 127.0.0.1:PORT -> 3000" line, or null
+export function parseForwardPort(text) {
+  const match = /Forwarding from (?:127\.0\.0\.1|\[::1\]):(\d+) ->/.exec(text);
+  return match ? Number(match[1]) : null;
+}
+
 // The one pod whose count went up between two readings, or null when none or several did
 export function soleIncrease(before, after) {
   const up = Object.keys(after).filter((pod) => after[pod] > (before[pod] ?? 0));
@@ -59,7 +65,10 @@ export async function crossReplicaCheck(deps) {
       return { ok: false, reason: `need two ready API pods, found ${pods.length}`, pods: [] };
     }
     token = await deps.login();
-    const byPod = await placeSockets(deps, pods, token, placed);
+    // Direct mode (deps.placeDirect) opens the sockets on named pods, so nothing has to be attributed;
+    // otherwise sockets go through the Gateway and are attributed by the connection each pod gained
+    const direct = typeof deps.placeDirect === "function";
+    const byPod = direct ? await deps.placeDirect(pods, token, placed) : await placeSockets(deps, pods, token, placed);
     if (byPod.size < 2) {
       return {
         ok: false,
@@ -81,8 +90,8 @@ export async function crossReplicaCheck(deps) {
       };
     }
     // The attribution came from a connection count; check each pod still holds its socket now
-    const now = await counts(deps, names);
-    const lost = names.filter((pod) => now[pod] < byPod.get(pod).floor);
+    const now = direct ? null : await counts(deps, names);
+    const lost = direct ? [] : names.filter((pod) => now[pod] < byPod.get(pod).floor);
     if (lost.length > 0) {
       return {
         ok: false,

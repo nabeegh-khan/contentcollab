@@ -1,7 +1,7 @@
 // Tests for the cross-replica check: reading connections from /proc/net/tcp, telling which pod took a socket, and the run.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parseEstablished, soleIncrease, crossReplicaCheck } from "./cross-replica-lib.mjs";
+import { parseEstablished, parseForwardPort, soleIncrease, crossReplicaCheck } from "./cross-replica-lib.mjs";
 
 // /proc/net/tcp as a container prints it: header, then one line per socket; st 01 is ESTABLISHED, 0A is LISTEN
 const PROC = `  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode
@@ -178,3 +178,91 @@ test("returns a failure, not a throw, when login or listing the pods fails", asy
   assert.match(listResult.reason, /kubectl/);
 });
 
+
+// Direct mode: the sockets are opened on named pods through kubectl port-forward, so which pod holds which
+// socket is known by construction and no connection is counted (the counting can be fooled by the Gateway's
+// short-lived HTTP connections, which is how the first run on 21 Nov ended)
+function directWorld({ deliver = () => true, pods = ["api-a", "api-b", "api-c"], placeFails = false } = {}) {
+  const log = [];
+  const opened = [];
+  const counted = [];
+  const deps = {
+    log: (line) => log.push(line),
+    login: async () => "tok",
+    listPods: async () => pods,
+    countConnections: async (pod) => {
+      counted.push(pod);
+      return 0;
+    },
+    placeDirect: async (readyPods, token, placed) => {
+      if (placeFails) throw new Error("port-forward: pod not reachable");
+      const byPod = new Map();
+      for (const pod of readyPods.slice(0, 2)) {
+        const socket = {
+          closed: false,
+          waitForComment: async (body) => {
+            if (!deliver(pod, body)) throw new Error("timeout");
+            return 7;
+          },
+          close() {
+            this.closed = true;
+          },
+        };
+        opened.push(socket);
+        placed.push(socket);
+        byPod.set(pod, { socket });
+      }
+      return byPod;
+    },
+    postComment: async () => ({ id: "c1", body: "cross-replica-check" }),
+    deleteComment: async () => log.push("deleted c1"),
+    maxSockets: 6,
+  };
+  return { deps, log, opened, counted };
+}
+
+test("direct mode passes when the comment reaches the sockets on two named pods, counting nothing", async () => {
+  const { deps, counted, opened, log } = directWorld();
+  const result = await crossReplicaCheck(deps);
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.pods, ["api-a", "api-b"]);
+  assert.deepEqual(counted, [], "no connection count is read");
+  assert.ok(opened.every((s) => s.closed));
+  assert.ok(log.includes("deleted c1"));
+});
+
+test("direct mode fails, naming the pod, when the comment does not reach one of them", async () => {
+  const { deps } = directWorld({ deliver: (pod) => pod !== "api-b" });
+  const result = await crossReplicaCheck(deps);
+  assert.equal(result.ok, false);
+  assert.match(result.reason, /api-b/);
+});
+
+test("direct mode returns the failure of the placement and posts no comment", async () => {
+  const { deps, log } = directWorld({ placeFails: true });
+  let posted = false;
+  deps.postComment = async () => {
+    posted = true;
+    return { id: "c1", body: "cross-replica-check" };
+  };
+  const result = await crossReplicaCheck(deps);
+  assert.equal(result.ok, false);
+  assert.match(result.reason, /port-forward/);
+  assert.equal(posted, false);
+  assert.ok(!log.includes("deleted c1"));
+});
+
+test("direct mode still needs two ready pods", async () => {
+  const { deps, opened } = directWorld({ pods: ["api-a"] });
+  const result = await crossReplicaCheck(deps);
+  assert.equal(result.ok, false);
+  assert.match(result.reason, /two/i);
+  assert.equal(opened.length, 0);
+});
+
+test("parseForwardPort reads the local port from kubectl port-forward's first line, or null", () => {
+  assert.equal(parseForwardPort("Forwarding from 127.0.0.1:50321 -> 3000"), 50321);
+  assert.equal(parseForwardPort("Forwarding from [::1]:50321 -> 3000"), 50321);
+  assert.equal(parseForwardPort("error: unable to forward port"), null);
+  assert.equal(parseForwardPort(""), null);
+});
