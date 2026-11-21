@@ -364,6 +364,8 @@ describe("CommentsPanel", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
 
-    expect((await screen.findByRole("alert")).textContent).toMatch(/not allowed/i);
+    const alert = (await screen.findByRole("alert")).textContent;
+    expect(alert).toMatch(/not allowed/i);
+    expect(alert).not.toMatch(/role/i);
   });
 });

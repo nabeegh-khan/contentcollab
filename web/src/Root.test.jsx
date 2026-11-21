@@ -191,6 +191,5 @@ describe("Root", () => {
 
     const call = fetchMock.mock.calls.find(([url]) => String(url).includes("/comments?limit=100"));
     expect(call[1].headers.Authorization).toBe("Bearer mem0ry");
-    vi.restoreAllMocks();
   });
 });
