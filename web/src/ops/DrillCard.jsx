@@ -49,6 +49,7 @@ export default function DrillCard({ token, nextAllowedAt, onStarted }) {
   const opener = useRef(null);
   const status = useRef(null);
   const returnFocus = useRef(false);
+  const stillAsking = useRef(false);
 
   useEffect(() => {
     let tick;
@@ -77,6 +78,8 @@ export default function DrillCard({ token, nextAllowedAt, onStarted }) {
     if (done) status.current?.focus();
   }, [done]);
 
+  stillAsking.current = asking !== null;
+
   // Back to the button that opened the dialog, once the dialog's own buttons are gone
   useEffect(() => {
     if (!asking && returnFocus.current) {
@@ -90,8 +93,9 @@ export default function DrillCard({ token, nextAllowedAt, onStarted }) {
     setAsking(null);
   }
 
-  // The server's time for the snapshot's value; the deadline of a drill started here is counted from
-  // this browser's clock using the server's own interval, so a wrong laptop clock cannot lock the card
+  // The deadline of a drill started here is counted from this browser's clock using the server's own
+  // interval; the snapshot's value is the server's clock, so a laptop clock that is far off can still
+  // lock or unlock the card until the next drill (a known limit)
   const serverNext = toMs(nextAllowedAt);
   const deadline = Math.max(serverNext ?? 0, localDeadline ?? 0);
   const waitSeconds = Math.max(
@@ -122,7 +126,8 @@ export default function DrillCard({ token, nextAllowedAt, onStarted }) {
     } catch (error) {
       setDone(null);
       setProblem(refusal(error));
-      returnFocus.current = true;
+      // Only if the dialog is still open: after a Cancel the flag was already spent
+      if (stillAsking.current) returnFocus.current = true;
       setAsking(null);
       return;
     } finally {
