@@ -7,8 +7,8 @@ function request(path, options) // https://jasonwatmore.com/fetch-add-bearer-tok
 {
   const url = `/api/v1/${path}`;
   const token = process.env.API_KEY;
-  onst header = {"Authorization" : `Bearer ${token}`};
-  fetch(url, {method: "GET", header, options}).then(response => response.json().then(console.log)).catch(console.error); // https://stackoverflow.com/questions/68824056/how-to-assign-bearer-token-to-authorization-header-in-javascript
+  const header = {"Authorization" : `Bearer ${token}`};
+  fetch(url, {method: "GET", headers: header, options}).then(response => response.json().then(console.log)).catch(console.error); // https://stackoverflow.com/questions/68824056/how-to-assign-bearer-token-to-authorization-header-in-javascript
 }
 
 export async function register()
