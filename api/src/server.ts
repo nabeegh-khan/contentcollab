@@ -20,6 +20,8 @@ import { jwtSecret } from "./middleware/requireAuth.js";
 import compareRoutes, { compareEnabled } from "./routes/compare.js";
 import { createServer } from "node:http";
 import { createSocketServer } from "./lib/socket.js";
+import sharesRoutes from "./routes/shares.js";
+import linksRoutes from "./routes/links.js";
 
 const app = express();
 
@@ -50,6 +52,8 @@ if (compareEnabled(process.env)) app.use("/api/v1/documents", compareRoutes);
 
 app.use("/api/v1", commentsRoutes);
 
+app.use("/api/v1/documents/:documentId/shares", sharesRoutes);
+app.use("/api/v1/links", linksRoutes);
 app.use((req, res) => res.status(HTTP_NOT_FOUND).json(errorBody(HTTP_NOT_FOUND)));
 app.use(errorHandler);
 
