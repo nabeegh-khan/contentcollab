@@ -3,8 +3,8 @@ import {CronJob} from 'cron'; // https://www.npmjs.com/package/cron
 // https://github.com/digitalocean/postgres-spaces-backups/blob/main/src/backup.ts 
 import {
   S3Client,
+  PutObjectCommand,
 } from "@aws-sdk/client-s3";
-import { Upload } from "@aws-sdk/lib-storage";
 import { createReadStream, unlink, statSync } from "fs";
 import path from "path";
 
@@ -13,7 +13,6 @@ const secret = process.env.SPACES_SECRET;
 const bucket = process.env.SPACES_BUCKET;
 const region = process.env.SPACES_REGION;
 const endpoint = process.env.SPACES_ENDPOINT;
-
 
 const client = new S3Client({region: region, credentials: {accessKeyId: key, secretAccessKey: secret},}); // https://www.codemzy.com/blog/nodejs-upload-files-digitalocean-spaces
 
@@ -30,10 +29,8 @@ const upload = async (name) => { // https://github.com/digitalocean/postgres-spa
     Body: createReadStream(path),
     };
     
-    await new Upload({
-    client,
-    params: params,
-  }).done();   
+    const command = new PutObjectCommand(params); // https://docs.aws.amazon.com/AWSJavaScriptSDK/v3/latest/client/s3/command/PutObjectCommand/
+    await client.send(command);
 };
 
 const job = new CronJob(
