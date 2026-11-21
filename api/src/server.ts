@@ -22,6 +22,8 @@ import { createServer } from "node:http";
 import { createSocketServer } from "./lib/socket.js";
 import sharesRoutes from "./routes/shares.js";
 import linksRoutes from "./routes/links.js";
+import documentRoutes from "./routes/documents.js";
+import versionsRoutes from "./routes/versions.js";
 
 const app = express();
 
@@ -54,6 +56,9 @@ app.use("/api/v1", commentsRoutes);
 
 app.use("/api/v1/documents/:documentId/shares", sharesRoutes);
 app.use("/api/v1/links", linksRoutes);
+
+app.use("/api/v1/documents", documentRoutes);
+app.use("/api/v1/documents/:documentId/versions", versionsRoutes);
 app.use((req, res) => res.status(HTTP_NOT_FOUND).json(errorBody(HTTP_NOT_FOUND)));
 app.use(errorHandler);
 
