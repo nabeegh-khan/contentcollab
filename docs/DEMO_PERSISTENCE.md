@@ -15,3 +15,7 @@ While it runs, PostgreSQL is down during events 1 and 3: after about 15 s the AP
 | not yet run | local cluster, the claim replaced by an `emptyDir` | same script | must FAIL |
 
 Each run's output goes in `docs/evidence/` with its date, and its line here gives the claim's volume name before and after, the seconds per event and the pass or fail line.
+
+## Autoscaling run, 21 November 2026 (not a restart test; recorded beside them, #69)
+
+The same cluster (two Ready nodes) under the stepped load: 50 then 150 requests a second, 180 s each, against `https://contentcollab.app/health`. The HPA went 2 to 3 pods at 19:09:30 UTC and 3 to 5 at 19:10:15, and all five were ready at 19:10:34. Failures: 0 at 50 req/s; 16 at 150 req/s (0.06%, p95 175 ms), all socket resets within one second at 19:10:32, just before the fifth pod became ready. Peak node memory 84%; no third node was added. Files: `docs/evidence/2026-11-21-hpa-watch.txt`, `docs/evidence/2026-11-21-api-pods-watch.txt`, `docs/loadtest/2026-11-21T19-12-52-177Z.csv` (with `-failures` and `-scaling`). Details and the 20 November attempt this replaces: ARCHITECTURE D15.

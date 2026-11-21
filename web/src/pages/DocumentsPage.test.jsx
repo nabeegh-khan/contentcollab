@@ -1,7 +1,10 @@
-// Render test: the documents page shows its list and upload as disabled until the routes land.
+// Render tests: upload and the list stay disabled until #116; a version can be opened by its ids (D28).
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import DocumentsPage from "./DocumentsPage.jsx";
+
+const DOC = "11111111-1111-4111-8111-111111111111";
+const VER = "22222222-2222-4222-8222-222222222222";
 
 describe("DocumentsPage", () => {
   it("shows upload and the list as disabled, marked after 24 Nov, and calls nothing", () => {
@@ -19,6 +22,27 @@ describe("DocumentsPage", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("opens a version by its document id and version id", () => {
+    render(<DocumentsPage />);
+
+    fireEvent.change(screen.getByLabelText("Document id"), { target: { value: ` ${DOC} ` } });
+    fireEvent.change(screen.getByLabelText("Version id"), { target: { value: VER } });
+    fireEvent.click(screen.getByRole("button", { name: "Open version" }));
+
+    expect(window.location.hash).toBe(`#/documents/${DOC}/versions/${VER}`);
+  });
+
+  it("refuses ids that are not ids, says so, and leaves the address alone", () => {
+    render(<DocumentsPage />);
+
+    fireEvent.change(screen.getByLabelText("Document id"), { target: { value: "nope" } });
+    fireEvent.change(screen.getByLabelText("Version id"), { target: { value: VER } });
+    fireEvent.click(screen.getByRole("button", { name: "Open version" }));
+
+    expect(screen.getByRole("alert").textContent).toMatch(/ids/i);
+    expect(window.location.hash).toBe("");
+  });
+
   it("shows the share form and sends the page's token with it", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ id: "s1", role: "viewer" }), {
@@ -30,7 +54,7 @@ describe("DocumentsPage", () => {
     render(<DocumentsPage token="t0k" />);
 
     expect(screen.getByRole("heading", { name: "Share a document" })).toBeTruthy();
-    fireEvent.change(screen.getByLabelText("Document id"), {
+    fireEvent.change(screen.getByLabelText("Id of the document to share"), {
       target: { value: "11111111-1111-4111-8111-111111111111" },
     });
     fireEvent.change(screen.getByLabelText("Email of the user"), { target: { value: "a@b.co" } });

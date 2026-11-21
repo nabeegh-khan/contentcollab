@@ -17,7 +17,9 @@ function answer(status, body) {
 }
 
 function fill({ doc = DOC, email = "bo@x.co", role } = {}) {
-  fireEvent.change(screen.getByLabelText("Document id"), { target: { value: doc } });
+  fireEvent.change(screen.getByLabelText("Id of the document to share"), {
+    target: { value: doc },
+  });
   fireEvent.change(screen.getByLabelText("Email of the user"), { target: { value: email } });
   if (role) fireEvent.change(screen.getByLabelText("Role"), { target: { value: role } });
   fireEvent.click(screen.getByRole("button", { name: "Share" }));

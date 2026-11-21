@@ -59,7 +59,7 @@ export default function ShareForm({ token }) {
       <h3>Share a document</h3>
       <form onSubmit={submit}>
         <label className="field">
-          <span>Document id</span>
+          <span>Id of the document to share</span>
           <input
             type="text"
             value={documentId}
