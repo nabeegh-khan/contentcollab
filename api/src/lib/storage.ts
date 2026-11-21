@@ -1,9 +1,4 @@
-import {
-  CopyObjectCommand,
-  DeleteObjectCommand,
-  GetObjectCommand,
-  S3Client,
-} from "@aws-sdk/client-s3";
+import { DeleteObjectCommand, GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { Upload } from "@aws-sdk/lib-storage";
 import { Readable } from "node:stream";
 
@@ -54,7 +49,12 @@ export class StorageNotFoundError extends Error {
 
 // Uploads a stream using multipart upload when necessary.
 // The file is streamed rather than loaded entirely into memory.
-export async function putStream(key: string, stream: Readable, contentType: string): Promise<void> {
+export async function putStream(
+  key: string,
+  stream: Readable,
+  contentType: string,
+  signal: AbortSignal,
+): Promise<void> {
   const upload = new Upload({
     client: s3,
     params: {
@@ -67,7 +67,17 @@ export async function putStream(key: string, stream: Readable, contentType: stri
     partSize: 5 * 1024 * 1024,
   });
 
-  await upload.done();
+  const onAbort = () => {
+    void upload.abort();
+  };
+  signal.addEventListener("abort", onAbort, { once: true });
+  if (signal.aborted) onAbort();
+
+  try {
+    await upload.done();
+  } finally {
+    signal.removeEventListener("abort", onAbort);
+  }
 }
 
 // Retrieves an object as a Node.js readable stream.
@@ -97,19 +107,6 @@ export async function getStream(key: string): Promise<Readable> {
   }
 
   return response.Body as Readable;
-}
-
-// Copies an existing object to a new key.
-export async function copy(fromKey: string, toKey: string): Promise<void> {
-  const encodedSource = fromKey.split("/").map(encodeURIComponent).join("/");
-
-  await s3.send(
-    new CopyObjectCommand({
-      Bucket: getBucket(),
-      CopySource: `${getBucket()}/${encodedSource}`,
-      Key: toKey,
-    }),
-  );
 }
 
 // Deletes an object.
