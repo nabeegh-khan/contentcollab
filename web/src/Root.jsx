@@ -53,7 +53,8 @@ function useSession() {
 }
 
 function SignedInPage({ route, token, user }) {
-  if (route.name === "ops") return <OpsPage token={token} />;
+  // key: a new token starts a clean page, with no refusal or data of the old one
+  if (route.name === "ops") return <OpsPage key={token} token={token} />;
   if (route.name === "version") {
     return (
       <DocumentPage
