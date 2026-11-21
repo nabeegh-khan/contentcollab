@@ -115,6 +115,9 @@ export function scanManifest(text) {
 const SECRET = "app-secrets";
 // SEC-2: the whole Secret (every key) goes to these two workloads and to nothing else
 export const WHOLE_SECRET_CONSUMERS = ["Deployment/api", "Deployment/worker"];
+// D30: the nightly backup uploads to the same bucket, so it reads the storage keys too, one by one and
+// never the whole Secret; a backup bucket and key of their own (D2) are a follow-up
+export const STORAGE_KEY_CONSUMERS = [...WHOLE_SECRET_CONSUMERS, "CronJob/db-backup"];
 const SPACES_KEYS = /^SPACES_/;
 
 /**
@@ -153,8 +156,8 @@ export function problems({ templateText, manifests, configMapText }) {
       for (const env of literals) found.push(`${file}: ${who} sets ${env} to a literal value; read it from the Secret`);
       for (const { key } of keyRefs.filter((r) => r.secret === SECRET)) {
         if (!(key in entries)) found.push(`${file}: ${who} reads ${key}, which the template does not define`);
-        if (SPACES_KEYS.test(key) && !WHOLE_SECRET_CONSUMERS.includes(who)) {
-          found.push(`${file}: ${who} reads ${key}; the storage keys belong to api and worker only (SEC-2)`);
+        if (SPACES_KEYS.test(key) && !STORAGE_KEY_CONSUMERS.includes(who)) {
+          found.push(`${file}: ${who} reads ${key}; the storage keys belong to api, worker and the backup CronJob only (SEC-2)`);
         }
       }
       for (const { via } of wholeRefs.filter((r) => r.secret === SECRET)) {

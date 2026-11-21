@@ -79,7 +79,20 @@ test("the storage keys reach api and worker only, whole or by key (SEC-2)", () =
   const job = { file: "job.yaml", text: deployment("migrate", envFrom) };
   assert.match(check([job])[0], /Deployment\/migrate takes every key of app-secrets \(envFrom\)/);
   const reader = { file: "web.yaml", text: deployment("web", keyRef("SPACES_KEY")) };
-  assert.deepEqual(check([reader]), ["web.yaml: Deployment/web reads SPACES_KEY; the storage keys belong to api and worker only (SEC-2)"]);
+  assert.deepEqual(check([reader]), ["web.yaml: Deployment/web reads SPACES_KEY; the storage keys belong to api, worker and the backup CronJob only (SEC-2)"]);
+});
+
+// D30: the nightly backup uploads to the same bucket, so CronJob/db-backup, and only it, may read the
+// storage keys, one by one; D2's own bucket and key for backups is a follow-up
+const cronJob = (name, refs) => deployment(name, refs).replace("kind: Deployment", "kind: CronJob");
+
+test("the backup CronJob may read the storage keys one by one, no other workload and not the whole Secret", () => {
+  const backup = { file: "backup.yaml", text: cronJob("db-backup", keyRef("SPACES_KEY")) };
+  assert.deepEqual(check([backup]), []);
+  const other = { file: "other.yaml", text: cronJob("report", keyRef("SPACES_KEY")) };
+  assert.deepEqual(check([other]), ["other.yaml: CronJob/report reads SPACES_KEY; the storage keys belong to api, worker and the backup CronJob only (SEC-2)"]);
+  const whole = { file: "backup.yaml", text: cronJob("db-backup", envFrom) };
+  assert.match(check([whole])[0], /CronJob\/db-backup takes every key of app-secrets \(envFrom\)/);
 });
 
 test("a Secret object among the manifests is reported", () => {
