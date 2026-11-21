@@ -126,6 +126,56 @@ describe("liveSources", () => {
     expect(asked.filter((a) => a.path === `${NS}/pods`)).toHaveLength(1);
   });
 
+  it("puts the drill rows on the events timeline, merged with Kubernetes events by time", async () => {
+    const { deps: d } = deps({
+      drillRows: async () => [
+        {
+          requestedAt: "2026-11-21T19:41:02.000Z",
+          target: "api",
+          pod: "api-old",
+          outcome: "evicted",
+        },
+        {
+          requestedAt: "2026-11-21T19:30:00.000Z",
+          target: "postgres",
+          pod: "postgres-0",
+          outcome: null,
+        },
+      ],
+    });
+    const events = await liveSources(d).events?.();
+    expect(events?.[0]).toMatchObject({
+      at: "2026-11-21T19:41:02.000Z",
+      type: "Drill",
+      reason: "RestartDrill",
+      object: "Pod/api-old",
+      outcome: "evicted",
+      source: "drill",
+    });
+    expect(events?.[1]).toMatchObject({ outcome: "result not recorded", object: "Pod/postgres-0" });
+  });
+
+  it("still shows the drills when the Kubernetes events cannot be read, and the reverse", async () => {
+    const base = deps().deps;
+    const rows = [
+      { requestedAt: "2026-11-21T19:41:02.000Z", target: "api", pod: "p", outcome: "evicted" },
+    ];
+    const kubeDown = deps({
+      drillRows: async () => rows,
+      kubeGet: async (path, options) => {
+        if (path.includes("events.k8s.io")) throw new Error("denied");
+        return base.kubeGet!(path, options);
+      },
+    }).deps;
+    expect(await liveSources(kubeDown).events?.()).toHaveLength(1);
+    const dbDown = deps({
+      drillRows: async () => {
+        throw new Error("db stopping");
+      },
+    }).deps;
+    expect(await liveSources(dbDown).events?.()).toEqual([]);
+  });
+
   it("leaves a source null when its dependency is missing (not in a cluster, no Prometheus)", () => {
     const { deps: d } = deps({ kubeGet: null, query: null });
     const s = liveSources(d);

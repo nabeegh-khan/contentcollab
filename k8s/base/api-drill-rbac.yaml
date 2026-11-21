@@ -1,0 +1,26 @@
+# The restart drill of the operations panel (ARCHITECTURE D31): the one write the API may do, creating an
+# Eviction for a pod, which respects the PodDisruptionBudget and can only stop a pod its controller
+# recreates. RBAC cannot narrow pods by label and a top-level create cannot be limited by name, so the
+# API's code picks the pod (api or postgres-0). In its own file so that removing it from
+# kustomization.yaml switches drills off without a code change: the panel then says so (403).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: api-drill
+rules:
+  - apiGroups: [""]
+    resources: ["pods/eviction"]
+    verbs: ["create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: api-drill
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: api-drill
+subjects:
+  - kind: ServiceAccount
+    name: api
+    namespace: contentcollab

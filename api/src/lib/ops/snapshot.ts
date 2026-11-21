@@ -26,6 +26,8 @@ export interface OpsSources {
   counts: Source<{ documents: number; versions: number }>;
   events: Source<TimelineEvent[]>;
   logs: Source<{ lines: LogLine[]; hidden: number }>;
+  /** When the next drill may start (ISO time), or null; left out where there are no drills. */
+  nextDrill?: Source<string | null> | undefined;
 }
 
 export const SOURCE_TIMEOUT_MS = 1000;
@@ -66,17 +68,21 @@ export async function buildSnapshot(
   options: { grafanaUrl: string | null; timeoutMs?: number },
 ) {
   const limit = options.timeoutMs ?? SOURCE_TIMEOUT_MS;
-  const [containers, hpa, nodes, traffic, claim, counts, events, logs] = await Promise.all([
-    attempt("containers", sources.containers, limit),
-    attempt("hpa", sources.hpa, limit),
-    attempt("nodes", sources.nodes, limit),
-    attempt("traffic", sources.traffic, limit),
-    attempt("claim", sources.claim, limit),
-    attempt("counts", sources.counts, limit),
-    attempt("events", sources.events, limit),
-    attempt("logs", sources.logs, limit),
-  ]);
-  const named = { containers, hpa, nodes, traffic, claim, counts, events, logs };
+  const [containers, hpa, nodes, traffic, claim, counts, events, logs, nextDrill] =
+    await Promise.all([
+      attempt("containers", sources.containers, limit),
+      attempt("hpa", sources.hpa, limit),
+      attempt("nodes", sources.nodes, limit),
+      attempt("traffic", sources.traffic, limit),
+      attempt("claim", sources.claim, limit),
+      attempt("counts", sources.counts, limit),
+      attempt("events", sources.events, limit),
+      attempt("logs", sources.logs, limit),
+      sources.nextDrill
+        ? attempt("nextDrill", sources.nextDrill, limit)
+        : { ok: true as const, value: null },
+    ]);
+  const named = { containers, hpa, nodes, traffic, claim, counts, events, logs, nextDrill };
   const errors = Object.fromEntries(
     Object.entries(named).flatMap(([name, outcome]) => (outcome.ok ? [] : [[name, outcome.error]])),
   );
@@ -97,7 +103,7 @@ export async function buildSnapshot(
     },
     events: valueOr(events) ?? [],
     logs: valueOr(logs) ?? { lines: [], hidden: 0 },
-    drills: { nextAllowedAt: null },
+    drills: { nextAllowedAt: valueOr(nextDrill) ?? null },
     links: { grafana: options.grafanaUrl },
   };
 }

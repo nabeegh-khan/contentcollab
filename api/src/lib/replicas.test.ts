@@ -14,6 +14,7 @@ import {
 const READY = 3;
 const OK = 200;
 const FORBIDDEN = 403;
+const TOO_MANY = 429;
 const HOST = "10.245.0.1";
 const PORT = "443";
 // The body the apiserver sends for a denied request
@@ -98,6 +99,50 @@ describe("inClusterGet", () => {
       lines,
     );
     expect(https.calls[0]?.headers?.Accept).toBe("text/plain");
+  });
+
+  it("sends a POST with a JSON body and content type, for the eviction call", async () => {
+    const sent: {
+      method?: string | undefined;
+      headers?: Record<string, string> | undefined;
+      body?: unknown;
+    } = {};
+    const request: HttpsDeps["request"] = (options, onResponse) => {
+      sent.method = options.method;
+      sent.headers = options.headers as Record<string, string>;
+      const req = new EventEmitter() as EventEmitter & {
+        end(body?: string): void;
+        destroy(err?: Error): void;
+      };
+      req.destroy = () => {};
+      req.end = (body) => {
+        sent.body = body;
+        const res = Object.assign(new EventEmitter(), { statusCode: 201 });
+        setImmediate(() => {
+          onResponse(res as never);
+          res.emit("data", Buffer.from(JSON.stringify({ kind: "Status", status: "Success" })));
+          res.emit("end");
+        });
+      };
+      return req as never;
+    };
+    const get = inClusterGet(env, { request, readFile: files })!;
+    const reply = await get("/api/v1/namespaces/contentcollab/pods/api-a/eviction", {
+      method: "POST",
+      body: { kind: "Eviction" },
+    });
+    expect(reply).toEqual({ kind: "Status", status: "Success" });
+    expect(sent.method).toBe("POST");
+    expect(sent.headers?.["Content-Type"]).toBe("application/json");
+    expect(JSON.parse(String(sent.body))).toEqual({ kind: "Eviction" });
+  });
+
+  it("rejects with the HTTP status on the error, so a caller can tell 429 from 403", async () => {
+    const https = fakeHttps(TOO_MANY, JSON.stringify({ kind: "Status", code: TOO_MANY }));
+    const get = inClusterGet(env, { request: https.request, readFile: files })!;
+    const error = await get("/x", { method: "POST", body: {} }).catch((e: unknown) => e);
+    expect((error as { status?: number }).status).toBe(TOO_MANY);
+    expect((error as Error).message).toContain(String(TOO_MANY));
   });
 
   it("rejects a non-2xx reply before reading it as a Deployment", async () => {

@@ -9,7 +9,22 @@ export const DEPLOYMENT_PATH = "/apis/apps/v1/namespaces/contentcollab/deploymen
 
 /** GET a Kubernetes API path and return the parsed JSON body. */
 /** `text: true` returns the body as a string (pod logs) instead of parsed JSON. */
-export type KubeGet = (path: string, options?: { text?: boolean }) => Promise<unknown>;
+export type KubeGet = (path: string, options?: KubeOptions) => Promise<unknown>;
+
+/** `method: "POST"` with a `body` sends JSON (the eviction call of the restart drill, D31). */
+export interface KubeOptions {
+  text?: boolean;
+  method?: "GET" | "POST";
+  body?: unknown;
+}
+
+/** A non-2xx answer from the apiserver, with its HTTP status for the caller. */
+export class KubeApiError extends Error {
+  constructor(public readonly status: number) {
+    super(`kubernetes API answered ${status}`);
+    this.name = "KubeApiError";
+  }
+}
 
 export async function readyReplicas(get: KubeGet): Promise<{ api: number }> {
   const reply = (await get(DEPLOYMENT_PATH)) as {
@@ -67,11 +82,12 @@ export function inClusterGet(
           host,
           port,
           path,
-          method: "GET",
+          method: options?.method ?? "GET",
           ca: deps.readFile(`${SERVICE_ACCOUNT_DIR}/ca.crt`),
           headers: {
             Authorization: `Bearer ${token}`,
             Accept: options?.text ? "text/plain" : "application/json",
+            ...(options?.body === undefined ? {} : { "Content-Type": "application/json" }),
           },
           timeout: REQUEST_TIMEOUT_MS,
         },
@@ -82,7 +98,7 @@ export function inClusterGet(
           res.on("end", () => {
             const code = res.statusCode ?? 0;
             if (code < HTTP_OK_MIN || code > HTTP_OK_MAX) {
-              reject(new Error(`kubernetes API answered ${code}`));
+              reject(new KubeApiError(code));
               return;
             }
             try {
@@ -96,7 +112,7 @@ export function inClusterGet(
       );
       req.on("timeout", () => req.destroy(new Error("kubernetes API: no answer")));
       req.on("error", reject);
-      req.end();
+      req.end(options?.body === undefined ? undefined : JSON.stringify(options.body));
     });
 }
 

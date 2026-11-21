@@ -122,6 +122,28 @@ class StatusReadAccess(unittest.TestCase):
         config = one(self.docs, "ConfigMap", "app-config")
         self.assertEqual(config["data"]["PROMETHEUS_URL"], "http://prometheus.observability.svc:9090")
 
+    def test_the_drill_role_can_only_create_evictions(self):
+        # D31: stopping one pod, which its controller replaces, is the only write the API may do
+        role = one(self.docs, "Role", "api-drill")
+        self.assertEqual(role["rules"], [{"apiGroups": [""], "resources": ["pods/eviction"], "verbs": ["create"]}])
+        binding = one(self.docs, "RoleBinding", "api-drill")
+        self.assertEqual(
+            binding["roleRef"], {"apiGroup": "rbac.authorization.k8s.io", "kind": "Role", "name": "api-drill"}
+        )
+        self.assertEqual(
+            binding["subjects"], [{"kind": "ServiceAccount", "name": "api", "namespace": "contentcollab"}]
+        )
+
+    def test_the_drill_permission_is_its_own_file_so_removing_it_switches_drills_off(self):
+        text = (ROOT / "k8s" / "base" / "kustomization.yaml").read_text(encoding="utf-8")
+        self.assertIn("  - api-drill-rbac.yaml", text)
+        drill_file = (ROOT / "k8s" / "base" / "api-drill-rbac.yaml").read_text(encoding="utf-8")
+        docs = [d for d in yaml.safe_load_all(drill_file) if d]
+        self.assertEqual({(d["kind"], d["metadata"]["name"]) for d in docs}, {("Role", "api-drill"), ("RoleBinding", "api-drill")})
+        # and it is nowhere else: api-rbac.yaml must not grant eviction
+        main_file = (ROOT / "k8s" / "base" / "api-rbac.yaml").read_text(encoding="utf-8")
+        self.assertNotIn("pods/eviction", main_file)
+
     def test_other_workloads_do_not_run_as_the_api_account(self):
         # Only the API may read its Deployment; every other workload (worker, redis, the postgres
         # StatefulSet, any Job) keeps the namespace's default account
