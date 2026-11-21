@@ -27,6 +27,9 @@ import { liveSources } from "./lib/ops/live.js";
 import { prometheusQuery } from "./lib/ops/traffic.js";
 import documentRoutes from "./routes/documents.js";
 import versionsRoutes from "./routes/versions.js";
+import { runDrill } from "./lib/ops/drill.js";
+import { drillStore, nextDrillAt } from "./lib/ops/drillStore.js";
+import { log } from "./lib/log.js";
 
 const app = express();
 
@@ -53,6 +56,7 @@ app.use(
 );
 // Operations panel (D31): cluster internals, so sign-in and an admin check sit on the whole router
 const prometheusUrl = process.env.PROMETHEUS_URL;
+const store = drillStore(pool);
 let countsRunning = false;
 app.use(
   "/api/v1/ops",
@@ -64,6 +68,8 @@ app.use(
       query: prometheusUrl ? prometheusQuery(prometheusUrl) : null,
       // The source's 1 s race abandons a slow read but cannot cancel it (pg has no per-query timeout), so
       // a read is not started while the last one still runs: a hung database holds one pool client, not one per window
+      drillRows: store.drillRows,
+      nextDrill: () => nextDrillAt(redis),
       sql: async () => {
         if (countsRunning) throw new Error("the previous count is still running");
         countsRunning = true;
@@ -81,7 +87,31 @@ app.use(
         }
       },
     }),
-    { grafanaUrl: process.env.GRAFANA_URL ?? null },
+    {
+      grafanaUrl: process.env.GRAFANA_URL ?? null,
+      // The restart drill (D31): only in a cluster, where there is a pod to evict
+      ...(kubeGet
+        ? {
+            drill: (target, actorUserId) =>
+              runDrill(
+                {
+                  hostname: process.env.HOSTNAME ?? "",
+                  now: Date.now,
+                  redis,
+                  listPods: () => kubeGet("/api/v1/namespaces/contentcollab/pods"),
+                  evict: async (path, body) => {
+                    await kubeGet(path, { method: "POST", body });
+                  },
+                  recordDrill: store.recordDrill,
+                  finishDrill: store.finishDrill,
+                  log: (msg, fields) => log("info", msg, { component: "ops", ...fields }),
+                },
+                target,
+                actorUserId,
+              ),
+          }
+        : {}),
+    },
   ),
 );
 app.use("/api/v1/auth", authRoutes);

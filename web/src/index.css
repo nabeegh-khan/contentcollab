@@ -1,16 +1,19 @@
-/* Light theme only, sized for a projector at Chrome's 100% zoom (ARCHITECTURE D28). Every text colour is
-   #111111 on #FFFFFF (18.9:1) or white on the accent (8.98:1); there is one theme and no toggle. */
+/* Dashboard theme, light only, sized for a projector at Chrome's 100% zoom (ARCHITECTURE D28): a light grey page,
+   white cards, text #111827 (secondary #374151, never lighter), one accent #1D4ED8 with white text on it.
+   There is one theme and no toggle. */
 :root {
-  --text: #111111;
-  --text-h: #111111;
-  --bg: #ffffff;
-  --border: #767676; /* mid grey, 4.54:1 on white, so field and card edges are visible */
-  --primary: #5b21b6; /* the one accent: primary buttons and links */
+  --bg: #f4f5f7; /* the page */
+  --card: #ffffff;
+  --border: #d0d5dd;
+  --text-h: #111827;
+  --text: #111827;
+  --text-2: #374151; /* secondary text: 9.9:1 on the page, 10.3:1 on a card */
+  --primary: #1d4ed8; /* primary buttons and links; white on it 6.7:1 */
   --focus: #0b57d0;
   --danger: #a31515;
-  --code-bg: #f1f1f1;
+  --code-bg: #e5e7eb;
   --shadow:
-    rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
+    rgba(16, 24, 40, 0.08) 0 4px 12px -2px, rgba(16, 24, 40, 0.04) 0 2px 4px -2px;
 
   --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
   --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
@@ -33,6 +36,7 @@
 
 body {
   margin: 0;
+  background: var(--bg);
 }
 
 #root {
@@ -45,12 +49,12 @@ body {
 h1,
 h2 {
   font-family: var(--heading);
-  font-weight: 500;
+  font-weight: 600;
   color: var(--text-h);
 }
 
 h2 {
-  font-size: 2rem;
+  font-size: 1.8rem;
   line-height: 120%;
   margin: 0 0 0.5rem;
 }

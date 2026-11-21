@@ -1,6 +1,7 @@
 # The API's own ServiceAccount and what it may read in the cluster. api-status: its own Deployment's
 # ready replicas for GET /api/v1/status (#30, ARCHITECTURE D23). api-ops and contentcollab-api-nodes:
-# the read-only operations panel (D31). Least privilege (SEC-6, lecture 8 on RBAC): nothing is written.
+# the read-only operations panel (D31). The one write, evicting a pod for the restart drill, is its own
+# file, api-drill-rbac.yaml. Least privilege (SEC-6, lecture 8 on RBAC).
 apiVersion: v1
 kind: ServiceAccount
 metadata:
