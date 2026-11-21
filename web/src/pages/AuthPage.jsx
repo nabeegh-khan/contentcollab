@@ -8,12 +8,14 @@ function errorLines(error) {
   return [error.message, ...error.details.map((d) => `${d.field}: ${d.message}`)];
 }
 
-function Field({ label, type = "text", value, onChange, autoComplete }) {
+// `name` and `autoComplete` are what Chrome's password manager reads to save and fill the login
+function Field({ label, name, type = "text", value, onChange, autoComplete }) {
   return (
     <label className="field">
       <span>{label}</span>
       <input
         type={type}
+        name={name}
         value={value}
         autoComplete={autoComplete}
         required
@@ -53,16 +55,30 @@ export default function AuthPage({ onSignedIn }) {
     <section className="card auth">
       <h1>{registering ? "Register" : "Sign in"}</h1>
       <form onSubmit={submit}>
-        <Field label="Email" type="email" value={email} onChange={setEmail} autoComplete="email" />
+        <Field
+          label="Email"
+          name="email"
+          type="email"
+          value={email}
+          onChange={setEmail}
+          autoComplete="username"
+        />
         <Field
           label="Password"
+          name="password"
           type="password"
           value={password}
           onChange={setPassword}
           autoComplete={registering ? "new-password" : "current-password"}
         />
         {registering && (
-          <Field label="Display name" value={displayName} onChange={setDisplayName} />
+          <Field
+            label="Display name"
+            name="displayName"
+            value={displayName}
+            onChange={setDisplayName}
+            autoComplete="name"
+          />
         )}
         {errors.length > 0 && (
           <div role="alert" className="error">
