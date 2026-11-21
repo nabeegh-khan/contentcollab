@@ -71,3 +71,18 @@ spec:
       backendRefs:
         - name: web
           port: 80
+---
+# Uploads: NGF applies nginx's client_max_body_size (1 MiB unless set), so a normal PDF would get a
+# 413 at the Gateway before reaching the API, whose own limit is 50 MiB (D29). maxSize "0" would switch
+# the check off, so it is a number (NGF API reference, ClientBody.maxSize; checked 21 Nov 2026).
+apiVersion: gateway.nginx.org/v1alpha1
+kind: ClientSettingsPolicy
+metadata:
+  name: contentcollab-client-settings
+spec:
+  targetRef:
+    group: gateway.networking.k8s.io
+    kind: Gateway
+    name: contentcollab
+  body:
+    maxSize: 50m
