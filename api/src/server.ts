@@ -22,6 +22,9 @@ import { createServer } from "node:http";
 import { createSocketServer } from "./lib/socket.js";
 import sharesRoutes from "./routes/shares.js";
 import linksRoutes from "./routes/links.js";
+import { opsRoutes } from "./routes/ops.js";
+import { liveSources } from "./lib/ops/live.js";
+import { prometheusQuery } from "./lib/ops/traffic.js";
 
 const app = express();
 
@@ -45,6 +48,26 @@ app.use(
     latency: () => latencyFrom(httpDuration),
     replicas: () => (replicas ? replicas() : Promise.resolve(null)),
   }),
+);
+// Operations panel (D31): cluster internals, so sign-in and an admin check sit on the whole router
+const prometheusUrl = process.env.PROMETHEUS_URL;
+app.use(
+  "/api/v1/ops",
+  opsRoutes(
+    liveSources({
+      now: Date.now,
+      hostname: process.env.HOSTNAME ?? "",
+      kubeGet,
+      query: prometheusUrl ? prometheusQuery(prometheusUrl) : null,
+      sql: async () => {
+        const { rows } = await pool.query<{ documents: number; versions: number }>(
+          "SELECT (SELECT count(*) FROM documents)::int AS documents, (SELECT count(*) FROM document_versions)::int AS versions",
+        );
+        return rows[0] ?? { documents: 0, versions: 0 };
+      },
+    }),
+    { grafanaUrl: process.env.GRAFANA_URL ?? null },
+  ),
 );
 app.use("/api/v1/auth", authRoutes);
 // Version comparison (#23, D21): off unless FEATURE_VERSION_COMPARE=1

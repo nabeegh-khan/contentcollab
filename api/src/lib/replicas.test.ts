@@ -90,6 +90,16 @@ describe("inClusterGet", () => {
     expect(https.calls[0]?.ca).toEqual(Buffer.from("the-ca"));
   });
 
+  it("returns the body as text, without parsing it, when asked (pod logs)", async () => {
+    const lines = '{"msg":"request"}\n{"msg":"request"}\n';
+    const https = fakeHttps(OK, lines);
+    const get = inClusterGet(env, { request: https.request, readFile: files })!;
+    expect(await get("/api/v1/namespaces/contentcollab/pods/api-a/log", { text: true })).toBe(
+      lines,
+    );
+    expect(https.calls[0]?.headers?.Accept).toBe("text/plain");
+  });
+
   it("rejects a non-2xx reply before reading it as a Deployment", async () => {
     const https = fakeHttps(FORBIDDEN, JSON.stringify(FORBIDDEN_STATUS));
     const get = inClusterGet(env, { request: https.request, readFile: files })!;

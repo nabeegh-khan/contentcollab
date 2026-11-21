@@ -118,6 +118,7 @@ A link share grants its role to anyone with the token until `expiresAt`. Writes 
 | GET | `/health` (no `/api/v1` prefix) | `200 { status: "ok", postgres, redis }`; `503` degraded |
 | GET | `/metrics` (no prefix) | `200` Prometheus text; cluster-internal only |
 | GET | `/status` (public, no token) | `200 { generatedAt, replicas: { api }, queue: { waiting }, latency: { requests, p50Seconds, p95Seconds, overTopBucket, scope } }`, `Cache-Control: no-store`; always `200`: a source that fails is `null` with `error` (`"unavailable"` or the time limit), and `replicas.api` is `null` with no `error` outside a cluster (ARCHITECTURE D23) |
+| GET | `/ops` (token, and the user's id listed in `OPS_ADMIN_USER_IDS`) | `200 { generatedAt, cachedForSeconds, namespace, errors, containers, hpa, nodes, traffic, storage: { claim, documents, versions }, events, logs: { lines, hidden }, drills, links }`, `Cache-Control: no-store`; a section that cannot be read is `null` (`[]` for `events`, empty for `logs`) with its reason in `errors` (`"unavailable"`, `"no answer within 1000 ms"` or `"not configured"`); `401` no token, `403` not an admin or nobody is listed; the snapshot is rebuilt at most every 5 s per API pod (ARCHITECTURE D31) |
 
 ## Real-time events (Socket.IO)
 

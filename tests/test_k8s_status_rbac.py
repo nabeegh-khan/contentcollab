@@ -47,10 +47,80 @@ class StatusReadAccess(unittest.TestCase):
         self.assertEqual(binding["roleRef"], {"apiGroup": "rbac.authorization.k8s.io", "kind": "Role", "name": "api-status"})
         self.assertEqual(binding["subjects"], [{"kind": "ServiceAccount", "name": "api", "namespace": "contentcollab"}])
 
-    def test_no_cluster_wide_access(self):
-        kinds = {d["kind"] for d in self.docs}
-        self.assertNotIn("ClusterRole", kinds)
-        self.assertNotIn("ClusterRoleBinding", kinds)
+    def test_the_only_cluster_wide_objects_are_the_namespace_and_the_node_reader(self):
+        # D31: nodes are cluster-scoped, so the operations panel needs one ClusterRole, and nothing more
+        cluster = {
+            (d["kind"], d["metadata"]["name"])
+            for d in self.docs
+            if d["kind"] in ("ClusterRole", "ClusterRoleBinding")
+        }
+        self.assertEqual(
+            cluster,
+            {("ClusterRole", "contentcollab-api-nodes"), ("ClusterRoleBinding", "contentcollab-api-nodes")},
+        )
+
+    def test_the_node_reader_can_only_get_and_list_nodes_and_their_metrics(self):
+        role = one(self.docs, "ClusterRole", "contentcollab-api-nodes")
+        self.assertEqual(
+            role["rules"],
+            [
+                {"apiGroups": [""], "resources": ["nodes"], "verbs": ["get", "list"]},
+                {"apiGroups": ["metrics.k8s.io"], "resources": ["nodes"], "verbs": ["get", "list"]},
+            ],
+        )
+        binding = one(self.docs, "ClusterRoleBinding", "contentcollab-api-nodes")
+        self.assertEqual(
+            binding["roleRef"],
+            {"apiGroup": "rbac.authorization.k8s.io", "kind": "ClusterRole", "name": "contentcollab-api-nodes"},
+        )
+        self.assertEqual(
+            binding["subjects"], [{"kind": "ServiceAccount", "name": "api", "namespace": "contentcollab"}]
+        )
+
+    def test_the_ops_role_reads_pods_logs_events_one_hpa_and_one_claim(self):
+        role = one(self.docs, "Role", "api-ops")
+        self.assertEqual(
+            role["rules"],
+            [
+                {"apiGroups": [""], "resources": ["pods"], "verbs": ["get", "list"]},
+                {"apiGroups": [""], "resources": ["pods/log"], "verbs": ["get"]},
+                {"apiGroups": ["events.k8s.io"], "resources": ["events"], "verbs": ["list"]},
+                {
+                    "apiGroups": ["autoscaling"],
+                    "resources": ["horizontalpodautoscalers"],
+                    "resourceNames": ["api"],
+                    "verbs": ["get"],
+                },
+                {
+                    "apiGroups": [""],
+                    "resources": ["persistentvolumeclaims"],
+                    "resourceNames": ["data-postgres-0"],
+                    "verbs": ["get"],
+                },
+            ],
+        )
+        binding = one(self.docs, "RoleBinding", "api-ops")
+        self.assertEqual(
+            binding["roleRef"], {"apiGroup": "rbac.authorization.k8s.io", "kind": "Role", "name": "api-ops"}
+        )
+        self.assertEqual(
+            binding["subjects"], [{"kind": "ServiceAccount", "name": "api", "namespace": "contentcollab"}]
+        )
+
+    def test_the_panels_roles_only_read(self):
+        # D31 PR 1 is read-only: no verb but get and list, and nothing on credentials or exec
+        names = ("api-ops", "contentcollab-api-nodes")
+        roles = [d for d in self.docs if d["kind"] in ("Role", "ClusterRole") and d["metadata"]["name"] in names]
+        self.assertEqual(len(roles), 2)
+        for role in roles:
+            for rule in role["rules"]:
+                self.assertTrue(set(rule["verbs"]) <= {"get", "list"}, role["metadata"]["name"])
+                self.assertNotIn("pods/exec", rule["resources"])
+                self.assertFalse([r for r in rule["resources"] if r.startswith("sec")], role["metadata"]["name"])
+
+    def test_the_api_finds_prometheus_through_its_settings(self):
+        config = one(self.docs, "ConfigMap", "app-config")
+        self.assertEqual(config["data"]["PROMETHEUS_URL"], "http://prometheus.observability.svc:9090")
 
     def test_other_workloads_do_not_run_as_the_api_account(self):
         # Only the API may read its Deployment; every other workload (worker, redis, the postgres

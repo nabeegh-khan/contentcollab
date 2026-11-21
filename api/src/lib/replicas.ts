@@ -8,7 +8,8 @@ import { request, type RequestOptions } from "node:https";
 export const DEPLOYMENT_PATH = "/apis/apps/v1/namespaces/contentcollab/deployments/api";
 
 /** GET a Kubernetes API path and return the parsed JSON body. */
-export type KubeGet = (path: string) => Promise<unknown>;
+/** `text: true` returns the body as a string (pod logs) instead of parsed JSON. */
+export type KubeGet = (path: string, options?: { text?: boolean }) => Promise<unknown>;
 
 export async function readyReplicas(get: KubeGet): Promise<{ api: number }> {
   const reply = (await get(DEPLOYMENT_PATH)) as {
@@ -58,7 +59,7 @@ export function inClusterGet(
   const host = env.KUBERNETES_SERVICE_HOST;
   const port = Number(env.KUBERNETES_SERVICE_PORT);
   if (!host || !Number.isInteger(port)) return null;
-  return (path) =>
+  return (path, options) =>
     new Promise((resolve, reject) => {
       const token = String(deps.readFile(`${SERVICE_ACCOUNT_DIR}/token`, "utf8")).trim();
       const req = deps.request(
@@ -68,7 +69,10 @@ export function inClusterGet(
           path,
           method: "GET",
           ca: deps.readFile(`${SERVICE_ACCOUNT_DIR}/ca.crt`),
-          headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: options?.text ? "text/plain" : "application/json",
+          },
           timeout: REQUEST_TIMEOUT_MS,
         },
         (res) => {
@@ -82,7 +86,8 @@ export function inClusterGet(
               return;
             }
             try {
-              resolve(JSON.parse(Buffer.concat(chunks).toString("utf8")));
+              const body = Buffer.concat(chunks).toString("utf8");
+              resolve(options?.text ? body : JSON.parse(body));
             } catch (err) {
               reject(err);
             }

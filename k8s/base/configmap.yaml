@@ -16,3 +16,5 @@ data:
   SPACES_ENDPOINT: https://tor1.digitaloceanspaces.com
   SPACES_REGION: tor1
   SPACES_BUCKET: contentcollab
+  # The operations panel (D31) reads request rate and latency here; unreachable means no traffic card
+  PROMETHEUS_URL: http://prometheus.observability.svc:9090
