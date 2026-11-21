@@ -8,8 +8,10 @@ const ROLES = ["viewer", "commenter", "editor"];
 // What each refusal means for the person at the form
 function refusal(error) {
   if (error instanceof ApiError) {
-    if (error.status === 404) return "No user has that email, or you do not own this document.";
+    if (error.status === 404)
+      return "No user has that email, or you have no access to this document.";
     if (error.status === 409) return "That user already has a share on this document.";
+    if (error.status === 401) return "Your session has ended. Sign out and sign in again.";
     if (error.status === 403) return "Only the owner of a document can share it.";
     return error.message;
   }
@@ -23,6 +25,13 @@ export default function ShareForm({ token }) {
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(null);
   const [problem, setProblem] = useState(null);
+
+  // Editing a field drops the last message, so a stale "Shared" never sits beside new input
+  function edit(setter, value) {
+    setDone(null);
+    setProblem(null);
+    setter(value);
+  }
 
   async function submit(event) {
     event.preventDefault();
@@ -51,15 +60,19 @@ export default function ShareForm({ token }) {
       <form onSubmit={submit}>
         <label className="field">
           <span>Document id</span>
-          <input type="text" value={documentId} onChange={(e) => setDocumentId(e.target.value)} />
+          <input
+            type="text"
+            value={documentId}
+            onChange={(e) => edit(setDocumentId, e.target.value)}
+          />
         </label>
         <label className="field">
           <span>Email of the user</span>
-          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+          <input type="email" value={email} onChange={(e) => edit(setEmail, e.target.value)} />
         </label>
         <label className="field">
           <span>Role</span>
-          <select value={role} onChange={(e) => setRole(e.target.value)}>
+          <select value={role} onChange={(e) => edit(setRole, e.target.value)}>
             {ROLES.map((name) => (
               <option key={name} value={name}>
                 {name}

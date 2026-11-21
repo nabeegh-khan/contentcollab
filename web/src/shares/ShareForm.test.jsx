@@ -51,7 +51,9 @@ describe("ShareForm", () => {
 
     fill();
 
-    expect((await screen.findByRole("alert")).textContent).toMatch(/no user|do not own/i);
+    expect((await screen.findByRole("alert")).textContent).toBe(
+      "No user has that email, or you have no access to this document.",
+    );
   });
 
   it("says the user already has a share on a 409", async () => {
@@ -94,5 +96,63 @@ describe("ShareForm", () => {
 
     expect(await screen.findByText("Shared with bo@x.co as viewer.")).toBeTruthy();
     expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("tells the user to sign in again on a 401", async () => {
+    answer(401, { error: "Unauthorized", code: "UNAUTHORIZED" });
+    render(<ShareForm token="t0k" />);
+
+    fill();
+
+    expect((await screen.findByRole("alert")).textContent).toBe(
+      "Your session has ended. Sign out and sign in again.",
+    );
+  });
+
+  it("shows a plain message when the request cannot be sent", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("Failed to fetch")));
+    render(<ShareForm token="t0k" />);
+
+    fill();
+
+    expect((await screen.findByRole("alert")).textContent).toBe("Something went wrong. Try again.");
+  });
+
+  it("disables the button while the request is out", async () => {
+    let release;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        () =>
+          new Promise((resolve) => {
+            release = () =>
+              resolve(
+                new Response(JSON.stringify({ id: "s1" }), {
+                  status: 201,
+                  headers: { "Content-Type": "application/json" },
+                }),
+              );
+          }),
+      ),
+    );
+    render(<ShareForm token="t0k" />);
+
+    fill();
+
+    expect(screen.getByRole("button", { name: "Share" }).disabled).toBe(true);
+    release();
+    await screen.findByText("Shared with bo@x.co as viewer.");
+    expect(screen.getByRole("button", { name: "Share" }).disabled).toBe(false);
+  });
+
+  it("clears the success message when a field is edited", async () => {
+    answer(201, { id: "s1" });
+    render(<ShareForm token="t0k" />);
+    fill();
+    await screen.findByText("Shared with bo@x.co as viewer.");
+
+    fireEvent.change(screen.getByLabelText("Email of the user"), { target: { value: "c@x.co" } });
+
+    expect(screen.queryByText("Shared with bo@x.co as viewer.")).toBeNull();
   });
 });
