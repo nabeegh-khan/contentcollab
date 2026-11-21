@@ -373,6 +373,21 @@ Sources, checked 19 November 2026: Gateway API v1.6 API reference, `HTTPRouteRul
 
 Sources, checked 21 November 2026: `socket.io-client` 4.8.4 is `latest` on the npm registry (modified 25 September 2026), and its type declarations list `transports`, `path` and `auth` among the options; Socket.IO documentation, "The Socket instance (client-side)": the `connect` event "is fired by the Socket instance upon connection and reconnection", a connection denied by a server middleware is not retried automatically, and "Rooms", Disconnection: "upon disconnection, sockets leave all the channels they were part of automatically"; `api/src/lib/socket.ts`, `api/src/lib/realtime.ts` and `api/src/routes/comments.ts` on `main` (`ae26438`) for the rooms, the events and the comment fields.
 
+### D29. The Gateway accepts uploads up to the API's limit (decided 21 November, #116)
+
+**Problem.** Uploads (#116) pass through the NGINX Gateway Fabric data plane before the API. NGF's `ClientSettingsPolicy` sets nginx's `client_max_body_size`; its API reference gives the default as nginx's own, which nginx documents as 1 MiB. `k8s/doks/gateway.yaml` sets nothing, so a PDF over 1 MiB would be refused with a 413 at the Gateway, although the API accepts files up to 50 MiB (`parseUpload.ts`, `MAX_FILE_SIZE`).
+
+**Decision.** One `ClientSettingsPolicy` on the `contentcollab` Gateway with `body.maxSize: 50m`, in `k8s/doks/gateway.yaml`, so every route inherits it. A test renders the overlay and checks the target, the namespace and that the limit is at least the API's.
+
+**Options weighed.**
+- **A policy on the `api` HTTPRoute only:** narrower, but the policy is then lost if the route is renamed, and the web route never takes uploads either way. The Gateway-wide policy is one object.
+- **`maxSize: "0"` (no check):** the Gateway would pass any body to the API, which already stops at 50 MiB, but the API would read and discard an arbitrary stream first; rejected.
+- **Raising the API's limit instead:** it is not the limit that is wrong.
+
+**Limits.** The limit applies to the whole request body, so a 50 MiB file plus the multipart framing can be refused by the Gateway just before the API would refuse it; both answer 413. The minikube overlay has no NGF and gets no policy. The CRD is `v1alpha1`; its fields were read on the cluster with `kubectl explain clientsettingspolicies.spec.body.maxSize` on 21 November.
+
+Sources, checked 21 November 2026: NGINX Gateway Fabric, "Client Settings Policy API" (a policy with `targetRef` of kind `Gateway` and `body.maxSize`) and the API reference, `ClientBody.maxSize` ("Setting size to 0 disables checking of client request body size", default nginx's `client_max_body_size`), docs.nginx.com; nginx.org, ngx_http_core_module, `client_max_body_size` (Default: 1m); the CRD on the DOKS cluster (`gateway.nginx.org/v1alpha1`, fields `targetRef` and `body.maxSize`).
+
 ### D0. Service model
 
 Lecture 1 splits cloud services into IaaS (you manage the OS), PaaS (the provider manages the hosts, you ship containers or code) and FaaS (functions run on events). Assignment 1 was IaaS: a droplet, Nginx, PostgreSQL installed by hand. The project is not that. We use managed Kubernetes, where DigitalOcean runs the control plane and the worker nodes' OS and we run containers (PaaS-style on top of the provider's IaaS), object storage as a service for files, and the provider's metrics and alerts. A DigitalOcean Function is an option for one small event-driven job (a thumbnail when a file lands in Spaces) if we want the serverless advanced feature; it is not in the core path. The point for the proposal: we manage containers and data, not machines.
