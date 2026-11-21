@@ -151,7 +151,7 @@ describe("Root", () => {
     routeFetch({
       "/health": health,
       "/api/v1/auth/me": () => json(200, ANN),
-      [`/api/v1/documents/${DOC}/versions/${VER}/comments`]: () =>
+      [`/api/v1/documents/${DOC}/versions/${VER}/comments?limit=100`]: () =>
         json(200, { items: [], nextCursor: null }),
     });
 
@@ -166,5 +166,31 @@ describe("Root", () => {
 
     expect(await screen.findByRole("heading", { name: "Documents" })).toBeTruthy();
     expect(screen.queryByRole("heading", { name: "Document" })).toBeNull();
+  });
+
+  it("keeps the token in memory when storage is blocked, so comments still send it", async () => {
+    const DOC = "11111111-1111-4111-8111-111111111111";
+    const VER = "22222222-2222-4222-8222-222222222222";
+    window.location.hash = `#/documents/${DOC}/versions/${VER}`;
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("blocked");
+    });
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => null);
+    const fetchMock = routeFetch({
+      "/health": health,
+      "/api/v1/auth/login": () => json(200, { token: "mem0ry", user: ANN }),
+      [`/api/v1/documents/${DOC}/versions/${VER}/comments?limit=100`]: () =>
+        json(200, { items: [], nextCursor: null }),
+    });
+    render(<Root />);
+
+    fireEvent.change(screen.getByLabelText("Email"), { target: { value: "a@b.co" } });
+    fireEvent.change(screen.getByLabelText("Password"), { target: { value: "pass1234" } });
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+    await screen.findByText("No comments yet.");
+
+    const call = fetchMock.mock.calls.find(([url]) => String(url).includes("/comments?limit=100"));
+    expect(call[1].headers.Authorization).toBe("Bearer mem0ry");
+    vi.restoreAllMocks();
   });
 });

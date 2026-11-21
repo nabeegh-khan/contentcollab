@@ -164,8 +164,16 @@ describe("CommentsPanel", () => {
     expect(JSON.parse(post[1].body)).toEqual({ body: "agreed", parentId: "c1" });
   });
 
+  it("offers Resolve only on threads the user started, as the API allows", async () => {
+    const state = { comments: [comment("c1"), comment("c2", { authorId: ME.id })] };
+    mount(state);
+    await screen.findByText("body c2");
+
+    expect(screen.getAllByRole("button", { name: "Resolve" })).toHaveLength(1);
+  });
+
   it("resolves a thread through PATCH and shows it as resolved", async () => {
-    const state = { comments: [comment("c1")] };
+    const state = { comments: [comment("c1", { authorId: ME.id })] };
     const { fetchMock } = mount(state);
     await screen.findByText("body c1");
 
@@ -267,5 +275,95 @@ describe("CommentsPanel", () => {
     const thread = screen.getByText("body c1").closest("li");
     expect(within(thread).getByText("reply to c1")).toBeTruthy();
     expect(within(screen.getByText("body c2").closest("li")).queryByText("reply to c1")).toBeNull();
+  });
+
+  it("keeps a comment that arrives live while the list is loading", async () => {
+    let release;
+    const gate = new Promise((resolve) => {
+      release = resolve;
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        await gate;
+        return new Response(JSON.stringify({ items: [comment("c1")], nextCursor: null }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }),
+    );
+    const { connect, live } = fakeConnect();
+    render(
+      <CommentsPanel token="t0k" user={ME} documentId={DOC} versionId={VER} connect={connect} />,
+    );
+
+    act(() => live.handlers.onEvent("comment:created", comment("c9", { body: "arrived early" })));
+    await act(async () => {
+      release();
+      await gate;
+    });
+
+    expect(await screen.findByText("body c1")).toBeTruthy();
+    expect(screen.getByText("arrived early")).toBeTruthy();
+  });
+
+  it("ignores an older list that answers after a newer one", async () => {
+    const answers = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        () =>
+          new Promise((resolve) => {
+            answers.push((items) =>
+              resolve(
+                new Response(JSON.stringify({ items, nextCursor: null }), {
+                  status: 200,
+                  headers: { "Content-Type": "application/json" },
+                }),
+              ),
+            );
+          }),
+      ),
+    );
+    const { connect, live } = fakeConnect();
+    render(
+      <CommentsPanel token="t0k" user={ME} documentId={DOC} versionId={VER} connect={connect} />,
+    );
+    act(() => {
+      live.handlers.onJoined();
+    });
+    await waitFor(() => expect(answers).toHaveLength(2));
+
+    answers[1]([comment("c1"), comment("c2")]);
+    await screen.findByText("body c2");
+    answers[0]([comment("c1")]);
+    await new Promise((resolve) => setTimeout(resolve, 30));
+
+    expect(screen.getByText("body c2")).toBeTruthy();
+  });
+
+  it("sends a 403 on resolve or delete as a neutral message, not a role claim", async () => {
+    const state = { comments: [comment("c2", { authorId: ME.id })] };
+    const fetchMock = vi.fn(async (url, init = {}) =>
+      init.method === "DELETE"
+        ? new Response(JSON.stringify({ error: "Forbidden", code: "FORBIDDEN" }), {
+            status: 403,
+            headers: { "Content-Type": "application/json" },
+          })
+        : new Response(JSON.stringify({ items: state.comments, nextCursor: null }), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const { connect } = fakeConnect();
+    render(
+      <CommentsPanel token="t0k" user={ME} documentId={DOC} versionId={VER} connect={connect} />,
+    );
+    await screen.findByText("body c2");
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+
+    expect((await screen.findByRole("alert")).textContent).toMatch(/not allowed/i);
   });
 });

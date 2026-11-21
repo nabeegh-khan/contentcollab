@@ -25,9 +25,11 @@ describe("listComments", () => {
 
     expect(all.map((c) => c.id)).toEqual(["c1", "c2", "c3"]);
     expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(fetchMock.mock.calls[0][0]).toBe(`/api/v1/documents/${DOC}/versions/${VER}/comments`);
+    expect(fetchMock.mock.calls[0][0]).toBe(
+      `/api/v1/documents/${DOC}/versions/${VER}/comments?limit=100`,
+    );
     expect(fetchMock.mock.calls[1][0]).toBe(
-      `/api/v1/documents/${DOC}/versions/${VER}/comments?cursor=abc`,
+      `/api/v1/documents/${DOC}/versions/${VER}/comments?limit=100&cursor=abc`,
     );
     expect(fetchMock.mock.calls[0][1].headers.Authorization).toBe("Bearer t0k");
   });

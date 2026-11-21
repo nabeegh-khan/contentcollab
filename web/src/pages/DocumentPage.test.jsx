@@ -28,7 +28,7 @@ describe("DocumentPage", () => {
 
     expect(await screen.findByText("No comments yet.")).toBeTruthy();
     const [url, init] = fetchMock.mock.calls[0];
-    expect(url).toBe(`/api/v1/documents/${DOC}/versions/${VER}/comments`);
+    expect(url).toBe(`/api/v1/documents/${DOC}/versions/${VER}/comments?limit=100`);
     expect(init.headers.Authorization).toBe("Bearer t0k");
     expect(connect.mock.calls[0][0]).toMatchObject({ token: "t0k", versionId: VER });
   });

@@ -1,6 +1,6 @@
 // The comments of one version: load, post, reply, resolve, delete, and live changes from other tabs (D28).
 import { io } from "socket.io-client";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError } from "../api/client.js";
 import { createComment, deleteComment, listComments, updateComment } from "../api/comments.js";
 import { connectVersion } from "../realtime.js";
@@ -18,10 +18,13 @@ const LIVE_TEXT = {
 
 const defaultConnect = (options) => connectVersion({ io, ...options });
 
-// A readable message for a failed call; a 403 on a write means the role cannot do it
+// A readable message for a failed call. Only posting is refused by role; resolving and deleting
+// are also refused by authorship, so those say so without naming a cause
 function failureMessage(error, what) {
   if (error instanceof ApiError && error.status === 403) {
-    return `Your role on this document cannot ${what}.`;
+    return what === "comment"
+      ? "Your role on this document cannot comment."
+      : `You are not allowed to ${what}.`;
   }
   return error instanceof ApiError ? error.message : "Something went wrong. Try again.";
 }
@@ -40,12 +43,31 @@ export default function CommentsPanel({
   const [replyTo, setReplyTo] = useState(null);
   const [actionError, setActionError] = useState(null);
 
+  // Only the newest list answer is used, and events that arrive while a list is loading are
+  // replayed on top of it, so neither an old answer nor a slow one drops a live change
+  const newest = useRef(0);
+  const loading = useRef(false);
+  const pending = useRef([]);
+
+  const apply = useCallback((event, payload) => {
+    if (loading.current) pending.current.push([event, payload]);
+    setComments((list) => applyEvent(list, event, payload));
+  }, []);
+
   const reload = useCallback(async () => {
+    const mine = ++newest.current;
+    loading.current = true;
+    pending.current = [];
     try {
-      setComments(await listComments(token, documentId, versionId));
+      const snapshot = await listComments(token, documentId, versionId);
+      if (mine !== newest.current) return;
+      const replayed = pending.current.reduce((list, [e, p]) => applyEvent(list, e, p), snapshot);
+      setComments(replayed);
       setLoadState("ready");
     } catch {
-      setLoadState("error");
+      if (mine === newest.current) setLoadState("error");
+    } finally {
+      if (mine === newest.current) loading.current = false;
     }
   }, [token, documentId, versionId]);
 
@@ -54,18 +76,18 @@ export default function CommentsPanel({
     const live = connect({
       token,
       versionId,
-      onEvent: (event, payload) => setComments((list) => applyEvent(list, event, payload)),
+      onEvent: apply,
       onMention: () => setMentioned(true),
       onJoined: reload,
       onState: setLiveState,
     });
     return () => live.close();
-  }, [token, versionId, connect, reload]);
+  }, [token, versionId, connect, reload, apply]);
 
   async function post(body, parentId) {
     try {
       const created = await createComment(token, documentId, versionId, { body, parentId });
-      setComments((list) => applyEvent(list, "comment:created", created));
+      apply("comment:created", created);
       setReplyTo(null);
     } catch (error) {
       throw new Error(failureMessage(error, "comment"));
@@ -84,13 +106,13 @@ export default function CommentsPanel({
   const toggleResolved = (root) =>
     run(async () => {
       const updated = await updateComment(token, documentId, root.id, { resolved: !root.resolved });
-      setComments((list) => applyEvent(list, "comment:updated", updated));
+      apply("comment:updated", updated);
     }, "resolve this thread");
 
   const remove = (comment) =>
     run(async () => {
       await deleteComment(token, documentId, comment.id);
-      setComments((list) => applyEvent(list, "comment:deleted", { id: comment.id }));
+      apply("comment:deleted", { id: comment.id });
     }, "delete this comment");
 
   function renderComment(comment, root) {
@@ -108,7 +130,7 @@ export default function CommentsPanel({
               Reply
             </button>
           )}
-          {comment === root && (
+          {comment === root && comment.authorId === user.id && (
             <button type="button" onClick={() => toggleResolved(comment)}>
               {comment.resolved ? "Reopen" : "Resolve"}
             </button>

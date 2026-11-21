@@ -1,6 +1,7 @@
 // The four comment routes on main (docs/API.md, Comments), on the shared request() helper.
 import { request } from "./client.js";
 
+const PAGE_SIZE = 100; // the API default is 20 and its maximum 100
 const MAX_PAGES = 50; // a stop for a server that never returns a null cursor
 
 function versionPath(documentId, versionId) {
@@ -13,7 +14,7 @@ export async function listComments(token, documentId, versionId) {
   const all = [];
   let cursor = null;
   for (let page = 0; page < MAX_PAGES; page += 1) {
-    const query = cursor === null ? "" : `?cursor=${encodeURIComponent(cursor)}`;
+    const query = `?limit=${PAGE_SIZE}${cursor === null ? "" : `&cursor=${encodeURIComponent(cursor)}`}`;
     const answer = await request(`${base}${query}`, { token });
     all.push(...answer.items);
     if (!answer.nextCursor) break;
