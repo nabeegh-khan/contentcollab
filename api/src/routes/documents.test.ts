@@ -30,7 +30,17 @@ const copy = jest.fn<(from: string, to: string) => Promise<void>>(async (from, t
   objects.set(to, bytes);
 });
 
-jest.unstable_mockModule("../lib/storage.js", () => ({ putStream, remove, getStream, copy }));
+class StorageNotFoundError extends Error {
+  readonly statusCode = 404;
+}
+jest.unstable_mockModule("../lib/storage.js", () => ({
+  putStream,
+  remove,
+  getStream,
+  copy,
+  validateStorageConfig: jest.fn(),
+  StorageNotFoundError,
+}));
 const { default: app } = await import("../server.js");
 
 const secret = "documents-route-test-secret";
