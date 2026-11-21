@@ -192,3 +192,78 @@ button.link {
   border: 1px solid var(--accent-border);
   border-radius: 6px;
 }
+
+/* Operations page (D31): one screen at 1280 x 720, large numbers, readable from the back of a room */
+.ops h1 {
+  margin: 0;
+}
+
+.ops-head {
+  display: flex;
+  align-items: baseline;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+
+.ops-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+  gap: 16px;
+  margin-top: 12px;
+}
+
+.ops-card {
+  padding: 16px;
+  border: 2px solid var(--border);
+  border-radius: 8px;
+  font-size: 20px;
+}
+
+.ops-card h2 {
+  margin: 0 0 8px;
+  font-size: 22px;
+  color: var(--text-h);
+}
+
+.ops-card table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.ops-card th,
+.ops-card td {
+  padding: 4px 8px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+
+.ops-big {
+  font-size: 28px;
+  color: var(--text-h);
+}
+
+.ops-meter {
+  height: 14px;
+  margin: 0 0 8px;
+  border: 1px solid var(--text);
+  border-radius: 7px;
+  overflow: hidden;
+}
+
+.ops-meter span {
+  display: block;
+  height: 100%;
+  background: var(--text-h);
+}
+
+.ops-banner {
+  padding: 8px 12px;
+  border: 2px solid #c62828;
+  border-radius: 6px;
+  font-weight: 600;
+}
+
+.ops ul {
+  margin: 0;
+  padding-left: 20px;
+}
