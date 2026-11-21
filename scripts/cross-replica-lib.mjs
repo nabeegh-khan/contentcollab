@@ -26,44 +26,50 @@ async function counts(deps, pods) {
 }
 
 // Opens sockets one at a time, attributing each to a pod by the connection that appeared there,
-// until two pods each hold one. Returns { byPod: Map, all: [] }
-async function placeSockets(deps, pods, token) {
+// until two pods each hold one. Fills `placed` as it goes so a throw part-way can still close them.
+// byPod maps a pod to { socket, floor }: floor is the count that pod must still hold if it has the socket
+async function placeSockets(deps, pods, token, placed) {
   const byPod = new Map();
-  const all = [];
   for (let i = 0; i < deps.maxSockets && byPod.size < 2; i += 1) {
     const before = await counts(deps, pods);
     const socket = await deps.openSocket(token);
-    all.push(socket);
-    const pod = soleIncrease(before, await counts(deps, pods));
-    if (pod && !byPod.has(pod)) byPod.set(pod, socket);
-    else if (!pod) deps.log(`socket ${i + 1}: pod not identified`);
-    else deps.log(`socket ${i + 1}: landed on ${pod} again`);
-    if (pod) deps.log(`socket ${i + 1}: ${pod}`);
+    placed.push(socket);
+    const after = await counts(deps, pods);
+    const pod = soleIncrease(before, after);
+    deps.log(`socket ${i + 1}: before ${JSON.stringify(before)} after ${JSON.stringify(after)}`);
+    if (!pod) deps.log(`socket ${i + 1}: pod not identified`);
+    else if (byPod.has(pod)) deps.log(`socket ${i + 1}: landed on ${pod} again`);
+    else {
+      byPod.set(pod, { socket, floor: before[pod] + 1 });
+      deps.log(`socket ${i + 1}: ${pod}`);
+    }
   }
-  return { byPod, all };
+  return byPod;
 }
 
-// Returns { ok, reason?, pods, latenciesMs }. Always closes its sockets and removes its comment.
+// Returns { ok, reason?, pods, latenciesMs, cleanupFailed? }. Closes the sockets it opened and removes its comment.
 export async function crossReplicaCheck(deps) {
   const pods = await deps.listPods();
   if (pods.length < 2) {
     return { ok: false, reason: `need two ready API pods, found ${pods.length}`, pods: [] };
   }
   const token = await deps.login();
-  const { byPod, all } = await placeSockets(deps, pods, token);
+  const placed = [];
   let comment = null;
+  let outcome = null;
   try {
+    const byPod = await placeSockets(deps, pods, token, placed);
     if (byPod.size < 2) {
       return {
         ok: false,
-        reason: `after ${all.length} sockets only one pod was reached or sockets could not be attributed; two pods are needed`,
+        reason: `after ${placed.length} sockets only one pod was reached or sockets could not be attributed; two pods are needed`,
         pods: [...byPod.keys()],
       };
     }
     comment = await deps.postComment(token);
     const names = [...byPod.keys()];
     const outcomes = await Promise.allSettled(
-      names.map((pod) => byPod.get(pod).waitForComment(comment.body)),
+      names.map((pod) => byPod.get(pod).socket.waitForComment(comment.body)),
     );
     const missed = names.filter((_, i) => outcomes[i].status === "rejected");
     if (missed.length > 0) {
@@ -73,9 +79,29 @@ export async function crossReplicaCheck(deps) {
         pods: names,
       };
     }
-    return { ok: true, pods: names, latenciesMs: outcomes.map((o) => o.value) };
+    // The attribution came from a connection count; check each pod still holds its socket now
+    const now = await counts(deps, names);
+    const lost = names.filter((pod) => now[pod] < byPod.get(pod).floor);
+    if (lost.length > 0) {
+      return {
+        ok: false,
+        reason: `attribution not confirmed: ${lost.join(", ")} no longer holds the connection it was credited with (${JSON.stringify(now)})`,
+        pods: names,
+      };
+    }
+    outcome = { ok: true, pods: names, latenciesMs: outcomes.map((o) => o.value) };
+    return outcome;
+  } catch (error) {
+    return { ok: false, reason: error.message, pods: [] };
   } finally {
-    for (const socket of all) socket.close();
-    if (comment) await deps.deleteComment(token, comment);
+    for (const socket of placed) socket.close();
+    if (comment) {
+      try {
+        await deps.deleteComment(token, comment);
+      } catch (error) {
+        deps.log(`cleanup failed: comment ${comment.id} was left behind (${error.message})`);
+        if (outcome) outcome.cleanupFailed = error.message;
+      }
+    }
   }
 }

@@ -9,11 +9,12 @@ const PROC = `  sl  local_address rem_address   st tx_queue rx_queue tr tm->when
    1: 0A6D0020:0BB8 0A6D00DD:A1B2 01 00000000:00000000 00:00000000 00000000  1000        0 22222 1 0000000000000000 20 4 30 10 -1
    2: 0A6D0020:0BB8 0A6D00DD:A1B3 01 00000000:00000000 00:00000000 00000000  1000        0 33333 1 0000000000000000 20 4 30 10 -1
    3: 0A6D0020:C3A4 0A6D008C:18EB 01 00000000:00000000 00:00000000 00000000  1000        0 44444 1 0000000000000000 20 4 30 10 -1
+   5: 0000000000000000FFFF00000A6D0020:0BB8 0000000000000000FFFF00000A6D00DD:A1B9 01 00000000:00000000 00:00000000 00000000  1000        0 66666 1 0000000000000000 20 4 30 10 -1
    4: 0A6D0020:0BB8 0A6D00DD:A1B4 06 00000000:00000000 00:00000000 00000000  1000        0 55555 1 0000000000000000 20 4 30 10 -1
 `;
 
 test("parseEstablished counts only ESTABLISHED sockets on the API port", () => {
-  assert.equal(parseEstablished(PROC, 3000), 2);
+  assert.equal(parseEstablished(PROC, 3000), 3); // two IPv4 and one IPv6
   assert.equal(parseEstablished(PROC, 6379), 0);
   assert.equal(parseEstablished("", 3000), 0);
 });
@@ -32,7 +33,15 @@ test("soleIncrease gives null when no pod, or more than one pod, went up", () =>
 });
 
 // A cluster in memory: sockets land on pods in the order given, counts follow
-function world({ landing, deliver = () => true, pods = ["api-a", "api-b"] }) {
+function world({
+  landing,
+  deliver = () => true,
+  pods = ["api-a", "api-b"],
+  noise = () => {},
+  deleteFails = false,
+  failOpenAt = -1,
+  dropAfterPost = false,
+}) {
   const counts = Object.fromEntries(pods.map((p) => [p, 3]));
   const log = [];
   const opened = [];
@@ -43,12 +52,16 @@ function world({ landing, deliver = () => true, pods = ["api-a", "api-b"] }) {
     listPods: async () => pods,
     countConnections: async (pod) => counts[pod],
     openSocket: async () => {
+      if (nextLanding === failOpenAt) throw new Error("socket connect: refused");
       const pod = landing[nextLanding++ % landing.length];
       counts[pod] += 1;
+      noise(counts);
       const socket = {
         closed: false,
         waitForComment: async (body) => {
+          if (body !== "cross-replica-check") throw new Error("wrong body");
           if (!deliver(pod, body)) throw new Error("timeout");
+          if (dropAfterPost) for (const p of pods) counts[p] -= 1;
           return 12;
         },
         close() {
@@ -60,6 +73,7 @@ function world({ landing, deliver = () => true, pods = ["api-a", "api-b"] }) {
     },
     postComment: async () => ({ id: "c1", body: "cross-replica-check" }),
     deleteComment: async () => {
+      if (deleteFails) throw new Error("DELETE answered 403");
       log.push("deleted c1");
     },
     maxSockets: 6,
@@ -103,4 +117,45 @@ test("still closes the sockets and removes the comment when delivery fails", asy
   await crossReplicaCheck(deps);
   assert.ok(opened.every((s) => s.closed));
   assert.ok(log.includes("deleted c1"));
+});
+
+test("does not credit a socket when both pods' counts rose at once, and fails honestly", async () => {
+  const { deps } = world({
+    landing: ["api-a", "api-b"],
+    noise: (counts) => {
+      for (const pod of Object.keys(counts)) counts[pod] += 1;
+    },
+  });
+  const result = await crossReplicaCheck(deps);
+  assert.equal(result.ok, false);
+  assert.match(result.reason, /attributed|one pod/i);
+});
+
+test("fails when the credited pods no longer hold their sockets after the comment", async () => {
+  const { deps } = world({ landing: ["api-a", "api-b"], dropAfterPost: true });
+  const result = await crossReplicaCheck(deps);
+  assert.equal(result.ok, false);
+  assert.match(result.reason, /attribution/i);
+});
+
+test("keeps ok and says the comment was left behind when its delete fails", async () => {
+  const { deps } = world({ landing: ["api-a", "api-b"], deleteFails: true });
+  const result = await crossReplicaCheck(deps);
+  assert.equal(result.ok, true);
+  assert.match(result.cleanupFailed, /403/);
+});
+
+test("closes the sockets already open when a later socket cannot connect", async () => {
+  const { deps, opened } = world({ landing: ["api-a", "api-a", "api-b"], failOpenAt: 1 });
+  const result = await crossReplicaCheck(deps);
+  assert.equal(result.ok, false);
+  assert.match(result.reason, /refused/);
+  assert.equal(opened.length, 1);
+  assert.ok(opened[0].closed);
+});
+
+test("logs each pod's counts before and after a socket, so the evidence shows why it was credited", async () => {
+  const { deps, log } = world({ landing: ["api-a", "api-b"] });
+  await crossReplicaCheck(deps);
+  assert.ok(log.some((line) => /before .*api-a/.test(line) && /after .*api-a/.test(line)));
 });

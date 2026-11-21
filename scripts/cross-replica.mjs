@@ -12,7 +12,7 @@
 // each. A socket it cannot attribute is not counted. The comment it posts is deleted afterwards.
 // Optional: BASE (https://contentcollab.app), NAMESPACE (contentcollab), API_PORT (3000),
 // MAX_SOCKETS (12), TIMEOUT_MS (10000), EVIDENCE_DIR (docs/evidence). The output also goes to
-// <EVIDENCE_DIR>/<date>-cross-replica.txt. Exit 0 on PASS, 1 on FAIL or a bad setting.
+// <EVIDENCE_DIR>/<UTC date and time>-cross-replica.txt. Exit 0 on PASS, 1 on FAIL or a bad setting.
 
 import { execFile } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -42,6 +42,13 @@ const TIMEOUT_MS = Number(env.TIMEOUT_MS ?? 10000);
 const MAX_SOCKETS = Number(env.MAX_SOCKETS ?? 12);
 const versionUrl = `${BASE}/api/v1/documents/${env.DOCUMENT_ID}/versions/${env.VERSION_ID}/comments`;
 
+for (const [name, value] of [["API_PORT", PORT], ["TIMEOUT_MS", TIMEOUT_MS], ["MAX_SOCKETS", MAX_SOCKETS]]) {
+  if (!Number.isInteger(value) || value < 1) {
+    console.error(`${name} must be a whole number of at least 1`);
+    process.exit(1);
+  }
+}
+
 const lines = [];
 const log = (text) => {
   const line = `${new Date().toISOString()} ${text}`;
@@ -57,16 +64,19 @@ async function api(url, init, token) {
   const headers = { Accept: "application/json" };
   if (token) headers.Authorization = `Bearer ${token}`;
   if (init.body) headers["Content-Type"] = "application/json";
-  const response = await fetch(url, { ...init, headers });
+  const response = await fetch(url, { ...init, headers, signal: AbortSignal.timeout(TIMEOUT_MS) });
   if (!response.ok) throw new Error(`${init.method ?? "GET"} ${url} answered ${response.status}`);
   return response.status === 204 ? null : response.json();
 }
 
 async function listPods() {
-  const { stdout } = await run("kubectl", ["-n", NS, "get", "pods", "-l", "app=api", "-o", "json"]);
+  const { stdout } = await run("kubectl", ["-n", NS, "get", "pods", "-l", "app=api", "-o", "json"], {
+    timeout: 30000,
+  });
   return JSON.parse(stdout)
     .items.filter((pod) =>
-      pod.status.conditions?.some((c) => c.type === "Ready" && c.status === "True"),
+      !pod.metadata.deletionTimestamp &&
+        pod.status.conditions?.some((c) => c.type === "Ready" && c.status === "True"),
     )
     .map((pod) => pod.metadata.name);
 }
@@ -74,7 +84,7 @@ async function listPods() {
 async function countConnections(pod) {
   const { stdout } = await run("kubectl", [
     "-n", NS, "exec", pod, "-c", "api", "--", "sh", "-c", "cat /proc/net/tcp /proc/net/tcp6",
-  ]);
+  ], { timeout: 30000 });
   return parseEstablished(stdout, PORT);
 }
 
@@ -87,27 +97,42 @@ function openSocket(token) {
       transports: ["websocket"],
       auth: { token },
       forceNew: true,
+      reconnection: false, // a reconnect could move the socket to another pod and spoil the attribution
     });
+    let dropped = false;
     socket.on("comment:created", (comment) => {
       seen.add(comment.body);
       for (const wake of waiters) wake(comment.body);
     });
+    socket.on("disconnect", (reason) => {
+      dropped = true;
+      for (const wake of waiters) wake(null, `disconnected: ${reason}`);
+    });
+    const joinTimer = setTimeout(() => fail(new Error("join: no answer in time")), TIMEOUT_MS);
     const fail = (error) => {
+      clearTimeout(joinTimer);
       socket.close();
       reject(error);
     };
     socket.on("connect_error", (error) => fail(new Error(`socket connect: ${error.message}`)));
     socket.on("connect", () =>
       socket.emit("join", { versionId: env.VERSION_ID }, (answer) => {
+        clearTimeout(joinTimer);
         if (!answer?.ok) return fail(new Error(`join refused: ${answer?.code ?? "no answer"}`));
         resolve({
           close: () => socket.close(),
           waitForComment(body) {
             const started = Date.now();
+            if (dropped) return Promise.reject(new Error("socket was disconnected"));
             if (seen.has(body)) return Promise.resolve(0);
-            return new Promise((done, timeout) => {
-              const timer = setTimeout(() => timeout(new Error("timeout")), TIMEOUT_MS);
-              waiters.push((got) => {
+            return new Promise((done, fail) => {
+              const timer = setTimeout(() => fail(new Error("timeout")), TIMEOUT_MS);
+              waiters.push((got, gone) => {
+                if (gone) {
+                  clearTimeout(timer);
+                  fail(new Error(gone));
+                  return;
+                }
                 if (got !== body) return;
                 clearTimeout(timer);
                 done(Date.now() - started);
@@ -155,9 +180,11 @@ log(
     ? `PASS: the comment reached sockets on ${result.pods.join(" and ")} (${result.latenciesMs.join(" ms and ")} ms after the post was read)`
     : `FAIL: ${result.reason}`,
 );
+if (result.cleanupFailed) log(`NOTE: the test comment could not be deleted: ${result.cleanupFailed}`);
 const dir = env.EVIDENCE_DIR ?? "docs/evidence";
 mkdirSync(dir, { recursive: true });
-const file = `${dir}/${new Date().toISOString().slice(0, 10)}-cross-replica.txt`;
+const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+const file = `${dir}/${stamp}-cross-replica.txt`;
 writeFileSync(file, `${lines.join("\n")}\n`);
 console.log(`written ${file}`);
 process.exit(result.ok ? 0 : 1);
