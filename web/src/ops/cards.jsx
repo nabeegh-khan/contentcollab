@@ -106,7 +106,7 @@ export function NodesCard({ data }) {
 }
 
 export function StorageCard({ data }) {
-  const { claim, documents, versions } = data.storage ?? {};
+  const { claim, documents, versions, comments } = data.storage ?? {};
   const failed = problemOf(data, "claim") && problemOf(data, "counts");
   return (
     <Card title="Storage" problem={failed ? (problemOf(data, "claim") ?? "unavailable") : null}>
@@ -124,6 +124,11 @@ export function StorageCard({ data }) {
         {versions === null || versions === undefined
           ? "Versions stored: not available"
           : `Versions stored: ${versions}`}
+      </p>
+      <p>
+        {comments === null || comments === undefined
+          ? "Comments stored: not available"
+          : `Comments stored: ${comments}`}
       </p>
     </Card>
   );

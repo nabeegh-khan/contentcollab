@@ -19,3 +19,9 @@ export async function getOps(token) {
     clearTimeout(timer);
   }
 }
+
+// The restart drill (D31): resolves to { target, pod, startedAt, nextAllowedAt }. The API answers 429
+// (one a minute), 409 (not enough ready pods), 403 (not an operator, or drills switched off), 502, 503.
+export function startDrill(token, target) {
+  return request("/ops/drills", { method: "POST", body: { target }, token });
+}

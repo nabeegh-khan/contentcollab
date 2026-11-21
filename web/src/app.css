@@ -283,3 +283,30 @@ button.link {
   max-height: 9em;
   overflow-y: auto;
 }
+
+/* Restart drill (D31): large buttons and a plain dialog, readable from the back of a lecture room */
+.ops-action,
+.ops-dialog button {
+  display: block;
+  margin: 8px 0;
+  padding: 12px 20px;
+  font-size: 22px;
+}
+
+.ops-dialog button {
+  display: inline-block;
+}
+
+.ops-dialog {
+  margin-top: 12px;
+  padding: 16px;
+  border: 3px solid var(--text-h);
+  border-radius: 8px;
+  background: var(--bg);
+  font-size: 22px;
+}
+
+.ops-danger {
+  border-width: 3px;
+  font-weight: 700;
+}
