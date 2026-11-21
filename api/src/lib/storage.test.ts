@@ -38,7 +38,6 @@ jest.unstable_mockModule("@aws-sdk/client-s3", () => ({
       s3ClientOptions(options);
     }
   },
-  CopyObjectCommand: MockCommand,
   DeleteObjectCommand: MockCommand,
   GetObjectCommand: MockCommand,
 }));
@@ -54,7 +53,7 @@ process.env.SPACES_REGION = "tor1";
 process.env.SPACES_KEY = "test-key";
 process.env.SPACES_SECRET = "test-secret";
 
-const { putStream, getStream, copy, remove, StorageNotFoundError, validateStorageConfig } =
+const { putStream, getStream, remove, StorageNotFoundError, validateStorageConfig } =
   await import("./storage.js");
 afterEach(() => {
   send.mockReset();
@@ -185,19 +184,6 @@ describe("Spaces storage", () => {
     await expect(getStream("documents/doc-1/version-1")).rejects.toThrow(
       "Object not found: documents/doc-1/version-1",
     );
-  });
-
-  it("copies an object to a new key", async () => {
-    send.mockResolvedValue({});
-
-    await copy("documents/my file&draft/version-1", "documents/doc-1/version-2");
-
-    expect(send).toHaveBeenCalledTimes(1);
-    expect(send.mock.calls[0]?.[0].input).toEqual({
-      Bucket: "test-bucket",
-      CopySource: "test-bucket/documents/my%20file%26draft/version-1",
-      Key: "documents/doc-1/version-2",
-    });
   });
 
   it("deletes an object", async () => {

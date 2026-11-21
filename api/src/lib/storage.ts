@@ -1,9 +1,4 @@
-import {
-  CopyObjectCommand,
-  DeleteObjectCommand,
-  GetObjectCommand,
-  S3Client,
-} from "@aws-sdk/client-s3";
+import { DeleteObjectCommand, GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { Upload } from "@aws-sdk/lib-storage";
 import { Readable } from "node:stream";
 
@@ -112,19 +107,6 @@ export async function getStream(key: string): Promise<Readable> {
   }
 
   return response.Body as Readable;
-}
-
-// Copies an existing object to a new key.
-export async function copy(fromKey: string, toKey: string): Promise<void> {
-  const encodedSource = fromKey.split("/").map(encodeURIComponent).join("/");
-
-  await s3.send(
-    new CopyObjectCommand({
-      Bucket: getBucket(),
-      CopySource: `${getBucket()}/${encodedSource}`,
-      Key: toKey,
-    }),
-  );
 }
 
 // Deletes an object.
