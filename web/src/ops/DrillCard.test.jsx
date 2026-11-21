@@ -1,5 +1,5 @@
 // Render tests for the restart drill card (D31): two buttons, a confirm dialog, the request, and each refusal.
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import DrillCard from "./DrillCard.jsx";
 
@@ -157,5 +157,132 @@ describe("DrillCard", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     release();
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  });
+
+  it("Escape closes the dialog even when focus has left it", () => {
+    render(<DrillCard token="t" nextAllowedAt={null} onStarted={() => {}} />);
+    open("Restart an API pod");
+    screen.getByRole("button", { name: "Restart the database pod" }).focus();
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("keeps Tab inside the open dialog, from Restart to Cancel and back", () => {
+    render(<DrillCard token="t" nextAllowedAt={null} onStarted={() => {}} />);
+    const dialog = open("Restart an API pod");
+    const cancel = within(dialog).getByRole("button", { name: "Cancel" });
+    const restart = within(dialog).getByRole("button", { name: "Restart" });
+    restart.focus();
+    fireEvent.keyDown(restart, { key: "Tab" });
+    expect(document.activeElement).toBe(cancel);
+    fireEvent.keyDown(cancel, { key: "Tab", shiftKey: true });
+    expect(document.activeElement).toBe(restart);
+  });
+
+  it("puts the focus back on the button that opened the dialog after Cancel", () => {
+    render(<DrillCard token="t" nextAllowedAt={null} onStarted={() => {}} />);
+    const opener = screen.getByRole("button", { name: "Restart the database pod" });
+    fireEvent.click(opener);
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Cancel" }));
+    expect(document.activeElement).toBe(opener);
+  });
+
+  it("moves the focus to the result message after a drill, since the buttons are then disabled", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        respond(200, {
+          target: "api",
+          pod: "api-old",
+          startedAt: "2026-11-21T19:40:00.000Z",
+          nextAllowedAt: "2026-11-21T19:41:00.000Z",
+        }),
+      ),
+    );
+    render(<DrillCard token="t" nextAllowedAt={null} onStarted={() => {}} />);
+    fireEvent.click(within(open("Restart an API pod")).getByRole("button", { name: "Restart" }));
+    const status = await screen.findByRole("status");
+    await waitFor(() => expect(document.activeElement).toBe(status));
+  });
+
+  it("asks to sign in again on a 401, and gives a plain sentence for a proxy's HTML error", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(respond(401, { error: "Unauthorized", code: "UNAUTHORIZED" })),
+    );
+    const { unmount } = render(<DrillCard token="t" nextAllowedAt={null} onStarted={() => {}} />);
+    fireEvent.click(within(open("Restart an API pod")).getByRole("button", { name: "Restart" }));
+    expect((await screen.findByRole("alert")).textContent).toBe(
+      "Your session has ended. Sign out and sign in again.",
+    );
+    unmount();
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response("<html>bad gateway</html>", {
+          status: 502,
+          headers: { "Content-Type": "text/html" },
+        }),
+      ),
+    );
+    render(<DrillCard token="t" nextAllowedAt={null} onStarted={() => {}} />);
+    fireEvent.click(within(open("Restart an API pod")).getByRole("button", { name: "Restart" }));
+    expect((await screen.findByRole("alert")).textContent).toBe(
+      "The server did not answer. Try again.",
+    );
+  });
+
+  it("a drill that started is not reported as refused when the refresh callback throws", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        respond(200, {
+          target: "api",
+          pod: "api-old",
+          startedAt: "2026-11-21T19:40:00.000Z",
+          nextAllowedAt: "2026-11-21T19:41:00.000Z",
+        }),
+      ),
+    );
+    render(
+      <DrillCard
+        token="t"
+        nextAllowedAt={null}
+        onStarted={() => {
+          throw new Error("boom");
+        }}
+      />,
+    );
+    fireEvent.click(within(open("Restart an API pod")).getByRole("button", { name: "Restart" }));
+    expect(await screen.findByText(/stopping pod api-old/)).toBeTruthy();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("ignores a next-drill time it cannot read, keeping the one the snapshot gave", () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    vi.setSystemTime(Date.parse("2026-11-21T19:40:00Z"));
+    const { rerender } = render(
+      <DrillCard token="t" nextAllowedAt="garbage" onStarted={() => {}} />,
+    );
+    expect(screen.getByRole("button", { name: "Restart an API pod" }).disabled).toBe(false);
+    rerender(<DrillCard token="t" nextAllowedAt="2026-11-21T19:40:30.000Z" onStarted={() => {}} />);
+    expect(screen.getByText("Next drill allowed in 30 s")).toBeTruthy();
+  });
+
+  it("is enabled for a time already past, and enables again when the countdown reaches zero", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    vi.setSystemTime(Date.parse("2026-11-21T19:40:00Z"));
+    render(<DrillCard token="t" nextAllowedAt="2026-11-21T19:00:00.000Z" onStarted={() => {}} />);
+    expect(screen.getByRole("button", { name: "Restart an API pod" }).disabled).toBe(false);
+
+    render(<DrillCard token="t" nextAllowedAt="2026-11-21T19:40:03.000Z" onStarted={() => {}} />);
+    const disabled = screen.getAllByRole("button", { name: "Restart an API pod" })[1];
+    expect(disabled.disabled).toBe(true);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(4000);
+    });
+    expect(disabled.disabled).toBe(false);
+    expect(screen.queryByText(/Next drill allowed/)).toBeNull();
   });
 });
