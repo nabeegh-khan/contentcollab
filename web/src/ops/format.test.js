@@ -46,6 +46,9 @@ describe("cpuLine", () => {
       "CPU 79%: above the 70% target, the autoscaler is adding copies",
     );
   });
+  it("leaves the target out when the HPA gives none, never printing null", () => {
+    expect(cpuLine({ cpuPercent: 12, cpuTargetPercent: null })).toBe("CPU 12%");
+  });
   it("says the reading is not there yet instead of a number", () => {
     expect(cpuLine({ cpuPercent: null, cpuTargetPercent: 70 })).toBe("CPU not read yet");
   });
@@ -56,6 +59,9 @@ describe("latencyText", () => {
     expect(latencyText(0.012)).toBe("Slowest 5% took under 12 ms");
     expect(latencyText(1.5)).toBe("Slowest 5% took under 1.5 s");
     expect(latencyText(null)).toBe("no requests in the last minute");
+  });
+  it("says over 5 s when Prometheus can only give the top bucket's bound", () => {
+    expect(latencyText(5)).toBe("Slowest 5% took over 5 s");
   });
 });
 

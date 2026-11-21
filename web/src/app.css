@@ -267,3 +267,19 @@ button.link {
   margin: 0;
   padding-left: 20px;
 }
+
+/* Fixes after review: key numbers at 48 px (D31), the containers card across the whole row, long lists capped */
+.ops-big {
+  font-size: 48px;
+  line-height: 1.1;
+}
+
+.ops-card:first-child {
+  grid-column: 1 / -1;
+  overflow-x: auto;
+}
+
+.ops-card ul {
+  max-height: 9em;
+  overflow-y: auto;
+}

@@ -1,5 +1,5 @@
 // The operations page (D31): what kubectl would show, as cards that refresh every 5 s, for an operator.
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { ApiError } from "../api/client.js";
 import { getOps } from "./api.js";
 import {
@@ -24,52 +24,67 @@ const REFUSED = {
   [UNAUTHORIZED]: "Your session has ended. Sign out and sign in again.",
 };
 
+// Only http and https addresses become links (the address is the operator's setting, but a link is a click)
+const isWebAddress = (value) => /^https?:\/\//i.test(String(value ?? ""));
+
 export default function OpsPage({ token }) {
   const [data, setData] = useState(null);
   const [lastOkAt, setLastOkAt] = useState(null);
   const [refused, setRefused] = useState(null);
   const [failed, setFailed] = useState(false);
   const [now, setNow] = useState(() => Date.now());
-  const timer = useRef(null);
-  const inFlight = useRef(false);
-  const stopped = useRef(false);
 
-  const load = useCallback(async () => {
-    if (inFlight.current || stopped.current || document.hidden) return;
-    inFlight.current = true;
-    try {
-      setData(await getOps(token));
-      setLastOkAt(Date.now());
-      setFailed(false);
-    } catch (error) {
-      if (error instanceof ApiError && REFUSED[error.status]) {
-        stopped.current = true;
-        setRefused(REFUSED[error.status]);
-      } else {
-        setFailed(true);
-      }
-    } finally {
-      inFlight.current = false;
-      setNow(Date.now());
-      // The next request only after this one ended, so two are never out at once
-      if (!stopped.current && !document.hidden) timer.current = setTimeout(load, REFRESH_MS);
-    }
-  }, [token]);
-
+  // The loop's state is local to one run of the effect, so a new token starts a clean loop and
+  // the old one ends, even if its request is still out
   useEffect(() => {
-    stopped.current = false;
-    load();
+    let alive = true;
+    let inFlight = false;
+    let timer = null;
+
+    async function load() {
+      if (!alive || inFlight || document.hidden) return;
+      inFlight = true;
+      let refusedNow = false;
+      try {
+        const snapshot = await getOps(token);
+        if (!alive) return;
+        setData(snapshot);
+        setLastOkAt(Date.now());
+        setFailed(false);
+      } catch (error) {
+        if (!alive) return;
+        if (error instanceof ApiError && REFUSED[error.status]) {
+          refusedNow = true;
+          alive = false;
+          setRefused(REFUSED[error.status]);
+        } else {
+          setFailed(true);
+        }
+      } finally {
+        inFlight = false;
+        if (alive) {
+          setNow(Date.now());
+          // The next request only after this one ended, so two are never out at once
+          if (!refusedNow && !document.hidden) timer = setTimeout(load, REFRESH_MS);
+        }
+      }
+    }
+
     const onVisible = () => {
-      clearTimeout(timer.current);
-      if (!document.hidden) load();
+      clearTimeout(timer);
+      if (!document.hidden) {
+        setNow(Date.now());
+        load();
+      }
     };
+    load();
     document.addEventListener("visibilitychange", onVisible);
     return () => {
-      stopped.current = true;
-      clearTimeout(timer.current);
+      alive = false;
+      clearTimeout(timer);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [load]);
+  }, [token]);
 
   // A clock for "updated 3 s ago" and the stale banner
   useEffect(() => {
@@ -100,7 +115,7 @@ export default function OpsPage({ token }) {
       <header className="ops-head">
         <h1>Operations</h1>
         <p>{age === null ? "Loading..." : `Updated ${agoText(age)}`}</p>
-        {data?.links?.grafana && (
+        {isWebAddress(data?.links?.grafana) && (
           <a href={data.links.grafana} target="_blank" rel="noreferrer">
             Open Grafana for the details
           </a>

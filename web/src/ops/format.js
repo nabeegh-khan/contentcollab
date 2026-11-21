@@ -3,6 +3,8 @@ const SECONDS_PER_MINUTE = 60;
 const MINUTES_PER_HOUR = 60;
 const MS_PER_SECOND = 1000;
 const SLOW_SECONDS = 1;
+// Prometheus returns the top bucket's bound when the quantile lies above it (D31)
+const TOP_BUCKET_SECONDS = 5;
 
 const VIEWS = {
   Running: { label: "Running", shape: "●" },
@@ -46,11 +48,13 @@ export function cpuLine({ cpuPercent, cpuTargetPercent }) {
   ) {
     return `CPU ${cpuPercent}%: above the ${cpuTargetPercent}% target, the autoscaler is adding copies`;
   }
+  if (cpuTargetPercent === null || cpuTargetPercent === undefined) return `CPU ${cpuPercent}%`;
   return `CPU ${cpuPercent}% (scales out above ${cpuTargetPercent}%)`;
 }
 
 export function latencyText(p95Seconds) {
   if (p95Seconds === null || p95Seconds === undefined) return "no requests in the last minute";
+  if (p95Seconds >= TOP_BUCKET_SECONDS) return "Slowest 5% took over 5 s";
   if (p95Seconds < SLOW_SECONDS) {
     return `Slowest 5% took under ${Math.round(p95Seconds * MS_PER_SECOND)} ms`;
   }

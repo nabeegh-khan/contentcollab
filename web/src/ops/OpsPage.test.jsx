@@ -404,3 +404,130 @@ describe("OpsPage refresh", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });
+
+describe("OpsPage failures and safety", () => {
+  it("treats a 200 that is not the snapshot (an HTML page from a proxy) as a failure, not as fresh data", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response("<html>spa</html>", {
+          status: 200,
+          headers: { "Content-Type": "text/html" },
+        }),
+      ),
+    );
+    render(<OpsPage token="t" />);
+    await flush();
+
+    expect(screen.getByRole("alert").textContent).toMatch(/not answering/i);
+    expect(screen.queryByText(/Updated/)).toBeNull();
+  });
+
+  it("gives up on a request that never answers after 4 s and asks again", async () => {
+    const fetchMock = vi.fn(
+      (_url, init) =>
+        new Promise((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => reject(new Error("aborted")));
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    render(<OpsPage token="t" />);
+    await flush();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(4000 + 5000);
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("recovers: a good answer after a failure clears the banner", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockRejectedValueOnce(new TypeError("Failed to fetch"))
+      .mockResolvedValue(respond(200, snapshot()));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<OpsPage token="t" />);
+    await flush();
+    expect(screen.getByRole("alert")).toBeTruthy();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000);
+    });
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.getByRole("table", { name: "Containers" })).toBeTruthy();
+  });
+
+  it("does not link a Grafana address that is not http or https", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValue(respond(200, snapshot({ links: { grafana: "javascript:alert(1)" } }))),
+    );
+    render(<OpsPage token="t" />);
+    await flush();
+    expect(screen.queryByRole("link", { name: /Grafana/ })).toBeNull();
+  });
+
+  it("shows two events with the same second, pod and reason without a duplicate-key warning", async () => {
+    const twin = {
+      at: "2026-11-21T19:39:30Z",
+      type: "Normal",
+      reason: "Started",
+      object: "Pod/api-b",
+      text: "Started container api",
+      source: "kubernetes",
+    };
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(respond(200, snapshot({ events: [twin, { ...twin }] }))),
+    );
+    render(<OpsPage token="t" />);
+    await flush();
+    expect(
+      within(screen.getByRole("list", { name: "Recent events" })).getAllByRole("listitem"),
+    ).toHaveLength(2);
+    expect(spy.mock.calls.flat().join(" ")).not.toMatch(/same key/i);
+    spy.mockRestore();
+  });
+
+  it("shows a card whose source failed with the server's reason, storage included", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        respond(
+          200,
+          snapshot({
+            containers: null,
+            hpa: null,
+            nodes: null,
+            storage: { claim: null, documents: null, versions: null },
+            errors: {
+              containers: "not configured",
+              hpa: "unavailable",
+              nodes: "no answer within 1000 ms",
+              claim: "not configured",
+              counts: "unavailable",
+            },
+          }),
+        ),
+      ),
+    );
+    render(<OpsPage token="t" />);
+    await flush();
+    expect(
+      within(screen.getByRole("region", { name: "Containers" })).getByText(/not configured/),
+    ).toBeTruthy();
+    expect(
+      within(screen.getByRole("region", { name: "Autoscaler" })).getByText(/unavailable/),
+    ).toBeTruthy();
+    expect(
+      within(screen.getByRole("region", { name: "Nodes" })).getByText(/no answer within 1000 ms/),
+    ).toBeTruthy();
+    expect(
+      within(screen.getByRole("region", { name: "Storage" })).getByText(/not configured/),
+    ).toBeTruthy();
+  });
+});

@@ -109,7 +109,7 @@ export function StorageCard({ data }) {
   const { claim, documents, versions } = data.storage ?? {};
   const failed = problemOf(data, "claim") && problemOf(data, "counts");
   return (
-    <Card title="Storage" problem={failed ? "unavailable" : null}>
+    <Card title="Storage" problem={failed ? (problemOf(data, "claim") ?? "unavailable") : null}>
       <p>
         {claim
           ? `Database disk: ${claim.capacity ?? "size unknown"}, ${claim.phase}${claim.phase === "Bound" ? " (attached)" : ""}`
@@ -157,8 +157,9 @@ export function EventsCard({ data }) {
         <p>No events in the last hour</p>
       ) : (
         <ul aria-label="Recent events">
-          {events.map((e) => (
-            <li key={`${e.at}-${e.object}-${e.reason}`}>
+          {events.map((e, i) => (
+            // the lists are replaced whole on each refresh, so the position is a safe key
+            <li key={`${i}-${e.at}`}>
               <time dateTime={e.at}>{new Date(e.at).toLocaleTimeString()}</time> {eventSentence(e)}
             </li>
           ))}
@@ -173,8 +174,8 @@ export function LogsCard({ data }) {
   return (
     <Card title="Latest requests" problem={problemOf(data, "logs")}>
       <ul>
-        {logs.lines.map((l) => (
-          <li key={`${l.at}-${l.pod}-${l.route}`}>
+        {logs.lines.map((l, i) => (
+          <li key={`${i}-${l.at}`}>
             {`${l.method ?? "?"} ${l.route ?? "?"} ${l.status ?? "?"} ${Math.round(l.durationMs ?? 0)} ms (${l.pod})`}
           </li>
         ))}
