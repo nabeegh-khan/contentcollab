@@ -87,6 +87,12 @@ export function parseUpload(
     busboy.on(
       "file",
       (name: string, file: Readable, info: { filename: string; mimeType: string }) => {
+        file.on("error", () => {
+          failure ??= new HttpError(400, "VALIDATION", "Invalid Multipart Request");
+          controller.abort();
+          finish();
+        });
+
         if (name !== "file" || !info.filename) {
           failure ??= new HttpError(400, "VALIDATION", "File Required");
           file.resume();
