@@ -28,6 +28,7 @@ import { prometheusQuery } from "./lib/ops/traffic.js";
 import documentRoutes from "./routes/documents.js";
 import versionsRoutes from "./routes/versions.js";
 import { runDrill } from "./lib/ops/drill.js";
+import { drillStore, nextDrillAt } from "./lib/ops/drillStore.js";
 import { log } from "./lib/log.js";
 
 const app = express();
@@ -55,6 +56,7 @@ app.use(
 );
 // Operations panel (D31): cluster internals, so sign-in and an admin check sit on the whole router
 const prometheusUrl = process.env.PROMETHEUS_URL;
+const store = drillStore(pool);
 let countsRunning = false;
 app.use(
   "/api/v1/ops",
@@ -66,27 +68,8 @@ app.use(
       query: prometheusUrl ? prometheusQuery(prometheusUrl) : null,
       // The source's 1 s race abandons a slow read but cannot cancel it (pg has no per-query timeout), so
       // a read is not started while the last one still runs: a hung database holds one pool client, not one per window
-      drillRows: async () => {
-        const { rows } = await pool.query<{
-          requested_at: Date;
-          target: string;
-          pod_name: string;
-          outcome: string | null;
-        }>(
-          "SELECT requested_at, target, pod_name, outcome FROM ops_drills ORDER BY requested_at DESC LIMIT 10",
-        );
-        return rows.map((r) => ({
-          requestedAt: r.requested_at.toISOString(),
-          target: r.target,
-          pod: r.pod_name,
-          outcome: r.outcome,
-        }));
-      },
-      nextDrill: async () => {
-        if (!redis.isReady) return null;
-        const seconds = await redis.ttl("ops:drill:lock");
-        return seconds > 0 ? new Date(Date.now() + seconds * 1000).toISOString() : null;
-      },
+      drillRows: store.drillRows,
+      nextDrill: () => nextDrillAt(redis),
       sql: async () => {
         if (countsRunning) throw new Error("the previous count is still running");
         countsRunning = true;
@@ -115,21 +98,8 @@ app.use(
                   evict: async (path, body) => {
                     await kubeGet(path, { method: "POST", body });
                   },
-                  recordDrill: async ({ actorUserId: actor, target: aim, pod }) => {
-                    const { rows } = await pool.query<{ id: string }>(
-                      "INSERT INTO ops_drills (actor_user_id, target, pod_name) VALUES ($1, $2, $3) RETURNING id",
-                      [actor, aim, pod],
-                    );
-                    const id = rows[0]?.id;
-                    if (!id) throw new Error("the drill row was not written");
-                    return id;
-                  },
-                  finishDrill: async (id, outcome) => {
-                    await pool.query("UPDATE ops_drills SET outcome = $2 WHERE id = $1", [
-                      id,
-                      outcome,
-                    ]);
-                  },
+                  recordDrill: store.recordDrill,
+                  finishDrill: store.finishDrill,
                   log: (msg, fields) => log("info", msg, { component: "ops", ...fields }),
                 },
                 target,
