@@ -12,6 +12,7 @@ import {
   TrafficCard,
 } from "./cards.jsx";
 import DrillCard from "./DrillCard.jsx";
+import SeriesCard from "./SeriesCard.jsx";
 import { agoText } from "./format.js";
 
 const REFRESH_MS = 5000;
@@ -133,6 +134,7 @@ export default function OpsPage({ token }) {
         <div className="ops-grid">
           <ContainersCard data={data} />
           <HpaCard data={data} />
+          <SeriesCard token={token} />
           <NodesCard data={data} />
           <StorageCard data={data} />
           <TrafficCard data={data} />

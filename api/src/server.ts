@@ -28,6 +28,7 @@ import { prometheusQuery } from "./lib/ops/traffic.js";
 import documentRoutes from "./routes/documents.js";
 import versionsRoutes from "./routes/versions.js";
 import { runDrill } from "./lib/ops/drill.js";
+import { prometheusRange, seriesFrom } from "./lib/ops/series.js";
 import { drillStore, nextDrillAt } from "./lib/ops/drillStore.js";
 import { log } from "./lib/log.js";
 
@@ -89,6 +90,7 @@ app.use(
     }),
     {
       grafanaUrl: process.env.GRAFANA_URL ?? null,
+      ...(prometheusUrl ? { series: () => seriesFrom(prometheusRange(prometheusUrl)) } : {}),
       // The restart drill (D31): only in a cluster, where there is a pod to evict
       ...(kubeGet
         ? {

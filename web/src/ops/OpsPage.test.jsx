@@ -133,6 +133,9 @@ function respond(status, body) {
   });
 }
 
+const opsCalls = (fetchMock) =>
+  fetchMock.mock.calls.filter(([url]) => url === "/api/v1/ops").length;
+
 async function flush() {
   await act(async () => {
     await vi.advanceTimersByTimeAsync(0);
@@ -156,17 +159,21 @@ describe("OpsPage cards", () => {
 
     expect(fetchMock.mock.calls[0][0]).toBe("/api/v1/ops");
     expect(fetchMock.mock.calls[0][1].headers.Authorization).toBe("Bearer t0k");
-    const table = screen.getByRole("table", { name: "Containers" });
-    const rows = within(table).getAllByRole("row");
-    expect(rows).toHaveLength(4);
+    const tables = screen.getAllByRole("table", { name: /^Pods on / });
+    expect(tables.map((t) => t.getAttribute("aria-label"))).toEqual(["Pods on n1", "Pods on n2"]);
+    const rows = [
+      ...within(tables[0]).getAllByRole("row"),
+      ...within(tables[1]).getAllByRole("row"),
+    ];
+    expect(rows).toHaveLength(5);
     expect(within(rows[1]).getByText("Running")).toBeTruthy();
     expect(within(rows[1]).getByText("●")).toBeTruthy();
     expect(within(rows[1]).getByText("api-a")).toBeTruthy();
     expect(within(rows[1]).getByText(/answering this page/i)).toBeTruthy();
-    expect(within(rows[2]).getByText("Starting")).toBeTruthy();
-    expect(within(rows[2]).getByText("◐")).toBeTruthy();
-    expect(within(rows[2]).getByText("2")).toBeTruthy();
-    expect(within(rows[3]).getByText("9 h 40 min")).toBeTruthy();
+    expect(within(rows[3]).getByText("Starting")).toBeTruthy();
+    expect(within(rows[3]).getByText("◐")).toBeTruthy();
+    expect(within(rows[3]).getByText("2")).toBeTruthy();
+    expect(within(rows[4]).getByText("9 h 40 min")).toBeTruthy();
   });
 
   it("shows the autoscaler in plain words", async () => {
@@ -318,7 +325,7 @@ describe("OpsPage access", () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(20000);
     });
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(opsCalls(fetchMock)).toBe(1);
   });
 
   it("asks to sign in again on a 401", async () => {
@@ -345,26 +352,31 @@ describe("OpsPage refresh", () => {
           }),
       )
       .mockResolvedValue(respond(200, snapshot()));
-    vi.stubGlobal("fetch", fetchMock);
+    // the charts card asks /api/v1/ops/series on its own; only the ops calls are in the sequence
+    vi.stubGlobal("fetch", (url, init) =>
+      url === "/api/v1/ops/series"
+        ? Promise.resolve(respond(200, { series: null, error: "unavailable" }))
+        : fetchMock(url, init),
+    );
     render(<OpsPage token="t" />);
     await flush();
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(opsCalls(fetchMock)).toBe(1);
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(5000);
     });
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(opsCalls(fetchMock)).toBe(2);
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(30000);
     });
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(opsCalls(fetchMock)).toBe(2);
 
     await act(async () => {
       release();
       await vi.advanceTimersByTimeAsync(5000);
     });
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(opsCalls(fetchMock)).toBe(3);
   });
 
   it("shows how old the data is, and a banner when it is over 15 s old, keeping the last cards", async () => {
@@ -382,7 +394,7 @@ describe("OpsPage refresh", () => {
       await vi.advanceTimersByTimeAsync(20000);
     });
     expect(screen.getByRole("alert").textContent).toMatch(/older than 15 seconds/i);
-    expect(screen.getByRole("table", { name: "Containers" })).toBeTruthy();
+    expect(screen.getByRole("table", { name: "Pods on n1" })).toBeTruthy();
   });
 
   it("stops asking while the tab is hidden, and asks again when it is shown", async () => {
@@ -396,12 +408,12 @@ describe("OpsPage refresh", () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(30000);
     });
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(opsCalls(fetchMock)).toBe(1);
 
     Object.defineProperty(document, "hidden", { configurable: true, value: false });
     document.dispatchEvent(new Event("visibilitychange"));
     await flush();
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(opsCalls(fetchMock)).toBe(2);
   });
 });
 
@@ -433,12 +445,12 @@ describe("OpsPage failures and safety", () => {
     vi.stubGlobal("fetch", fetchMock);
     render(<OpsPage token="t" />);
     await flush();
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(opsCalls(fetchMock)).toBe(1);
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(4000 + 5000);
     });
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(opsCalls(fetchMock)).toBe(2);
   });
 
   it("recovers: a good answer after a failure clears the banner", async () => {
@@ -455,7 +467,7 @@ describe("OpsPage failures and safety", () => {
       await vi.advanceTimersByTimeAsync(5000);
     });
     expect(screen.queryByRole("alert")).toBeNull();
-    expect(screen.getByRole("table", { name: "Containers" })).toBeTruthy();
+    expect(screen.getByRole("table", { name: "Pods on n1" })).toBeTruthy();
   });
 
   it("does not link a Grafana address that is not http or https", async () => {

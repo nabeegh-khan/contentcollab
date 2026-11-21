@@ -25,3 +25,8 @@ export async function getOps(token) {
 export function startDrill(token, target) {
   return request("/ops/drills", { method: "POST", body: { target }, token });
 }
+
+// Per-pod CPU and memory for the charts: resolves to { series } or { series: null, error }
+export function getSeries(token) {
+  return request("/ops/series", { token });
+}

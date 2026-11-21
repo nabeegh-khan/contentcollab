@@ -325,3 +325,55 @@ describe("POST /api/v1/ops/drills", () => {
     expect(res.status).toBe(404);
   });
 });
+
+describe("GET /api/v1/ops/series", () => {
+  const getSeries = (app: express.Express, sub = ADMIN) =>
+    request(app)
+      .get("/api/v1/ops/series")
+      .set("Authorization", `Bearer ${token(sub)}`);
+
+  function appWithSeries(series: () => Promise<object>) {
+    process.env.JWT_SECRET = SECRET;
+    const app = express();
+    app.use(
+      "/api/v1/ops",
+      opsRoutes(sources(), { env, ttlMs: CACHE_MS, now: () => 0, grafanaUrl: null, series }),
+    );
+    app.use(errorHandler);
+    return app;
+  }
+
+  it("returns the per-pod series for an admin, uncached by the browser", async () => {
+    const body = { windowSeconds: 900, stepSeconds: 15, cpu: [], memory: [] };
+    const res = await getSeries(appWithSeries(async () => body));
+    expect(res.status).toBe(OK);
+    expect(res.headers["cache-control"]).toBe("no-store");
+    expect(res.body).toEqual({ series: body });
+  });
+
+  it("is 401 without a token and 403 for a non-admin", async () => {
+    const app = appWithSeries(async () => ({}));
+    expect((await request(app).get("/api/v1/ops/series")).status).toBe(UNAUTHORIZED);
+    expect((await getSeries(app, OTHER)).status).toBe(FORBIDDEN);
+  });
+
+  it("answers 200 with a reason when Prometheus cannot be read, never the error text", async () => {
+    const res = await getSeries(
+      appWithSeries(async () => {
+        throw new Error("connect ECONNREFUSED 10.0.0.9:9090");
+      }),
+    );
+    expect(res.status).toBe(OK);
+    expect(res.body).toEqual({ series: null, error: "unavailable" });
+  });
+
+  it("reads Prometheus once per window however many callers", async () => {
+    let reads = 0;
+    const app = appWithSeries(async () => {
+      reads += 1;
+      return {};
+    });
+    await Promise.all([getSeries(app), getSeries(app), getSeries(app)]);
+    expect(reads).toBe(1);
+  });
+});

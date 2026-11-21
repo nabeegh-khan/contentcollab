@@ -33,40 +33,45 @@ function Meter({ label, percent }) {
 
 export function ContainersCard({ data }) {
   const rows = data.containers;
+  // One table per node: the services that run there, so the audience sees what shares a machine
+  const nodes = [...new Set((rows ?? []).map((c) => c.node ?? "no node yet"))].sort();
   return (
     <Card title="Containers" problem={rows ? null : (problemOf(data, "containers") ?? "no data")}>
-      <table aria-label="Containers">
-        <thead>
-          <tr>
-            <th>State</th>
-            <th>Part</th>
-            <th>Pod</th>
-            <th>Node</th>
-            <th>Restarts</th>
-            <th>Age</th>
-          </tr>
-        </thead>
-        <tbody>
-          {(rows ?? []).map((c) => {
-            const view = statusView(c.status);
-            return (
-              <tr key={c.pod}>
-                <td>
-                  <span aria-hidden="true">{view.shape}</span> {view.label}
-                </td>
-                <td>{c.component}</td>
-                <td>
-                  {c.pod}
-                  {c.servingThisRequest && <small> (answering this page)</small>}
-                </td>
-                <td>{c.node ?? "none yet"}</td>
-                <td>{c.restarts}</td>
-                <td>{ageText(c.ageSeconds)}</td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+      {nodes.map((node) => (
+        <table key={node} aria-label={`Pods on ${node}`}>
+          <caption>Node {node}</caption>
+          <thead>
+            <tr>
+              <th>State</th>
+              <th>Part</th>
+              <th>Pod</th>
+              <th>Restarts</th>
+              <th>Age</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows
+              .filter((c) => (c.node ?? "no node yet") === node)
+              .map((c) => {
+                const view = statusView(c.status);
+                return (
+                  <tr key={c.pod}>
+                    <td>
+                      <span aria-hidden="true">{view.shape}</span> {view.label}
+                    </td>
+                    <td>{c.component}</td>
+                    <td>
+                      {c.pod}
+                      {c.servingThisRequest && <small> (answering this page)</small>}
+                    </td>
+                    <td>{c.restarts}</td>
+                    <td>{ageText(c.ageSeconds)}</td>
+                  </tr>
+                );
+              })}
+          </tbody>
+        </table>
+      ))}
     </Card>
   );
 }

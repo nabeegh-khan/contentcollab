@@ -393,3 +393,22 @@ button.link {
   border-width: 3px;
   font-weight: 700;
 }
+
+/* Per-pod charts and the node tables (D31 follow-up) */
+.ops-wide {
+  grid-column: 1 / -1;
+}
+
+.ops-chart {
+  max-height: 220px;
+  color: var(--text-h);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.ops-card caption {
+  text-align: left;
+  font-weight: 700;
+  color: var(--text-h);
+  padding: 6px 0;
+}

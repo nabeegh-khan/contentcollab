@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { DrillRateLimited, type DrillTarget } from "../lib/ops/drill.js";
 import { validate } from "../lib/validate.js";
+import { log } from "../lib/log.js";
 import { cachedFor } from "../lib/replicas.js";
 import {
   buildSnapshot,
@@ -24,6 +25,8 @@ export interface OpsOptions {
   timeoutMs?: number;
   /** The restart drill (D31); without it the route is not there (not in a cluster). */
   drill?: (target: DrillTarget, actorUserId: string) => Promise<object>;
+  /** Per-pod CPU and memory for the charts; without it the route is not there (no Prometheus). */
+  series?: () => Promise<object>;
 }
 
 // GET /api/v1/ops (D31): cluster internals for the operations panel. Sign-in and the admin check sit on
@@ -43,6 +46,28 @@ export function opsRoutes(sources: OpsSources, options: OpsOptions): Router {
   router.get("/", async (_req, res) => {
     res.set("Cache-Control", "no-store").json(await snapshot());
   });
+  const { series } = options;
+  if (series) {
+    const cached = cachedFor(
+      options.ttlMs ?? CACHE_SECONDS * MS_PER_SECOND,
+      async () => {
+        try {
+          return { series: await series() };
+        } catch (error) {
+          // The reason for the log, not for the client: it can hold hosts and driver text
+          log("warn", "ops: the series could not be read", {
+            component: "ops",
+            error: error instanceof Error ? error.message : String(error),
+          });
+          return { series: null, error: "unavailable" };
+        }
+      },
+      options.now,
+    );
+    router.get("/series", async (_req, res) => {
+      res.set("Cache-Control", "no-store").json(await cached());
+    });
+  }
   const { drill } = options;
   if (drill) {
     // Only the two targets: the code picks the pod, so a client can never name one
