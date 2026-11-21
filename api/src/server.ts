@@ -68,10 +68,14 @@ app.use(
         if (countsRunning) throw new Error("the previous count is still running");
         countsRunning = true;
         try {
-          const { rows } = await pool.query<{ documents: number; versions: number }>(
-            "SELECT (SELECT count(*) FROM documents)::int AS documents, (SELECT count(*) FROM document_versions)::int AS versions",
+          const { rows } = await pool.query<{
+            documents: number;
+            versions: number;
+            comments: number;
+          }>(
+            "SELECT (SELECT count(*) FROM documents)::int AS documents, (SELECT count(*) FROM document_versions)::int AS versions, (SELECT count(*) FROM comments)::int AS comments",
           );
-          return rows[0] ?? { documents: 0, versions: 0 };
+          return rows[0] ?? { documents: 0, versions: 0, comments: 0 };
         } finally {
           countsRunning = false;
         }

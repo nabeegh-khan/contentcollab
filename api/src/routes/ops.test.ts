@@ -58,7 +58,7 @@ const sources = (over: Partial<OpsSources> = {}): OpsSources => ({
     capacity: "5Gi",
     storageClass: "do-block-storage",
   }),
-  counts: async () => ({ documents: 12, versions: 19 }),
+  counts: async () => ({ documents: 12, versions: 19, comments: 7 }),
   events: async () => [],
   logs: async () => ({ lines: [], hidden: 0 }),
   ...over,
@@ -134,7 +134,7 @@ describe("GET /api/v1/ops document", () => {
       hpa: { currentReplicas: 2, cpuTargetPercent: 70 },
       nodes: [],
       traffic: { requestsPerSecond: 0.4 },
-      storage: { claim: { phase: "Bound" }, documents: 12, versions: 19 },
+      storage: { claim: { phase: "Bound" }, documents: 12, versions: 19, comments: 7 },
       events: [],
       logs: { lines: [], hidden: 0 },
       drills: { nextAllowedAt: null },
@@ -183,6 +183,7 @@ describe("GET /api/v1/ops document", () => {
       claim: expect.objectContaining({ phase: "Bound" }),
       documents: null,
       versions: null,
+      comments: null,
     });
     expect(res.body.errors).toEqual({ counts: "unavailable" });
   });
