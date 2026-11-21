@@ -1,0 +1,137 @@
+# Nightly dump of the database to Spaces (ARCHITECTURE D30, #50). One pod, two steps: the
+# init container writes a pg_dump archive to a shared emptyDir, and only if that succeeds the
+# main container copies it to s3://<bucket>/backups/. Retention is a Spaces lifecycle rule
+# (docs/RUNBOOK.md), not a delete in this job.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: db-backup
+  labels:
+    app: db-backup
+spec:
+  schedule: "0 3 * * *"
+  timeZone: America/Toronto
+  # A run still going at the next tick is skipped, never doubled
+  concurrencyPolicy: Forbid
+  # A tick missed by more than an hour (controller down) is skipped, not run late
+  startingDeadlineSeconds: 3600
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 900
+      template:
+        metadata:
+          labels:
+            app: db-backup
+        spec:
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 999 # the `postgres` user in the postgres image (SEC-6)
+            fsGroup: 999 # so both containers can write the shared volume
+          initContainers:
+            - name: dump
+              # Same major version as the server: pg_dump refuses a newer server (CON-3)
+              image: postgres:18
+              command: ["sh", "-c"]
+              args:
+                - |
+                  set -e
+                  pg_dump --format=custom --file=/backup/contentcollab.dump
+                  ls -l /backup
+              # Database login only, no Spaces keys (SEC-2); pg_dump reads the PG* variables
+              env:
+                - name: PGHOST
+                  valueFrom:
+                    configMapKeyRef:
+                      name: app-config
+                      key: DB_HOST
+                - name: PGPORT
+                  valueFrom:
+                    configMapKeyRef:
+                      name: app-config
+                      key: DB_PORT
+                - name: PGDATABASE
+                  valueFrom:
+                    configMapKeyRef:
+                      name: app-config
+                      key: DB_NAME
+                - name: PGUSER
+                  valueFrom:
+                    secretKeyRef:
+                      name: app-secrets
+                      key: DB_USER
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: app-secrets
+                      key: DB_PASSWORD
+              volumeMounts:
+                - name: backup
+                  mountPath: /backup
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 128Mi
+                limits:
+                  cpu: 500m
+                  memory: 256Mi
+          containers:
+            - name: upload
+              image: amazon/aws-cli:2.41.0
+              command: ["sh", "-c"]
+              args:
+                - |
+                  set -e
+                  aws s3 cp /backup/contentcollab.dump "s3://$SPACES_BUCKET/backups/contentcollab-$(date -u +%Y%m%dT%H%M%SZ).dump" --endpoint-url "$SPACES_ENDPOINT"
+              # Spaces keys only, no database login (SEC-2)
+              env:
+                - name: HOME
+                  value: /tmp
+                - name: AWS_ACCESS_KEY_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: app-secrets
+                      key: SPACES_KEY
+                - name: AWS_SECRET_ACCESS_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: app-secrets
+                      key: SPACES_SECRET
+                - name: AWS_DEFAULT_REGION
+                  valueFrom:
+                    configMapKeyRef:
+                      name: app-config
+                      key: SPACES_REGION
+                - name: SPACES_ENDPOINT
+                  valueFrom:
+                    configMapKeyRef:
+                      name: app-config
+                      key: SPACES_ENDPOINT
+                - name: SPACES_BUCKET
+                  valueFrom:
+                    configMapKeyRef:
+                      name: app-config
+                      key: SPACES_BUCKET
+                # AWS CLI v2.23 and later add checksums that S3-compatible stores may refuse
+                # (aws-cli issue 9214); these two settings turn them off unless required
+                - name: AWS_REQUEST_CHECKSUM_CALCULATION
+                  value: when_required
+                - name: AWS_RESPONSE_CHECKSUM_VALIDATION
+                  value: when_required
+              volumeMounts:
+                - name: backup
+                  mountPath: /backup
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 128Mi
+                limits:
+                  cpu: 500m
+                  memory: 256Mi
+          volumes:
+            - name: backup
+              emptyDir:
+                sizeLimit: 1Gi

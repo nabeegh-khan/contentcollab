@@ -1,0 +1,41 @@
+# 21 Nov 2026 backup and restore on DOKS (D30, #50)
+## backup: kubectl create job --from=cronjob/db-backup db-backup-manual-1
+total 28
+-rw-r--r-- 1 postgres postgres 26594 Nov 21 19:24 contentcollab.dump
+upload: ../backup/contentcollab.dump to s3://contentcollab/backups/contentcollab-20261121T192436Z.dump
+
+## restore check: KUBE_CONTEXT=do-nyc3-contentcollab bash scripts/restore-check.sh
+context: do-nyc3-contentcollab, namespace: contentcollab, job: db-restore-check-20261121192456
+job.batch/db-restore-check-20261121192456 created
+job.batch/db-restore-check-20261121192456 condition met
+---- fetch (init container)
+newest dump: contentcollab-20261121T192436Z.dump
+Completed 26.0 KiB/26.0 KiB (216.1 KiB/s) with 1 file(s) remainingdownload: s3://contentcollab/backups/contentcollab-20261121T192436Z.dump to ../backup/restore.dump
+---- restore
+NOTICE:  database "restore_check" does not exist, skipping
+== restored copy (restore_check)
+comment_mentions 0
+comments 0
+document_tags 0
+document_versions 0
+documents 0
+pgmigrations 2
+restart_test 3
+shares 0
+tags 0
+users 0
+== live database (contentcollab), read only
+comment_mentions 0
+comments 0
+document_tags 0
+document_versions 0
+documents 0
+pgmigrations 2
+restart_test 3
+shares 0
+tags 0
+users 0
+scratch database dropped
+job.batch "db-restore-check-20261121192456" deleted from contentcollab namespace
+restore check passed
+exit: 0
