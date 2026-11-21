@@ -61,7 +61,7 @@ function deps(over: Partial<LiveDeps> = {}) {
       throw new Error(`unexpected path ${path}`);
     },
     query: async () => 1,
-    sql: async () => ({ documents: 12, versions: 19 }),
+    sql: async () => ({ documents: 12, versions: 19, comments: 7 }),
   };
   return { deps: { ...base, ...over }, asked };
 }
@@ -137,6 +137,6 @@ describe("liveSources", () => {
 
   it("counts documents and versions with the sql it is given", async () => {
     const { deps: d } = deps();
-    expect(await liveSources(d).counts?.()).toEqual({ documents: 12, versions: 19 });
+    expect(await liveSources(d).counts?.()).toEqual({ documents: 12, versions: 19, comments: 7 });
   });
 });

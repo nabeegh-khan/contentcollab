@@ -20,7 +20,7 @@ export interface LiveDeps {
   hostname: string;
   kubeGet: KubeGet | null;
   query: Query | null;
-  sql: () => Promise<{ documents: number; versions: number }>;
+  sql: () => Promise<{ documents: number; versions: number; comments: number }>;
 }
 
 function claimFrom(reply: unknown): ClaimCard {
