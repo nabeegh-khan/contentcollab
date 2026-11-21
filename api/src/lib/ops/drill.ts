@@ -124,10 +124,17 @@ export async function runDrill(deps: DrillDeps, target: DrillTarget, actorUserId
 
   const finish = async (outcome: Outcome) => {
     // Best effort: while PostgreSQL is the target the database may already be stopping
-    await Promise.race([
-      deps.finishDrill(id, outcome).catch(() => undefined),
-      new Promise((resolve) => setTimeout(resolve, deps.finishWaitMs ?? FINISH_WAIT_MS)),
-    ]);
+    let timer: NodeJS.Timeout | undefined;
+    try {
+      await Promise.race([
+        deps.finishDrill(id, outcome).catch(() => undefined),
+        new Promise((resolve) => {
+          timer = setTimeout(resolve, deps.finishWaitMs ?? FINISH_WAIT_MS);
+        }),
+      ]);
+    } finally {
+      clearTimeout(timer);
+    }
     deps.log("ops drill", { actor_user_id: actorUserId, target, pod, outcome });
   };
 
