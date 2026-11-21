@@ -1,4 +1,4 @@
-import { describe, expect, it } from "@jest/globals";
+import { describe, expect, it, jest } from "@jest/globals";
 import { HttpError } from "../httpError.js";
 import { runDrill, type DrillDeps } from "./drill.js";
 
@@ -209,10 +209,28 @@ describe("runDrill guards", () => {
   });
 
   it("refuses with 503 when it does not know which pod is answering, rather than risk stopping it", async () => {
-    const { deps, evictions } = world({ hostname: "" });
+    const { deps, evictions, calls } = world({ hostname: "" });
     const error = await runDrill(deps, "api", ACTOR).catch((e) => e);
     expect(error.status).toBe(503);
     expect(evictions).toHaveLength(0);
+    expect(calls).toEqual(["lock", "unlock"]);
+  });
+
+  it("does not need its own name for the postgres drill", async () => {
+    const { deps, evictions } = world({ hostname: "" });
+    await runDrill(deps, "postgres", ACTOR);
+    expect(evictions).toHaveLength(1);
+  });
+
+  it("leaves no timer pending after a normal finish", async () => {
+    jest.useFakeTimers();
+    try {
+      const { deps } = world();
+      await runDrill(deps, "postgres", ACTOR);
+      expect(jest.getTimerCount()).toBe(0);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it("writes one log line with the actor, the target and the pod, and never the token", async () => {
