@@ -11,6 +11,19 @@ describe("session token", () => {
     expect(loadToken()).toBeNull();
   });
 
+  it("keeps the token per tab: it goes to sessionStorage and never to localStorage, so two tabs of one Chrome can hold two users", () => {
+    localStorage.clear();
+    saveToken("tab-one-token");
+    expect(sessionStorage.getItem("contentcollab.token")).toBe("tab-one-token");
+    expect(localStorage.length).toBe(0);
+
+    // another tab has its own sessionStorage: empty, and a stale localStorage token is never read
+    sessionStorage.clear();
+    localStorage.setItem("contentcollab.token", "another-tab-left-this");
+    expect(loadToken()).toBeNull();
+    localStorage.clear();
+  });
+
   it("does not throw when storage is blocked; nothing is remembered", () => {
     const blocked = () => {
       throw new Error("SecurityError");

@@ -6,7 +6,7 @@ const PENDING = "after 24 Nov";
 export default function DocumentPage({ token, user, documentId, versionId, connect }) {
   return (
     <>
-      <section className="card">
+      <section className="card wide">
         <p>
           <a href="#/">Back to documents</a>
         </p>
