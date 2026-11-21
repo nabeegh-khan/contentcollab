@@ -1,0 +1,20 @@
+# 21 Nov 2026, dashboard theme (PR #156): contrast of every colour pair, WCAG 2.x ratio, AA needs 4.5 (3 for the focus ring and borders)
+# Computed from the colour variables in web/src/index.css (the same formula the test in web/src/presentationSize.test.js uses),
+# and measured in Chrome at 1920x1080 on the rendered #/ops page: page background rgb(244, 245, 247), root font 20px, main column 1200px,
+# smallest text 20px, accent links 6.7:1 in the white header bar (6.14:1 on the page grey), every button 52px tall, button text 17.74:1. The sign-in and document screenshots show the same styles.
+
+ 16.26  text #111827 on the page #F4F5F7
+ 17.74  text #111827 on a card #FFFFFF
+  9.45  secondary #374151 on the page
+ 10.31  secondary #374151 on a card
+   6.7  white on the accent #1D4ED8 (primary buttons)
+  6.14  accent link #1D4ED8 on the page
+   6.7  accent link #1D4ED8 on a card
+ 10.31  input border #374151 on a card (3:1 needed)
+  5.85  focus ring #0B57D0 on the page
+  6.39  focus ring #0B57D0 on a card
+  6.86  error text #A31515 on the error background #FDECEA
+
+Screenshots (1920x1080): 2026-11-21-ui2-signin-1920x1080.png, 2026-11-21-ui2-document-1920x1080.png (full page, three comments about a minute apart: 4:55 PM (2 min ago), 4:56 PM (1 min ago), 4:57 PM (just now)),
+2026-11-21-ui2-ops-1920x1080.png (the #/ops page of PR #151/#155 with this theme merged in a throwaway worktree; a signed-in user who is not an operator sees "This page is for operators",
+and the operations API is not deployed yet, so the operator view itself is not shown; the refusal state is not wrapped in a card and its headings are larger than the card titles: that page belongs to its own PR).

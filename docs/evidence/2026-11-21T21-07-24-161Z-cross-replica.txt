@@ -1,0 +1,8 @@
+2026-11-21T21:07:16.585Z cross-replica check against https://contentcollab.app, version 5ded0b94-86b8-4640-a8a8-ed870e8d3ea2
+2026-11-21T21:07:20.822Z socket 1: before {"api-8555474dbd-8p4xh":0,"api-8555474dbd-fbnk9":2} after {"api-8555474dbd-8p4xh":1,"api-8555474dbd-fbnk9":2}
+2026-11-21T21:07:20.822Z socket 1: api-8555474dbd-8p4xh
+2026-11-21T21:07:22.857Z socket 2: before {"api-8555474dbd-8p4xh":2,"api-8555474dbd-fbnk9":2} after {"api-8555474dbd-8p4xh":2,"api-8555474dbd-fbnk9":3}
+2026-11-21T21:07:22.857Z socket 2: api-8555474dbd-fbnk9
+2026-11-21T21:07:23.057Z posted comment 1c03fd7b-9c92-4dc5-bf48-dc309ef2e1cb
+2026-11-21T21:07:24.147Z deleted comment 1c03fd7b-9c92-4dc5-bf48-dc309ef2e1cb
+2026-11-21T21:07:24.147Z FAIL: attribution not confirmed: api-8555474dbd-fbnk9 no longer holds the connection it was credited with ({"api-8555474dbd-8p4xh":3,"api-8555474dbd-fbnk9":2})

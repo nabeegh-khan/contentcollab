@@ -22,6 +22,15 @@ import { createServer } from "node:http";
 import { createSocketServer } from "./lib/socket.js";
 import sharesRoutes from "./routes/shares.js";
 import linksRoutes from "./routes/links.js";
+import { opsRoutes } from "./routes/ops.js";
+import { liveSources } from "./lib/ops/live.js";
+import { prometheusQuery } from "./lib/ops/traffic.js";
+import documentRoutes from "./routes/documents.js";
+import versionsRoutes from "./routes/versions.js";
+import { runDrill } from "./lib/ops/drill.js";
+import { prometheusRange, seriesFrom } from "./lib/ops/series.js";
+import { drillStore, nextDrillAt } from "./lib/ops/drillStore.js";
+import { log } from "./lib/log.js";
 
 const app = express();
 
@@ -46,6 +55,67 @@ app.use(
     replicas: () => (replicas ? replicas() : Promise.resolve(null)),
   }),
 );
+// Operations panel (D31): cluster internals, so sign-in and an admin check sit on the whole router
+const prometheusUrl = process.env.PROMETHEUS_URL;
+const store = drillStore(pool);
+let countsRunning = false;
+app.use(
+  "/api/v1/ops",
+  opsRoutes(
+    liveSources({
+      now: Date.now,
+      hostname: process.env.HOSTNAME ?? "",
+      kubeGet,
+      query: prometheusUrl ? prometheusQuery(prometheusUrl) : null,
+      // The source's 1 s race abandons a slow read but cannot cancel it (pg has no per-query timeout), so
+      // a read is not started while the last one still runs: a hung database holds one pool client, not one per window
+      drillRows: store.drillRows,
+      nextDrill: () => nextDrillAt(redis),
+      sql: async () => {
+        if (countsRunning) throw new Error("the previous count is still running");
+        countsRunning = true;
+        try {
+          const { rows } = await pool.query<{
+            documents: number;
+            versions: number;
+            comments: number;
+          }>(
+            "SELECT (SELECT count(*) FROM documents)::int AS documents, (SELECT count(*) FROM document_versions)::int AS versions, (SELECT count(*) FROM comments)::int AS comments",
+          );
+          return rows[0] ?? { documents: 0, versions: 0, comments: 0 };
+        } finally {
+          countsRunning = false;
+        }
+      },
+    }),
+    {
+      grafanaUrl: process.env.GRAFANA_URL ?? null,
+      ...(prometheusUrl ? { series: () => seriesFrom(prometheusRange(prometheusUrl)) } : {}),
+      // The restart drill (D31): only in a cluster, where there is a pod to evict
+      ...(kubeGet
+        ? {
+            drill: (target, actorUserId) =>
+              runDrill(
+                {
+                  hostname: process.env.HOSTNAME ?? "",
+                  now: Date.now,
+                  redis,
+                  listPods: () => kubeGet("/api/v1/namespaces/contentcollab/pods"),
+                  evict: async (path, body) => {
+                    await kubeGet(path, { method: "POST", body });
+                  },
+                  recordDrill: store.recordDrill,
+                  finishDrill: store.finishDrill,
+                  log: (msg, fields) => log("info", msg, { component: "ops", ...fields }),
+                },
+                target,
+                actorUserId,
+              ),
+          }
+        : {}),
+    },
+  ),
+);
 app.use("/api/v1/auth", authRoutes);
 // Version comparison (#23, D21): off unless FEATURE_VERSION_COMPARE=1
 if (compareEnabled(process.env)) app.use("/api/v1/documents", compareRoutes);
@@ -54,6 +124,9 @@ app.use("/api/v1", commentsRoutes);
 
 app.use("/api/v1/documents/:documentId/shares", sharesRoutes);
 app.use("/api/v1/links", linksRoutes);
+
+app.use("/api/v1/documents", documentRoutes);
+app.use("/api/v1/documents/:documentId/versions", versionsRoutes);
 app.use((req, res) => res.status(HTTP_NOT_FOUND).json(errorBody(HTTP_NOT_FOUND)));
 app.use(errorHandler);
 

@@ -11,6 +11,7 @@ resources:
   - redis.yaml
   - api.yaml
   - api-rbac.yaml
+  - api-drill-rbac.yaml
   - worker.yaml
   - web.yaml
 

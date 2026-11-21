@@ -652,3 +652,67 @@ Drafted the decision (ARCHITECTURE D28), a hash address parser, one function per
 - Read the Socket.IO client documentation (the `connect` event also fires on reconnection, rooms are lost on disconnect) and the server's own files for the routes, the events and the join acknowledgement instead of relying on memory.
 - An independent review found three errors that were fixed test first: Resolve was offered on threads the API refuses it on (only the thread's author may resolve), a slow or old list answer could overwrite a live comment or bring back a deleted one, and the token was read from storage on each render, so blocked storage sent requests without it. D28 was corrected where it claimed a role-based form and a document name in the mention notice.
 - Left for later: roles are not known to the client, so viewers still see the form and get a refusal; Delete is shown on the user's own comments only; comment authors show as "Member" plus part of an id until the API returns a name.
+
+## Share form and a cross-replica check, 21 November 2026
+
+### Prompt
+
+The demo needs a way to share a document with another user from the browser, using the shares routes that are on main, and the real-time claim needs proof that a comment crosses API pods. Build a minimal share form (tests first), and a script that holds two Socket.IO connections on different API pods through the Gateway and requires a posted comment to reach both.
+
+### AI Response
+
+Drafted the share form with the API's refusals in plain words and its tests, then a script split into a tested logic module (reading `/proc/net/tcp`, deciding which pod holds a socket, the run and its failure cases) and a thin entry that wires kubectl, fetch and `socket.io-client`.
+
+### What Your Team Did With It
+
+- Read the shares route and the role middleware to see what a non-owner and a non-member actually receive (403 and 404), and the socket server for the join answer and event names.
+- Independent reviews found that a 401 showed the server's raw text on the form, that a socket reconnecting could move to another pod and give a PASS with no crossing, and that the pod attribution (a before and after connection count) could be fooled; these got tests first, a recount after the comment, and the counts written to the evidence.
+- Left for later: link shares and role changes in the form, and running the script on the cluster, which needs a document with a version (#116).
+
+## An operations panel: the design and its read-only backend, 21 November 2026
+
+### Prompt
+
+The demo has no terminal: the audience should see the app and then a live operations panel showing what `kubectl` would show (containers, autoscaler, node load, traffic, storage, events, logs) with an operator-only restart drill. Design it first, against the current Kubernetes, Prometheus and RBAC documentation and the cluster itself, then build the read-only backend, tests first.
+
+### AI Response
+
+Drafted decision D31 (a read-only `GET /api/v1/ops` behind sign-in and an admin check, an Eviction-based drill, Redis rate limit, an audit table, the page and its evidence file) and then the first of three pull requests: small functions that turn Kubernetes replies into cards, the Prometheus reads, the admin middleware, the route with a 5 s cache, and the RBAC manifests with render tests.
+
+### What Your Team Did With It
+
+- Checked every path, field and PromQL expression against the live cluster read-only (events carry their time only in a deprecated field on this cluster; metrics.k8s.io is served as v1beta1) instead of relying on the documentation alone.
+- An independent review found a CPU quantity suffix the code could not read, a log line that would have shown an address, and a failed pod log read that dropped the whole card; each got a failing test first.
+- Left for later: the drill, the page, setting the admin ids from the setup script, and measuring the panel's cost on the API pods.
+
+## Gateway upload limit, nightly backup, demo seed and a patch to #116, 21 November 2026
+
+### Prompt
+
+Uploads through #116 would pass the Gateway, whose default body limit is 1 MiB; the database has no backup; the demo needs a document when uploads are not available; and #116 still carried a published Postgres port, an unused kustomization and a lockfile without integrity fields. Build, tests first: a ClientSettingsPolicy for 50 MiB, a pg_dump CronJob to Spaces with a rehearsed restore and a runbook, a seed script, and the three fixes on the #116 branch.
+
+### AI Response
+
+Drafted decisions D29 and D30 with their sources, then each change with its failing test first: a rendered-overlay test for the policy; 22 tests for the CronJob, the runbook and the restore script; a seed script checked on a migrated PostgreSQL. It ran the backup and the restore on the cluster and wrote the evidence file, and it merged main into the #116 branch and applied the three fixes there.
+
+### What Your Team Did With It
+
+- Checked every claim against the artifact: the CRD fields with `kubectl explain` on the cluster, the default body limit on nginx.org, the pg_dump and pg_restore flags, the CronJob fields and the Spaces lifecycle API on their own pages (D29, D30 list them with the date).
+- The first seed script left the current version empty (a data-changing CTE cannot see rows another CTE of the same statement inserts); the check showed it and it was rewritten as one statement per step. The first CronJob run failed the repository's own SEC-2 check on who may read the Spaces keys; the check now names the backup job, and D30 says the backup shares the app's key until a key of its own exists.
+- Left for later: a backup bucket and key of their own, a nightly restore check, the live-database restore (written from the documentation, not rehearsed), and the database-backed API tests on the #116 patch, which only CI ran.
+
+## The operations page, the restart drill and its button, 21 November 2026
+
+### Prompt
+
+The demo has no terminal on screen: after an upload, show what kubectl would show, live, in the web client, and let an operator restart a pod on purpose so the audience watches Kubernetes replace it while the data stays. Build the page on the read-only route, then the drill (rate limited, audited, least privilege), then the button with a confirm dialog. Tests first, an independent review of each change.
+
+### AI Response
+
+Drafted the page (cards for containers, autoscaler, nodes, storage, traffic, events and requests, refreshing every 5 s), the drill route (Eviction API, Redis lock, audit table, its own RBAC file) and the button with its dialog and countdown, with their tests.
+
+### What Your Team Did With It
+
+- Checked each change with an independent reviewer before it was pushed; their findings were fixed with a failing test first: a blank page on a non-JSON answer, a stalled request ending the refresh, a drill response held by a hung database write, an unset host name failing open, focus and Tab handling in the dialog.
+- Found that deleting a merged branch had closed the pull requests stacked on it, and rebuilt those by cherry-picking their own commits onto main.
+- Left for later: per-pod CPU and memory charts, the image tag per service, a page layout check in a browser at lecture-room size, and measuring the panel's cost on the API pods.

@@ -47,10 +47,102 @@ class StatusReadAccess(unittest.TestCase):
         self.assertEqual(binding["roleRef"], {"apiGroup": "rbac.authorization.k8s.io", "kind": "Role", "name": "api-status"})
         self.assertEqual(binding["subjects"], [{"kind": "ServiceAccount", "name": "api", "namespace": "contentcollab"}])
 
-    def test_no_cluster_wide_access(self):
-        kinds = {d["kind"] for d in self.docs}
-        self.assertNotIn("ClusterRole", kinds)
-        self.assertNotIn("ClusterRoleBinding", kinds)
+    def test_the_only_cluster_wide_objects_are_the_namespace_and_the_node_reader(self):
+        # D31: nodes are cluster-scoped, so the operations panel needs one ClusterRole, and nothing more
+        cluster = {
+            (d["kind"], d["metadata"]["name"])
+            for d in self.docs
+            if d["kind"] in ("ClusterRole", "ClusterRoleBinding")
+        }
+        self.assertEqual(
+            cluster,
+            {("ClusterRole", "contentcollab-api-nodes"), ("ClusterRoleBinding", "contentcollab-api-nodes")},
+        )
+
+    def test_the_node_reader_can_only_get_and_list_nodes_and_their_metrics(self):
+        role = one(self.docs, "ClusterRole", "contentcollab-api-nodes")
+        self.assertEqual(
+            role["rules"],
+            [
+                {"apiGroups": [""], "resources": ["nodes"], "verbs": ["get", "list"]},
+                {"apiGroups": ["metrics.k8s.io"], "resources": ["nodes"], "verbs": ["get", "list"]},
+            ],
+        )
+        binding = one(self.docs, "ClusterRoleBinding", "contentcollab-api-nodes")
+        self.assertEqual(
+            binding["roleRef"],
+            {"apiGroup": "rbac.authorization.k8s.io", "kind": "ClusterRole", "name": "contentcollab-api-nodes"},
+        )
+        self.assertEqual(
+            binding["subjects"], [{"kind": "ServiceAccount", "name": "api", "namespace": "contentcollab"}]
+        )
+
+    def test_the_ops_role_reads_pods_logs_events_one_hpa_and_one_claim(self):
+        role = one(self.docs, "Role", "api-ops")
+        self.assertEqual(
+            role["rules"],
+            [
+                {"apiGroups": [""], "resources": ["pods"], "verbs": ["get", "list"]},
+                {"apiGroups": [""], "resources": ["pods/log"], "verbs": ["get"]},
+                {"apiGroups": ["events.k8s.io"], "resources": ["events"], "verbs": ["list"]},
+                {
+                    "apiGroups": ["autoscaling"],
+                    "resources": ["horizontalpodautoscalers"],
+                    "resourceNames": ["api"],
+                    "verbs": ["get"],
+                },
+                {
+                    "apiGroups": [""],
+                    "resources": ["persistentvolumeclaims"],
+                    "resourceNames": ["data-postgres-0"],
+                    "verbs": ["get"],
+                },
+            ],
+        )
+        binding = one(self.docs, "RoleBinding", "api-ops")
+        self.assertEqual(
+            binding["roleRef"], {"apiGroup": "rbac.authorization.k8s.io", "kind": "Role", "name": "api-ops"}
+        )
+        self.assertEqual(
+            binding["subjects"], [{"kind": "ServiceAccount", "name": "api", "namespace": "contentcollab"}]
+        )
+
+    def test_the_panels_roles_only_read(self):
+        # D31 PR 1 is read-only: no verb but get and list, and nothing on credentials or exec
+        names = ("api-ops", "contentcollab-api-nodes")
+        roles = [d for d in self.docs if d["kind"] in ("Role", "ClusterRole") and d["metadata"]["name"] in names]
+        self.assertEqual(len(roles), 2)
+        for role in roles:
+            for rule in role["rules"]:
+                self.assertTrue(set(rule["verbs"]) <= {"get", "list"}, role["metadata"]["name"])
+                self.assertNotIn("pods/exec", rule["resources"])
+                self.assertFalse([r for r in rule["resources"] if r.startswith("sec")], role["metadata"]["name"])
+
+    def test_the_api_finds_prometheus_through_its_settings(self):
+        config = one(self.docs, "ConfigMap", "app-config")
+        self.assertEqual(config["data"]["PROMETHEUS_URL"], "http://prometheus.observability.svc:9090")
+
+    def test_the_drill_role_can_only_create_evictions(self):
+        # D31: stopping one pod, which its controller replaces, is the only write the API may do
+        role = one(self.docs, "Role", "api-drill")
+        self.assertEqual(role["rules"], [{"apiGroups": [""], "resources": ["pods/eviction"], "verbs": ["create"]}])
+        binding = one(self.docs, "RoleBinding", "api-drill")
+        self.assertEqual(
+            binding["roleRef"], {"apiGroup": "rbac.authorization.k8s.io", "kind": "Role", "name": "api-drill"}
+        )
+        self.assertEqual(
+            binding["subjects"], [{"kind": "ServiceAccount", "name": "api", "namespace": "contentcollab"}]
+        )
+
+    def test_the_drill_permission_is_its_own_file_so_removing_it_switches_drills_off(self):
+        text = (ROOT / "k8s" / "base" / "kustomization.yaml").read_text(encoding="utf-8")
+        self.assertIn("  - api-drill-rbac.yaml", text)
+        drill_file = (ROOT / "k8s" / "base" / "api-drill-rbac.yaml").read_text(encoding="utf-8")
+        docs = [d for d in yaml.safe_load_all(drill_file) if d]
+        self.assertEqual({(d["kind"], d["metadata"]["name"]) for d in docs}, {("Role", "api-drill"), ("RoleBinding", "api-drill")})
+        # and it is nowhere else: api-rbac.yaml must not grant eviction
+        main_file = (ROOT / "k8s" / "base" / "api-rbac.yaml").read_text(encoding="utf-8")
+        self.assertNotIn("pods/eviction", main_file)
 
     def test_other_workloads_do_not_run_as_the_api_account(self):
         # Only the API may read its Deployment; every other workload (worker, redis, the postgres

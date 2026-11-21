@@ -6,6 +6,7 @@ import { ApiError } from "./api/client.js";
 import AuthPage from "./pages/AuthPage.jsx";
 import DocumentPage from "./pages/DocumentPage.jsx";
 import DocumentsPage from "./pages/DocumentsPage.jsx";
+import OpsPage from "./ops/OpsPage.jsx";
 import { clearToken, loadToken, saveToken } from "./session.js";
 import { useRoute } from "./useRoute.js";
 import "./app.css";
@@ -52,6 +53,8 @@ function useSession() {
 }
 
 function SignedInPage({ route, token, user }) {
+  // key: a new token starts a clean page, with no refusal or data of the old one
+  if (route.name === "ops") return <OpsPage key={token} token={token} />;
   if (route.name === "version") {
     return (
       <DocumentPage
@@ -76,6 +79,9 @@ export default function Root() {
         <strong>ContentCollab</strong>
         {session.status === "signedIn" && (
           <span className="who">
+            <nav aria-label="Pages">
+              <a href="#/">Documents</a> <a href="#/ops">Operations</a>
+            </nav>
             <span>Signed in as {session.user.displayName}</span>
             <button type="button" onClick={signOut}>
               Sign out

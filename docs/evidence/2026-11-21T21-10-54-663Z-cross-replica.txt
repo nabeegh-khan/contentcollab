@@ -1,0 +1,6 @@
+2026-11-21T21:10:50.397Z cross-replica check against https://contentcollab.app, version 5ded0b94-86b8-4640-a8a8-ed870e8d3ea2, mode direct (port-forward)
+2026-11-21T21:10:53.115Z port-forward to api-8555474dbd-8p4xh on 127.0.0.1:53532
+2026-11-21T21:10:54.260Z port-forward to api-8555474dbd-fbnk9 on 127.0.0.1:53536
+2026-11-21T21:10:54.596Z posted comment 5488c78f-70a5-405f-84c9-5dace035052c
+2026-11-21T21:10:54.661Z deleted comment 5488c78f-70a5-405f-84c9-5dace035052c
+2026-11-21T21:10:54.662Z PASS: the comment reached sockets on api-8555474dbd-8p4xh and api-8555474dbd-fbnk9 (5 ms and 0 ms after the post was read)

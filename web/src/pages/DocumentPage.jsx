@@ -1,21 +1,16 @@
-// Document view (D28): one version's comments, live; download and the version list wait for #116.
+// Document view (D28): the document's versions (list, upload, download) and one version's comments, live.
 import CommentsPanel from "../comments/CommentsPanel.jsx";
-
-const PENDING = "after 24 Nov";
+import VersionsPanel from "../versions/VersionsPanel.jsx";
 
 export default function DocumentPage({ token, user, documentId, versionId, connect }) {
   return (
     <>
-      <section className="card">
+      <section className="card wide">
         <p>
           <a href="#/">Back to documents</a>
         </p>
         <h2>Document</h2>
-        <button type="button" disabled title={`${PENDING}: needs the versions routes (#116)`}>
-          Download
-        </button>
-        <h3>Versions</h3>
-        <p className="pending">The version list appears here {PENDING} (#116).</p>
+        <VersionsPanel token={token} documentId={documentId} versionId={versionId} />
       </section>
       <CommentsPanel
         token={token}

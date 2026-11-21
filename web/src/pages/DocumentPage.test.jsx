@@ -1,4 +1,4 @@
-// Render test: the document view shows one version's comments, with download and versions still disabled until #116.
+// Render test: the document view shows the document's versions (list, upload) and one version's comments.
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import DocumentPage from "./DocumentPage.jsx";
@@ -8,11 +8,13 @@ const DOC = "11111111-1111-4111-8111-111111111111";
 const VER = "22222222-2222-4222-8222-222222222222";
 
 function renderPage() {
-  const fetchMock = vi.fn().mockResolvedValue(
-    new Response(JSON.stringify({ items: [], nextCursor: null }), {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    }),
+  // A new Response for every call: a body can be read only once
+  const fetchMock = vi.fn().mockImplementation(
+    async () =>
+      new Response(JSON.stringify({ items: [], nextCursor: null }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
   );
   vi.stubGlobal("fetch", fetchMock);
   const connect = vi.fn().mockReturnValue({ close: vi.fn() });
@@ -27,7 +29,7 @@ describe("DocumentPage", () => {
     const { fetchMock, connect } = renderPage();
 
     expect(await screen.findByText("No comments yet.")).toBeTruthy();
-    const [url, init] = fetchMock.mock.calls[0];
+    const [url, init] = fetchMock.mock.calls.find(([u]) => u.includes("/comments"));
     expect(url).toBe(`/api/v1/documents/${DOC}/versions/${VER}/comments?limit=100`);
     expect(init.headers.Authorization).toBe("Bearer t0k");
     expect(connect.mock.calls[0][0]).toMatchObject({ token: "t0k", versionId: VER });
@@ -42,12 +44,17 @@ describe("DocumentPage", () => {
     expect(screen.getByRole("button", { name: "Add comment" })).toBeTruthy();
   });
 
-  it("keeps download and the version list disabled and marked after 24 Nov", async () => {
-    renderPage();
+  it("shows the versions of the document with an upload control, and no 'after 24 Nov' placeholder", async () => {
+    const { fetchMock } = renderPage();
 
-    expect(screen.getByRole("button", { name: "Download" }).disabled).toBe(true);
     expect(screen.getByRole("heading", { name: "Versions" })).toBeTruthy();
-    expect(screen.getAllByText(/after 24 Nov/).length).toBeGreaterThan(0);
+    expect(screen.getByLabelText("New version (a file)")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Upload as a new version" })).toBeTruthy();
+    expect(screen.queryByText(/after 24 Nov/)).toBeNull();
     await screen.findByText("No comments yet.");
+    const versionsCall = fetchMock.mock.calls.find(
+      ([u]) => u === `/api/v1/documents/${DOC}/versions`,
+    );
+    expect(versionsCall[1].headers.Authorization).toBe("Bearer t0k");
   });
 });

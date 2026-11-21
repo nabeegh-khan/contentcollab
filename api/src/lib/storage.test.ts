@@ -4,6 +4,7 @@ import { Readable } from "node:stream";
 const send = jest.fn<(command: MockCommand) => Promise<unknown>>();
 const done = jest.fn<() => Promise<unknown>>();
 const uploadOptions = jest.fn<(options: Record<string, unknown>) => void>();
+const abort = jest.fn<() => Promise<void>>();
 const s3ClientOptions = jest.fn<(options: Record<string, unknown>) => void>();
 
 class MockCommand {
@@ -22,6 +23,10 @@ class MockUpload {
   async done() {
     return done();
   }
+
+  async abort() {
+    return abort();
+  }
 }
 
 // Mock the AWS SDK before importing the storage module.
@@ -33,7 +38,6 @@ jest.unstable_mockModule("@aws-sdk/client-s3", () => ({
       s3ClientOptions(options);
     }
   },
-  CopyObjectCommand: MockCommand,
   DeleteObjectCommand: MockCommand,
   GetObjectCommand: MockCommand,
 }));
@@ -49,7 +53,7 @@ process.env.SPACES_REGION = "tor1";
 process.env.SPACES_KEY = "test-key";
 process.env.SPACES_SECRET = "test-secret";
 
-const { putStream, getStream, copy, remove, StorageNotFoundError, validateStorageConfig } =
+const { putStream, getStream, remove, StorageNotFoundError, validateStorageConfig } =
   await import("./storage.js");
 afterEach(() => {
   send.mockReset();
@@ -128,10 +132,11 @@ describe("Spaces storage", () => {
   });
 
   it("uploads a stream using the multipart Upload helper", async () => {
+    const signal = new AbortController().signal;
     const stream = Readable.from(["document contents"]);
     done.mockResolvedValue({});
 
-    await putStream("documents/doc-1/version-1", stream, "text/plain");
+    await putStream("documents/doc-1/version-1", stream, "text/plain", signal);
 
     expect(uploadOptions).toHaveBeenCalledTimes(1);
 
@@ -152,9 +157,10 @@ describe("Spaces storage", () => {
 
   it("propagates upload failures", async () => {
     done.mockRejectedValue(new Error("Upload failed"));
+    const signal = new AbortController().signal;
 
     await expect(
-      putStream("documents/doc-1/version-1", Readable.from(["contents"]), "text/plain"),
+      putStream("documents/doc-1/version-1", Readable.from(["contents"]), "text/plain", signal),
     ).rejects.toThrow("Upload failed");
   });
 
@@ -180,19 +186,6 @@ describe("Spaces storage", () => {
     );
   });
 
-  it("copies an object to a new key", async () => {
-    send.mockResolvedValue({});
-
-    await copy("documents/my file&draft/version-1", "documents/doc-1/version-2");
-
-    expect(send).toHaveBeenCalledTimes(1);
-    expect(send.mock.calls[0]?.[0].input).toEqual({
-      Bucket: "test-bucket",
-      CopySource: "test-bucket/documents/my%20file%26draft/version-1",
-      Key: "documents/doc-1/version-2",
-    });
-  });
-
   it("deletes an object", async () => {
     send.mockResolvedValue({});
 
@@ -203,5 +196,32 @@ describe("Spaces storage", () => {
       Bucket: "test-bucket",
       Key: "documents/doc-1/version-1",
     });
+  });
+
+  it("aborts an upload when the signal is aborted", async () => {
+    const controller = new AbortController();
+    let finishUpload!: () => void;
+
+    done.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          finishUpload = resolve;
+        }),
+    );
+    abort.mockResolvedValue();
+
+    const uploading = putStream(
+      "documents/doc-1/version-1",
+      Readable.from(["contents"]),
+      "text/plain",
+      controller.signal,
+    );
+
+    controller.abort();
+
+    expect(abort).toHaveBeenCalledTimes(1);
+
+    finishUpload();
+    await uploading;
   });
 });

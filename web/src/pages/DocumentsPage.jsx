@@ -24,7 +24,7 @@ export default function DocumentsPage({ token }) {
 
   return (
     <>
-      <section className="card">
+      <section className="card wide">
         <h2>Documents</h2>
         <form className="upload" onSubmit={(event) => event.preventDefault()}>
           <label className="field">
@@ -44,7 +44,7 @@ export default function DocumentsPage({ token }) {
           Load more
         </button>
       </section>
-      <section className="card">
+      <section className="card wide">
         <h3>Open a version</h3>
         <p>Until the list is live, open the comments of a version by its ids.</p>
         <form onSubmit={open}>
