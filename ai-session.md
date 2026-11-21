@@ -636,3 +636,19 @@ Checked which routes are on main (auth and status only), then proposed one `requ
 - Kept #93 and #91 open and untouched; the skeleton's own files changed by two lines in `main.jsx` and new scripts in `package.json`.
 - Checked routing precedence in the Gateway API v1.6 reference, the nginx non-root note on Docker Hub, package visibility in GitHub Docs and package release dates on npm, instead of from memory.
 - An independent review found that the first deploy would push a private image the cluster cannot pull, and that the sign-in page was also served over plain HTTP. The route now uses the HTTPS listener only, and the package is created and made public by hand before merging. With three Deployments, each rollout wait is 120 s so the deploy stays inside its ten-minute cluster login.
+
+## Comments and live comments in the web client, 21 November 2026
+
+### Prompt
+
+Comments and mentions (#135) and the Socket.IO rooms (#136) are on main, but the browser client still shows the document view disabled. Wire the client to them: list, post, reply, resolve and delete comments, and show a comment that another browser posts without a reload. The documents routes (#116) are not on main, so open a version by its address. Write the decision first, tests before code, and read the server files for the contract.
+
+### AI Response
+
+Drafted the decision (ARCHITECTURE D28), a hash address parser, one function per comment route on the existing `request()` helper, a Socket.IO connection that joins the version room on every `connect`, one pure function that applies the three comment events to the list, and the comments panel with its tests.
+
+### What Your Team Did With It
+
+- Read the Socket.IO client documentation (the `connect` event also fires on reconnection, rooms are lost on disconnect) and the server's own files for the routes, the events and the join acknowledgement instead of relying on memory.
+- An independent review found three errors that were fixed test first: Resolve was offered on threads the API refuses it on (only the thread's author may resolve), a slow or old list answer could overwrite a live comment or bring back a deleted one, and the token was read from storage on each render, so blocked storage sent requests without it. D28 was corrected where it claimed a role-based form and a document name in the mention notice.
+- Left for later: roles are not known to the client, so viewers still see the form and get a refusal; Delete is shown on the user's own comments only; comment authors show as "Member" plus part of an id until the API returns a name.

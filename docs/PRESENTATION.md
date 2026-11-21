@@ -1,5 +1,7 @@
 # Presentation plan: Wednesday 2 December 2026, 1:15pm
 
+Team deck (Google Slides): https://docs.google.com/presentation/d/1Q0jZCyI9xU0S2YT01DisHQQTtqmOpkKVYMcomWg6VtE/edit
+
 What we show, what we say and what we answer, built from the course rubric.
 
 ## Status on Saturday 14 November 2026, 2:30pm (supersedes the 11 November status below where they differ)
