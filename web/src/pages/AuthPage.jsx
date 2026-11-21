@@ -50,7 +50,7 @@ export default function AuthPage({ onSignedIn }) {
   }
 
   return (
-    <section className="card">
+    <section className="card auth">
       <h1>{registering ? "Register" : "Sign in"}</h1>
       <form onSubmit={submit}>
         <Field label="Email" type="email" value={email} onChange={setEmail} autoComplete="email" />

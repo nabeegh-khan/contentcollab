@@ -1,0 +1,21 @@
+# 21 Nov 2026, dry run of the demo path on https://contentcollab.app after #153 (theme) and #154 (versions panel) were deployed
+# Two throwaway users (Presenter, Reviewer) stood in for demo-a and demo-b so no demo login went through the browser tool; the path is the same.
+# One Chrome, two tabs, no private window.
+
+21:46:15Z  tab 1: sign-in page, root type 20px, card 768px wide
+21:46:22Z  tab 1: signed in as Presenter
+21:46:23Z  tab 2 (new tab, same Chrome): sign-in page again (no token in this tab's sessionStorage, nothing in localStorage), so the session is per tab
+21:46:30Z  tab 2: signed in as Reviewer
+21:46:35Z  both tabs open the shared document's version address
+21:46:44Z  tab 1: comment "...@Reviewer please reply." posted
+21:46:46Z  tab 2: the comment is in the list, no refresh; the notice "Someone mentioned you in a comment" is shown (observed within 2 s of the click)
+21:46:54Z  tab 2: reply sent under that comment
+21:46:56Z  tab 1: the reply is in the thread, no refresh; authors shown as "You" and "Member d4a1ecbe" (the comment carries no author name)
+21:49:55Z  tab 1: after the web deploy of #154 the page shows the versions panel
+21:50:00Z  tab 1: upload of a PDF identical to version 1: refused with "This file is already a version of the document." (HTTP 409), the error path works
+21:50:36Z  tab 1: upload of a different 234-byte PDF: "Uploaded as version 2."; the list shows Version 1 (200 B, Viewing) and Version 2 (234 B, Open)
+21:50:44Z  tab 1: download of version 2: HTTP 200, 234 bytes, sha256 b6e3b34d1cdf3364f79a13b86f9c8a7cb0f1fea70358b043842c37cae6a502f3, identical to the file that was uploaded; the browser saved dryrun-upload-2.pdf; no alert
+
+Found and fixed during the run: the web client had no upload and no version list (placeholders "after 24 Nov" written before #116 merged); built as #154.
+Still open: authors of other users' comments show as "Member xxxxxxxx" (the API sends no name); the documents page has no list and no new-document upload.
+Wall time: about 4.5 minutes from sign-in to download, most of it tool latency; no step failed apart from the deliberate duplicate upload.

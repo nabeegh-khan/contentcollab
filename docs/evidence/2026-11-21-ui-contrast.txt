@@ -1,0 +1,17 @@
+# 21 Nov 2026, light presentation-size theme (PR #153): measured in Chrome (Playwright) at 1920x1080, Vite dev server proxied to the live API
+# Contrast is the WCAG 2.x ratio of each element's computed text colour against its effective background colour.
+
+## Sign-in page (2026-11-21-ui-signin-1920x1080.png)
+root font 20px; card width 768px = 40.0% of the viewport, centred (left and right gaps equal)
+h1 "Sign in" 48px, contrast 18.88
+labels (Email, Password) 20px, contrast 18.88
+inputs: 54px tall, 20px text, #111111 on #ffffff, contrast 18.88, 2px #767676 border
+primary button "Sign in": 50px tall, 20px, white on #5b21b6, contrast 8.98
+link button "Need an account? Register": 48px tall, #5b21b6 on white, contrast 8.98
+footer line: 20px, contrast 18.88
+
+## Document view with comments (2026-11-21-ui-document-1920x1080.png, full page)
+every text node and every button measured: minimum contrast 8.98 (white on the accent), nothing below 7:1; smallest text 18px (the timestamps and the live line); comment text 20px
+buttons (Sign out, Download (disabled, dashed edge, full-contrast text), Reply, Resolve, Delete, Add comment): all 50px tall; text contrast 18.88, "Add comment" 8.98
+comment field: 114px tall; mention in the accent and bold; links in the accent
+Not captured: #/ops (PR #151, not on main yet; it inherits the global styles); the red status dot in the footer is the dev server, which does not proxy /health.
