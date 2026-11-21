@@ -16,6 +16,7 @@ const HTTP_FORBIDDEN = 403;
 const HTTP_TOO_MANY = 429;
 const HTTP_BAD_GATEWAY = 502;
 const HTTP_UNAVAILABLE = 503;
+const FINISH_WAIT_MS = 2000;
 
 export type Outcome = "evicted" | "refused" | "failed";
 
@@ -35,6 +36,8 @@ export interface DrillDeps {
   recordDrill: (row: { actorUserId: string; target: DrillTarget; pod: string }) => Promise<string>;
   finishDrill: (id: string, outcome: Outcome) => Promise<void>;
   log: (msg: string, fields: Record<string, unknown>) => void;
+  /** How long to wait for the outcome write (default 2 s): the database may be the pod being stopped. */
+  finishWaitMs?: number;
 }
 
 /** A refusal that carries the seconds until the next drill may start. */
@@ -55,6 +58,14 @@ function eviction(pod: string) {
 
 // The oldest ready API pod that is not the one answering this request; at least two must be ready
 async function chooseApiPod(deps: DrillDeps): Promise<string> {
+  // Not knowing which pod answers could mean stopping it mid-response: refuse instead
+  if (deps.hostname === "") {
+    throw new HttpError(
+      HTTP_UNAVAILABLE,
+      "UNAVAILABLE",
+      "This pod does not know its own name, so a drill is not safe",
+    );
+  }
   const ready = containersFrom(await deps.listPods(), deps.hostname, deps.now()).filter(
     (c) => c.component === "api" && c.ready && c.status === "Running",
   );
@@ -113,7 +124,10 @@ export async function runDrill(deps: DrillDeps, target: DrillTarget, actorUserId
 
   const finish = async (outcome: Outcome) => {
     // Best effort: while PostgreSQL is the target the database may already be stopping
-    await deps.finishDrill(id, outcome).catch(() => undefined);
+    await Promise.race([
+      deps.finishDrill(id, outcome).catch(() => undefined),
+      new Promise((resolve) => setTimeout(resolve, deps.finishWaitMs ?? FINISH_WAIT_MS)),
+    ]);
     deps.log("ops drill", { actor_user_id: actorUserId, target, pod, outcome });
   };
 

@@ -202,6 +202,19 @@ describe("runDrill guards", () => {
     expect(out.pod).toBe("postgres-0");
   });
 
+  it("does not wait for an outcome write that hangs (the database is the one being stopped)", async () => {
+    const { deps } = world({ finishDrill: () => new Promise<void>(() => {}), finishWaitMs: 20 });
+    const out = await runDrill(deps, "postgres", ACTOR);
+    expect(out.pod).toBe("postgres-0");
+  });
+
+  it("refuses with 503 when it does not know which pod is answering, rather than risk stopping it", async () => {
+    const { deps, evictions } = world({ hostname: "" });
+    const error = await runDrill(deps, "api", ACTOR).catch((e) => e);
+    expect(error.status).toBe(503);
+    expect(evictions).toHaveLength(0);
+  });
+
   it("writes one log line with the actor, the target and the pod, and never the token", async () => {
     const lines: { msg: string; fields: Record<string, unknown> }[] = [];
     const { deps } = world({ log: (msg, fields) => lines.push({ msg, fields }) });

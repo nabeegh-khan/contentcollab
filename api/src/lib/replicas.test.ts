@@ -3,6 +3,7 @@ import { EventEmitter } from "node:events";
 import {
   readyReplicas,
   inClusterGet,
+  KubeApiError,
   cachedFor,
   DEPLOYMENT_PATH,
   type KubeGet,
@@ -135,6 +136,13 @@ describe("inClusterGet", () => {
     expect(sent.method).toBe("POST");
     expect(sent.headers?.["Content-Type"]).toBe("application/json");
     expect(JSON.parse(String(sent.body))).toEqual({ kind: "Eviction" });
+  });
+
+  it("a non-2xx makes the call reject with a KubeApiError carrying the status", async () => {
+    const https = fakeHttps(TOO_MANY, "{}");
+    const get = inClusterGet(env, { request: https.request, readFile: files })!;
+    const error = await get("/x").catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(KubeApiError);
   });
 
   it("rejects with the HTTP status on the error, so a caller can tell 429 from 403", async () => {
