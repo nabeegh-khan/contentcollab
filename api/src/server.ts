@@ -3,19 +3,23 @@ import { fileURLToPath } from "node:url";
 import { errorBody, errorHandler } from "./middleware/errorHandler.js";
 import { requestLogger } from "./middleware/logger.js";
 import { requestMetrics } from "./middleware/metrics.js";
-import { connectRedis, redis } from "./lib/redis.js";
+import { redis } from "./lib/redis.js";
 import { pool } from "./lib/db.js";
 import { HTTP_NOT_FOUND } from "./lib/httpStatus.js";
 import { logListening, logRedisGaveUp } from "./lib/startup.js";
 import healthRoutes from "./routes/health.js";
 import metricsRoutes from "./routes/metrics.js";
+import { validateStorageConfig } from "./lib/storage.js";
 import { statusRoutes } from "./routes/status.js";
 import { latencyFrom, queueDepth } from "./lib/status.js";
 import { cachedFor, inClusterGet, readyReplicas } from "./lib/replicas.js";
 import { httpDuration } from "./lib/metrics.js";
 import authRoutes from "./routes/auth.js";
+import commentsRoutes from "./routes/comments.js";
 import { jwtSecret } from "./middleware/requireAuth.js";
 import compareRoutes, { compareEnabled } from "./routes/compare.js";
+import { createServer } from "node:http";
+import { createSocketServer } from "./lib/socket.js";
 import sharesRoutes from "./routes/shares.js";
 import linksRoutes from "./routes/links.js";
 
@@ -45,44 +49,44 @@ app.use(
 app.use("/api/v1/auth", authRoutes);
 // Version comparison (#23, D21): off unless FEATURE_VERSION_COMPARE=1
 if (compareEnabled(process.env)) app.use("/api/v1/documents", compareRoutes);
+
+app.use("/api/v1", commentsRoutes);
+
 app.use("/api/v1/documents/:documentId/shares", sharesRoutes);
 app.use("/api/v1/links", linksRoutes);
 app.use((req, res) => res.status(HTTP_NOT_FOUND).json(errorBody(HTTP_NOT_FOUND)));
 app.use(errorHandler);
 
-// Start listening only when this file is the entry point. Tests import `app`
-// and attach Supertest to it instead, so no port is taken.
+// Start listening only when this file is the entry point. Tests import `app` and attach Supertest to it instead, so no port is taken.
 const isEntry = process.argv[1] !== undefined && fileURLToPath(import.meta.url) === process.argv[1];
 
 if (isEntry) {
   jwtSecret();
   const port = Number(process.env.PORT ?? 3000);
-  const server = app.listen(port, () => logListening(port));
+  validateStorageConfig();
 
-  // Listen first, then connect to Redis in the background (#65). If Redis is
-  // down when the pod starts, the process stays up: /health answers 503 at
-  // once so readiness keeps traffic away, liveness (the socket) passes, and
-  // the client keeps retrying until Redis is back, without a restart loop.
-  // With node-redis's default retry strategy connect() keeps retrying and
-  // does not reject; the catch is kept for a strategy that gives up. Nothing
-  // reconnects after that and liveness still passes, so the pod would stay
-  // unready until it is restarted by hand: the log says so.
+  const server = createServer(app);
+  const socketServer = createSocketServer(server);
+
+  server.listen(port, () => logListening(port));
+
+  // Connect Redis publisher and Socket.IO subscriber in the background.
   const connectInBackground = async () => {
     try {
-      await connectRedis();
+      await socketServer.connectRedisClients();
     } catch (err) {
       logRedisGaveUp(err);
     }
   };
   void connectInBackground();
 
-  // On SIGTERM (Compose stop, Kubernetes rolling update) stop taking new
-  // connections, let in-flight requests finish, then close the pool.
+  // Gracefully close Socket.IO, Redis subscriber and PostgreSQL.
   process.on("SIGTERM", () => {
-    server.close(async () => {
+    void (async () => {
+      await socketServer.close();
       await pool.end();
       process.exit(0);
-    });
+    })();
   });
 }
 

@@ -13,10 +13,14 @@ images:
   - name: ghcr.io/nabeegh-khan/contentcollab-worker
     newName: contentcollab-worker
     newTag: dev
+  - name: ghcr.io/nabeegh-khan/contentcollab-web
+    newName: contentcollab-web
+    newTag: dev
 
 patches:
   - path: api-patch.yaml
   - path: worker-patch.yaml
+  - path: web-patch.yaml
 
 # preStop drain for the API (ARCHITECTURE D14, #69)
 components:

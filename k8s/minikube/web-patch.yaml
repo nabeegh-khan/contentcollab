@@ -1,0 +1,13 @@
+# Laptop settings for the browser client: one replica, the local image
+# (`minikube image build -t contentcollab-web:dev web`), never pulled.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+spec:
+  replicas: 1
+  template:
+    spec:
+      containers:
+        - name: web
+          imagePullPolicy: Never
