@@ -3,6 +3,7 @@ import express from "express";
 import jwt from "jsonwebtoken";
 import request from "supertest";
 import { errorHandler } from "../middleware/errorHandler.js";
+import { DrillRateLimited } from "../lib/ops/drill.js";
 import { opsRoutes, type OpsSources } from "./ops.js";
 
 // GET /api/v1/ops (D31): sign-in and an admin check on the whole router, each source on its own, one
@@ -225,6 +226,11 @@ describe("GET /api/v1/ops document", () => {
     expect(reads).toBe(2);
   });
 
+  it("tells the client when the next drill is allowed", async () => {
+    const res = await get(appWith(sources({ nextDrill: async () => "2026-11-21T19:42:02.000Z" })));
+    expect(res.body.drills).toEqual({ nextAllowedAt: "2026-11-21T19:42:02.000Z" });
+  });
+
   it("links Grafana only when it is configured", async () => {
     process.env.JWT_SECRET = SECRET;
     const app = express();
@@ -235,5 +241,86 @@ describe("GET /api/v1/ops document", () => {
     app.use(errorHandler);
     const res = await get(app);
     expect(res.body.links).toEqual({ grafana: "https://g.example" });
+  });
+});
+
+describe("POST /api/v1/ops/drills", () => {
+  const post = (app: express.Express, body: unknown, sub = ADMIN) =>
+    request(app)
+      .post("/api/v1/ops/drills")
+      .set("Authorization", `Bearer ${token(sub)}`)
+      .send(body as object);
+
+  function appWithDrill(run: (target: "api" | "postgres", actor: string) => Promise<object>) {
+    process.env.JWT_SECRET = SECRET;
+    const app = express();
+    app.use(express.json());
+    app.use(
+      "/api/v1/ops",
+      opsRoutes(sources(), { env, ttlMs: CACHE_MS, now: () => 0, grafanaUrl: null, drill: run }),
+    );
+    app.use(errorHandler);
+    return app;
+  }
+
+  it("runs the drill for the signed-in admin and answers with the pod and the next time allowed", async () => {
+    const seen: [string, string][] = [];
+    const app = appWithDrill(async (target, actor) => {
+      seen.push([target, actor]);
+      return { target, pod: "api-old", startedAt: "t", nextAllowedAt: "t2" };
+    });
+    const res = await post(app, { target: "api" });
+    expect(res.status).toBe(OK);
+    expect(res.body).toEqual({
+      target: "api",
+      pod: "api-old",
+      startedAt: "t",
+      nextAllowedAt: "t2",
+    });
+    expect(seen).toEqual([["api", ADMIN]]);
+    expect(res.headers["cache-control"]).toBe("no-store");
+  });
+
+  it("accepts only the two targets, so the client can never name a pod", async () => {
+    let ran = 0;
+    const app = appWithDrill(async () => {
+      ran += 1;
+      return {};
+    });
+    for (const body of [
+      { target: "worker" },
+      { target: "api", pod: "postgres-0" },
+      {},
+      { target: ["api"] },
+    ]) {
+      const res = await post(app, body);
+      expect(res.status).toBe(400);
+    }
+    expect(ran).toBe(0);
+  });
+
+  it("passes a rate limit through as 429 with Retry-After", async () => {
+    const app = appWithDrill(async () => {
+      throw new DrillRateLimited(37);
+    });
+    const res = await post(app, { target: "api" });
+    expect(res.status).toBe(429);
+    expect(res.headers["retry-after"]).toBe("37");
+  });
+
+  it("is 403 for a non-admin and runs nothing", async () => {
+    let ran = 0;
+    const app = appWithDrill(async () => {
+      ran += 1;
+      return {};
+    });
+    const res = await post(app, { target: "api" }, OTHER);
+    expect(res.status).toBe(FORBIDDEN);
+    expect(ran).toBe(0);
+  });
+
+  it("is 404 when drills are not configured here (not in a cluster)", async () => {
+    const res = await post(appWith(sources()), { target: "api" });
+    expect(res.status).toBe(404);
   });
 });

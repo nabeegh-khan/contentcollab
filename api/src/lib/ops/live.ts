@@ -1,7 +1,7 @@
 // The real reads behind the operations panel (D31): Kubernetes, Prometheus and PostgreSQL, behind small functions.
 import { cachedFor, type KubeGet } from "../replicas.js";
 import { containersFrom } from "./containers.js";
-import { eventsFrom } from "./events.js";
+import { eventsFrom, type TimelineEvent } from "./events.js";
 import { hpaFrom } from "./hpa.js";
 import { logLinesFrom } from "./logs.js";
 import { nodesFrom } from "./nodes.js";
@@ -21,7 +21,28 @@ export interface LiveDeps {
   kubeGet: KubeGet | null;
   query: Query | null;
   sql: () => Promise<{ documents: number; versions: number }>;
+  /** The latest rows of ops_drills, for the timeline (D31). */
+  drillRows?: (() => Promise<DrillRow[]>) | undefined;
+  /** When the next drill may start, from the Redis lock. */
+  nextDrill?: (() => Promise<string | null>) | undefined;
 }
+
+export interface DrillRow {
+  requestedAt: string;
+  target: string;
+  pod: string;
+  outcome: string | null;
+}
+
+const toEvent = (row: DrillRow): TimelineEvent => ({
+  at: row.requestedAt,
+  type: "Drill",
+  reason: "RestartDrill",
+  object: `Pod/${row.pod}`,
+  text: "Restart drill started by an admin",
+  outcome: row.outcome ?? "result not recorded",
+  source: "drill",
+});
 
 function claimFrom(reply: unknown): ClaimCard {
   const claim = reply as {
@@ -78,12 +99,27 @@ export function liveSources(deps: LiveDeps): OpsSources {
       ? async () => claimFrom(await kubeGet(`${NS}/persistentvolumeclaims/${CLAIM}`))
       : null,
     counts: deps.sql,
-    events: kubeGet
-      ? async () =>
-          eventsFrom(
-            await kubeGet("/apis/events.k8s.io/v1/namespaces/contentcollab/events?limit=500"),
-          )
-      : null,
+    nextDrill: deps.nextDrill,
+    events:
+      kubeGet || deps.drillRows
+        ? async () => {
+            // Kubernetes events and drill rows fail separately: one down still shows the other
+            const [kube, drills] = await Promise.allSettled([
+              kubeGet
+                ? kubeGet("/apis/events.k8s.io/v1/namespaces/contentcollab/events?limit=500").then(
+                    eventsFrom,
+                  )
+                : Promise.resolve([] as TimelineEvent[]),
+              deps.drillRows ? deps.drillRows() : Promise.resolve([] as DrillRow[]),
+            ]);
+            if (kube.status === "rejected" && drills.status === "rejected") throw kube.reason;
+            const merged = [
+              ...(kube.status === "fulfilled" ? kube.value : []),
+              ...(drills.status === "fulfilled" ? drills.value.map(toEvent) : []),
+            ];
+            return merged.sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
+          }
+        : null,
     logs:
       kubeGet && podList
         ? async () => {

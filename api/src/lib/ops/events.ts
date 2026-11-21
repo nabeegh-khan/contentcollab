@@ -33,7 +33,9 @@ export interface TimelineEvent {
   object: string;
   text: string;
   count?: number;
-  source: "kubernetes";
+  /** Set on a drill row: what became of the eviction. */
+  outcome?: string;
+  source: "kubernetes" | "drill";
 }
 
 // An HPA's events carry eventTime: null and only deprecatedLastTimestamp (read on the cluster, 21 Nov 2026)
