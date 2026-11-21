@@ -34,8 +34,6 @@ export default function OpsPage({ token }) {
   const [refused, setRefused] = useState(null);
   const [failed, setFailed] = useState(false);
   const [now, setNow] = useState(() => Date.now());
-  // Bumped after a drill starts: the loop restarts, so the first look at the new events is at once
-  const [refreshTick, setRefreshTick] = useState(0);
 
   // The loop's state is local to one run of the effect, so a new token starts a clean loop and
   // the old one ends, even if its request is still out
@@ -87,7 +85,7 @@ export default function OpsPage({ token }) {
       clearTimeout(timer);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [token, refreshTick]);
+  }, [token]);
 
   // A clock for "updated 3 s ago" and the stale banner
   useEffect(() => {
@@ -138,11 +136,7 @@ export default function OpsPage({ token }) {
           <NodesCard data={data} />
           <StorageCard data={data} />
           <TrafficCard data={data} />
-          <DrillCard
-            token={token}
-            nextAllowedAt={data.drills?.nextAllowedAt ?? null}
-            onStarted={() => setRefreshTick((n) => n + 1)}
-          />
+          <DrillCard token={token} nextAllowedAt={data.drills?.nextAllowedAt ?? null} />
           <EventsCard data={data} />
           <LogsCard data={data} />
         </div>

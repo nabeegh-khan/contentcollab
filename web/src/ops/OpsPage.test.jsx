@@ -1,5 +1,5 @@
 // Render tests for the operations page (D31): cards, plain words, polling, and each way the API can say no.
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import OpsPage from "./OpsPage.jsx";
 
@@ -551,30 +551,5 @@ describe("OpsPage drill and comment count", () => {
     render(<OpsPage token="t" />);
     await flush();
     expect(screen.getByText("Comments stored: not available")).toBeTruthy();
-  });
-
-  it("looks at the cluster again at once after a drill starts, not 5 s later", async () => {
-    const fetchMock = vi.fn(async (url) =>
-      url === "/api/v1/ops/drills"
-        ? respond(200, {
-            target: "api",
-            pod: "api-old",
-            startedAt: "t",
-            nextAllowedAt: "2026-11-21T19:41:00.000Z",
-          })
-        : respond(200, snapshot()),
-    );
-    vi.stubGlobal("fetch", fetchMock);
-    render(<OpsPage token="t" />);
-    await flush();
-    const before = fetchMock.mock.calls.filter(([u]) => u === "/api/v1/ops").length;
-
-    fireEvent.click(screen.getByRole("button", { name: "Restart an API pod" }));
-    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Restart" }));
-    await flush();
-    await flush();
-
-    expect(screen.getByText(/stopping pod api-old/)).toBeTruthy();
-    expect(fetchMock.mock.calls.filter(([u]) => u === "/api/v1/ops").length).toBe(before + 1);
   });
 });
