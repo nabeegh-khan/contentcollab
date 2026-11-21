@@ -7,6 +7,7 @@ import {
 } from "@aws-sdk/client-s3";
 import { createReadStream, unlink, statSync } from "fs";
 import path from "path";
+import os from "os";
 
 const key = process.env.SPACES_KEY;
 const secret = process.env.SPACES_SECRET;
@@ -14,20 +15,20 @@ const bucket = process.env.SPACES_BUCKET;
 const region = process.env.SPACES_REGION;
 const endpoint = process.env.SPACES_ENDPOINT;
 
-const client = new S3Client({region: region, credentials: {accessKeyId: key, secretAccessKey: secret},}); // https://www.codemzy.com/blog/nodejs-upload-files-digitalocean-spaces
+const client = new S3Client({region: region, endpoint: endpoint, credentials: {accessKeyId: key, secretAccessKey: secret},}); // https://www.codemzy.com/blog/nodejs-upload-files-digitalocean-spaces
 
 // https://blog.harveydelaney.com/setting-up-automated-database-postgresql-backups-using-node-js-and-bash/
 const date = new Date();
-const today = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
-const backupFile= `pg-backup-${today}.tar`;
+const today = `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`;
+const backupFile = `pg-backup-${today}.tar`;
 
 // https://github.com/digitalocean/postgres-spaces-backups/blob/main/src/backup.ts 
-const upload = async (name) => { 
+const upload = async (name, filepath) => { 
 
     const params = {
     Bucket: bucket,
     Key: name,
-    Body: createReadStream(path),
+    Body: createReadStream(filepath),
     };
     
     // https://docs.aws.amazon.com/AWSJavaScriptSDK/v3/latest/client/s3/command/PutObjectCommand/
@@ -35,19 +36,31 @@ const upload = async (name) => {
     await client.send(command);
 };
 
-const dump = async () => {
+const dump = async (filepath) => {
 
 };
 
-const del = async () => {
+const del = async (filepath) => {
+    
+    await new Promise((resolve, reject) => {
 
+    unlink(filepath, (err) => {
+      reject({ error: err });
+      return;
+    });
+    resolve(undefined);
+
+  });
 };
 
 // https://github.com/digitalocean/postgres-spaces-backups/blob/main/src/backup.ts 
 export const backup = async () => {
-    await dump();
-    await upload(backupFile);
-    await del();
+
+    const file_path = path.join(os.tmpdir(), backupFile);
+  
+    await dump(file_path);
+    await upload(backupFile, file_path);
+    await del(file_path);
 };
 
 // https://www.npmjs.com/package/cron
