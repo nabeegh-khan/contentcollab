@@ -1,12 +1,15 @@
 // Kubernetes quantities ("1900m", "253000000n", "3074892Ki") as plain numbers for the operations panel (D31).
 const NANO_PER_MILLI = 1_000_000;
+const MICRO_PER_MILLI = 1000;
 const MILLI_PER_CORE = 1000;
 const KI = 1024;
 const MI_POWER = 2;
 const GI_POWER = 3;
 const TI_POWER = 4;
 const BYTES_PER_MIB = KI * KI;
+const DECIMAL = { K: 1e3, M: 1e6, G: 1e9, T: 1e12 };
 const BINARY_BYTES: Record<string, number> = {
+  ...DECIMAL,
   Ki: KI,
   Mi: KI ** MI_POWER,
   Gi: KI ** GI_POWER,
@@ -26,6 +29,7 @@ export function parseCpuMillicores(quantity: string): number {
   const { amount, suffix } = split(quantity);
   if (suffix === "") return Math.round(amount * MILLI_PER_CORE);
   if (suffix === "m") return Math.round(amount);
+  if (suffix === "u") return Math.round(amount / MICRO_PER_MILLI);
   if (suffix === "n") return Math.round(amount / NANO_PER_MILLI);
   throw new Error(`unreadable CPU quantity: ${quantity}`);
 }

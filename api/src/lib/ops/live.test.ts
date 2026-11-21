@@ -100,11 +100,30 @@ describe("liveSources", () => {
     const out = await liveSources(d).logs?.();
     const logCalls = asked.filter((a) => a.path.includes("/log"));
     expect(logCalls.map((a) => a.path).sort()).toEqual([
-      `${NS}/pods/api-a/log?container=api&tailLines=20&limitBytes=65536`,
-      `${NS}/pods/api-b/log?container=api&tailLines=20&limitBytes=65536`,
+      `${NS}/pods/api-a/log?container=api&tailLines=100&limitBytes=65536`,
+      `${NS}/pods/api-b/log?container=api&tailLines=100&limitBytes=65536`,
     ]);
     expect(logCalls.every((a) => a.text)).toBe(true);
     expect(out?.lines).toHaveLength(2);
+  });
+
+  it("keeps the pods whose log answered when one pod's log read fails", async () => {
+    const base = deps().deps;
+    const { deps: d } = deps({
+      kubeGet: async (path, options) => {
+        if (path.includes("/pods/api-b/log")) throw new Error("container is not ready");
+        return base.kubeGet!(path, options);
+      },
+    });
+    const out = await liveSources(d).logs?.();
+    expect(out?.lines.map((l) => l.pod)).toEqual(["api-a"]);
+  });
+
+  it("asks for the pod list once for the containers and the logs of one snapshot", async () => {
+    const { deps: d, asked } = deps();
+    const s = liveSources(d);
+    await Promise.all([s.containers?.(), s.logs?.()]);
+    expect(asked.filter((a) => a.path === `${NS}/pods`)).toHaveLength(1);
   });
 
   it("leaves a source null when its dependency is missing (not in a cluster, no Prometheus)", () => {

@@ -24,6 +24,16 @@ describe("quantities", () => {
     expect(parseMemoryMiB("1048576")).toBe(1);
   });
 
+  it("reads microcores (u), which Kubernetes writes when the nanocores are a multiple of 1000", () => {
+    expect(parseCpuMillicores("279327u")).toBe(279);
+    expect(parseCpuMillicores("0")).toBe(0);
+  });
+
+  it("reads the decimal suffixes of memory too", () => {
+    expect(parseMemoryMiB("1048576K")).toBe(1000);
+    expect(parseMemoryMiB("2G")).toBe(1907);
+  });
+
   it("rejects a quantity it cannot read instead of guessing", () => {
     expect(() => parseCpuMillicores("lots")).toThrow();
     expect(() => parseMemoryMiB("12 parsecs")).toThrow();
@@ -297,6 +307,24 @@ describe("logLinesFrom", () => {
     expect(text).not.toContain("password");
     expect(text).not.toContain("stack");
     expect(text).not.toContain("r1");
+  });
+
+  it("shows only request lines: another JSON line (a Redis outage with an address in its text) is hidden", () => {
+    const redis = JSON.stringify({
+      timestamp: "2026-11-21T19:34:12.796Z",
+      level: "warn",
+      msg: "redis: connect ECONNREFUSED 10.109.0.23:6379 (retrying; attempt 3)",
+    });
+    const out = logLinesFrom([
+      {
+        pod: "api-a",
+        text: `${redis}
+${request("/api/v1/documents")}`,
+      },
+    ]);
+    expect(out.lines).toHaveLength(1);
+    expect(out.hidden).toBe(1);
+    expect(JSON.stringify(out)).not.toContain("10.109");
   });
 
   it("counts a line that is not JSON as hidden and drops the panel's own polling", () => {

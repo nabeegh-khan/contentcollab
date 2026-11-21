@@ -33,6 +33,8 @@ function parse(pod: string, line: string): LogLine | "hidden" | null {
   >;
   const route = cut(http.route);
   if (route && OWN_ROUTES.some((own) => route === own || route.startsWith(`${own}/`))) return null;
+  // Only request lines: another line's text can hold an address or a driver message (a Redis outage line)
+  if (o.msg !== "request") return "hidden";
   const at = cut(o.timestamp);
   if (!at) return "hidden";
   return {

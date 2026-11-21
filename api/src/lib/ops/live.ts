@@ -1,5 +1,5 @@
 // The real reads behind the operations panel (D31): Kubernetes, Prometheus and PostgreSQL, behind small functions.
-import type { KubeGet } from "../replicas.js";
+import { cachedFor, type KubeGet } from "../replicas.js";
 import { containersFrom } from "./containers.js";
 import { eventsFrom } from "./events.js";
 import { hpaFrom } from "./hpa.js";
@@ -9,7 +9,9 @@ import type { ClaimCard, OpsSources } from "./snapshot.js";
 import { trafficFrom, type Query } from "./traffic.js";
 
 const NS = "/api/v1/namespaces/contentcollab";
-const LOG_QUERY = "container=api&tailLines=20&limitBytes=65536";
+// A longer tail than the 20 lines shown: the panel's own polling is filtered out afterwards
+const LOG_QUERY = "container=api&tailLines=100&limitBytes=65536";
+const POD_LIST_SHARED_MS = 1000;
 const CLAIM = "data-postgres-0";
 
 export interface LiveDeps {
@@ -46,7 +48,10 @@ function readyApiPods(list: unknown, nowMs: number, hostname: string): string[] 
 
 export function liveSources(deps: LiveDeps): OpsSources {
   const { kubeGet, query } = deps;
-  const podList = kubeGet ? () => kubeGet(`${NS}/pods`) : null;
+  // One pod list per snapshot for the containers card and the log reads, so they agree
+  const podList = kubeGet
+    ? cachedFor(POD_LIST_SHARED_MS, () => kubeGet(`${NS}/pods`), deps.now)
+    : null;
   return {
     containers: podList
       ? async () => containersFrom(await podList(), deps.hostname, deps.now())
@@ -83,12 +88,14 @@ export function liveSources(deps: LiveDeps): OpsSources {
       kubeGet && podList
         ? async () => {
             const pods = readyApiPods(await podList(), deps.now(), deps.hostname);
-            const entries = await Promise.all(
+            // A pod that stops between the list and the read must not drop the others' lines
+            const settled = await Promise.allSettled(
               pods.map(async (pod) => ({
                 pod,
                 text: String(await kubeGet(`${NS}/pods/${pod}/log?${LOG_QUERY}`, { text: true })),
               })),
             );
+            const entries = settled.flatMap((r) => (r.status === "fulfilled" ? [r.value] : []));
             return logLinesFrom(entries);
           }
         : null,

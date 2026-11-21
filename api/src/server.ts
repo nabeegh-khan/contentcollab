@@ -51,6 +51,7 @@ app.use(
 );
 // Operations panel (D31): cluster internals, so sign-in and an admin check sit on the whole router
 const prometheusUrl = process.env.PROMETHEUS_URL;
+let countsRunning = false;
 app.use(
   "/api/v1/ops",
   opsRoutes(
@@ -59,11 +60,19 @@ app.use(
       hostname: process.env.HOSTNAME ?? "",
       kubeGet,
       query: prometheusUrl ? prometheusQuery(prometheusUrl) : null,
+      // The source's 1 s race abandons a slow read but cannot cancel it (pg has no per-query timeout), so
+      // a read is not started while the last one still runs: a hung database holds one pool client, not one per window
       sql: async () => {
-        const { rows } = await pool.query<{ documents: number; versions: number }>(
-          "SELECT (SELECT count(*) FROM documents)::int AS documents, (SELECT count(*) FROM document_versions)::int AS versions",
-        );
-        return rows[0] ?? { documents: 0, versions: 0 };
+        if (countsRunning) throw new Error("the previous count is still running");
+        countsRunning = true;
+        try {
+          const { rows } = await pool.query<{ documents: number; versions: number }>(
+            "SELECT (SELECT count(*) FROM documents)::int AS documents, (SELECT count(*) FROM document_versions)::int AS versions",
+          );
+          return rows[0] ?? { documents: 0, versions: 0 };
+        } finally {
+          countsRunning = false;
+        }
       },
     }),
     { grafanaUrl: process.env.GRAFANA_URL ?? null },

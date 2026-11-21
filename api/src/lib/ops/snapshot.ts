@@ -5,7 +5,7 @@ import type { HpaCard } from "./hpa.js";
 import type { LogLine } from "./logs.js";
 import type { NodeCard } from "./nodes.js";
 import type { TrafficCard } from "./traffic.js";
-import { log, errorFields } from "../log.js";
+import { log } from "../log.js";
 
 export interface ClaimCard {
   name: string;
@@ -50,7 +50,8 @@ async function attempt<T>(name: string, source: Source<T>, timeoutMs: number): P
     log("warn", "ops: a source failed", {
       component: "ops",
       source: name,
-      error: errorFields(err),
+      // The kind and message, no stack: this repeats every window while the panel is open
+      error: err instanceof Error ? { kind: err.name, message: err.message } : String(err),
     });
     return { ok: false, error: "unavailable" };
   } finally {
