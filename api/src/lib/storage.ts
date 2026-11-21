@@ -7,7 +7,6 @@ import {
 import { Upload } from "@aws-sdk/lib-storage";
 import { Readable } from "node:stream";
 
-const bucket = process.env.SPACES_BUCKET;
 function getBucket(): string {
   const configuredBucket = process.env.SPACES_BUCKET;
 

@@ -181,6 +181,7 @@ router.post("/", requireAuth, requireRole("owner", "editor"), async (req, res) =
         },
       });
 
+      file.on("error", (error) => hashingStream.destroy(error));
       file.pipe(hashingStream);
       uploadStarted = true;
       await putStream(objectKey, hashingStream, info.contentType, signal);

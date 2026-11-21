@@ -190,6 +190,7 @@ router.post("/", requireAuth, async (req, res) => {
         },
       });
 
+      file.on("error", (error) => countingStream.destroy(error));
       file.pipe(countingStream);
       objectUploadStarted = true;
 
