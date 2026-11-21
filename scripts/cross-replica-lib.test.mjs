@@ -159,3 +159,22 @@ test("logs each pod's counts before and after a socket, so the evidence shows wh
   await crossReplicaCheck(deps);
   assert.ok(log.some((line) => /before .*api-a/.test(line) && /after .*api-a/.test(line)));
 });
+
+test("returns a failure, not a throw, when login or listing the pods fails", async () => {
+  const a = world({ landing: ["api-a"] });
+  a.deps.login = async () => {
+    throw new Error("POST /auth/login answered 401");
+  };
+  const loginResult = await crossReplicaCheck(a.deps);
+  assert.equal(loginResult.ok, false);
+  assert.match(loginResult.reason, /401/);
+
+  const b = world({ landing: ["api-a"] });
+  b.deps.listPods = async () => {
+    throw new Error("kubectl: connection refused");
+  };
+  const listResult = await crossReplicaCheck(b.deps);
+  assert.equal(listResult.ok, false);
+  assert.match(listResult.reason, /kubectl/);
+});
+

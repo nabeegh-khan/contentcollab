@@ -49,15 +49,16 @@ async function placeSockets(deps, pods, token, placed) {
 
 // Returns { ok, reason?, pods, latenciesMs, cleanupFailed? }. Closes the sockets it opened and removes its comment.
 export async function crossReplicaCheck(deps) {
-  const pods = await deps.listPods();
-  if (pods.length < 2) {
-    return { ok: false, reason: `need two ready API pods, found ${pods.length}`, pods: [] };
-  }
-  const token = await deps.login();
   const placed = [];
   let comment = null;
   let outcome = null;
+  let token = null;
   try {
+    const pods = await deps.listPods();
+    if (pods.length < 2) {
+      return { ok: false, reason: `need two ready API pods, found ${pods.length}`, pods: [] };
+    }
+    token = await deps.login();
     const byPod = await placeSockets(deps, pods, token, placed);
     if (byPod.size < 2) {
       return {
