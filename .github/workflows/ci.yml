@@ -122,7 +122,7 @@ jobs:
         # which the image readme does not list: it imported on ubuntu-26.04
         # 20261101.186.1 (run 42533543112, 8 Nov 2026); if an image drops it,
         # this step fails with ModuleNotFoundError rather than passing
-        run: python3 -m unittest tests.test_k8s_deploy tests.test_k8s_status_rbac -v
+        run: python3 -m unittest tests.test_k8s_deploy tests.test_k8s_status_rbac tests.test_deploy_undo -v
       - name: Every object in the app namespace
         # A namespace set in the base does not reach resources an overlay
         # adds; the Gateway once landed in `default` this way (BUILD_LOG.md,
@@ -214,6 +214,10 @@ jobs:
         with:
           node-version: 24
       - run: node --test scripts/*.test.mjs
+      # A migration's up may not drop or rename a table or column the previous
+      # release still reads, unless it carries a contract marker (#105, D24)
+      - name: Migrations keep the previous release working
+        run: node scripts/migration-compat.mjs api/migrations
 
   # Builds the API image exactly as the deploy workflow will, without pushing it,
   # so a Dockerfile that no longer builds fails the pull request rather than
@@ -246,7 +250,7 @@ jobs:
         # JWT_SECRET is a fixed public test value: since #111 the server does
         # not start without one (#127, scripts/ci-docker-env.test.mjs).
         run: |
-          docker run -d --name api --network host -e PORT=3000 -e REDIS_HOST=127.0.0.1 -e JWT_SECRET=ci-test-only-not-a-real-key contentcollab-api:pr
+          docker run -d --name api --network host -e PORT=3000 -e REDIS_HOST=127.0.0.1 -e JWT_SECRET=ci-test-only-not-a-real-key -e SPACES_ENDPOINT=https://tor1.digitaloceanspaces.com -e SPACES_REGION=tor1 -e SPACES_BUCKET=ci-test-bucket -e SPACES_KEY=ci-test-key -e SPACES_SECRET=ci-test-secret contentcollab-api:pr
           for _ in $(seq 1 20); do
             body=$(curl -s -m 3 http://localhost:3000/health || true)
             case "$body" in *'"redis":"ok"'*) echo "answered: $body"; exit 0 ;; esac
@@ -260,7 +264,7 @@ jobs:
         # restart-loops a pod over a dependency outage. Then Redis starts on
         # that port and the same process must report it ok, without a restart.
         run: |
-          docker run -d --name api-noredis --network host -e PORT=3002 -e REDIS_HOST=127.0.0.1 -e REDIS_PORT=6399 -e JWT_SECRET=ci-test-only-not-a-real-key contentcollab-api:pr
+          docker run -d --name api-noredis --network host -e PORT=3002 -e REDIS_HOST=127.0.0.1 -e REDIS_PORT=6399 -e JWT_SECRET=ci-test-only-not-a-real-key -e SPACES_ENDPOINT=https://tor1.digitaloceanspaces.com -e SPACES_REGION=tor1 -e SPACES_BUCKET=ci-test-bucket -e SPACES_KEY=ci-test-key -e SPACES_SECRET=ci-test-secret contentcollab-api:pr
           down=""
           for _ in $(seq 1 20); do
             body=$(curl -s -m 1 http://localhost:3002/health || true)
@@ -279,6 +283,28 @@ jobs:
             sleep 1
           done
           echo "api did not pick Redis up (last: $body)"; docker logs api-noredis; exit 1
+
+  # The browser client's lint, format check and tests: Vitest with jsdom and
+  # fetch mocked, so no API or database is needed (ARCHITECTURE D27)
+  web-test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read # reads the repo, writes nothing
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24 # same Node as web/Dockerfile's build stage
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - run: npm run lint # oxlint
+      - run: npm run format:check # Prettier, on the files D27 added
+      - run: npm test # vitest run
 
   # Builds the web image without pushing it, so a Dockerfile that no longer
   # builds fails the pull request rather than the first deploy (#47, CON-3). Skipped until web/Dockerfile exists. hashFiles

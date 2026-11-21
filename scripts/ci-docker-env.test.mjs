@@ -6,6 +6,13 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 const IMAGE_TAG = "contentcollab-api:pr";
+const REQUIRED_SPACES_VARIABLES = [
+  "SPACES_ENDPOINT",
+  "SPACES_REGION",
+  "SPACES_BUCKET",
+  "SPACES_KEY",
+  "SPACES_SECRET",
+];
 const ciPath = new URL("../.github/workflows/ci.yml", import.meta.url);
 
 function apiDockerRunLines(workflowText) {
@@ -27,4 +34,18 @@ test("every docker run of the API image passes JWT_SECRET", () => {
     (line) => !/\s-e JWT_SECRET=\S+/.test(line),
   );
   assert.deepEqual(missing, [], "docker run lines without -e JWT_SECRET=");
+});
+test("every docker run of the API image passes Spaces configuration", () => {
+  const missing = apiDockerRunLines(readFileSync(ciPath, "utf8")).flatMap(
+    (line) =>
+      REQUIRED_SPACES_VARIABLES.filter(
+        (name) => !line.includes(`-e ${name}=`),
+      ).map((name) => `${name} on: ${line}`),
+  );
+
+  assert.deepEqual(
+    missing,
+    [],
+    "docker run lines without required Spaces variables",
+  );
 });

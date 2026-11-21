@@ -35,8 +35,8 @@ const column =
     );
 
 // A valid UNIQUE constraint or unique index over exactly these columns (INCLUDE
-// columns do not count), not on an expression, and not partial unless its predicate
-// is exactly `allowedPredicate` as PostgreSQL prints it (pg_get_expr)
+// columns do not count). If allowedPredicate is provided, the index must have
+// exactly that predicate; otherwise it must not be partial.
 const uniqueOn =
   (table: string, columns: string[], allowedPredicate: string | null = null) =>
   (db: Queryable) =>
@@ -46,8 +46,8 @@ const uniqueOn =
          JOIN pg_class t ON t.oid = i.indrelid
         WHERE t.relname = $1 AND t.relnamespace = 'public'::regnamespace
           AND i.indisunique AND i.indisvalid AND i.indexprs IS NULL
-          AND (i.indpred IS NULL
-               OR ($3::text IS NOT NULL AND pg_get_expr(i.indpred, i.indrelid) = $3::text))
+          AND (($3::text IS NULL AND i.indpred IS NULL)
+              OR ($3::text IS NOT NULL AND pg_get_expr(i.indpred, i.indrelid) = $3::text))
           AND ARRAY(SELECT a.attname FROM pg_attribute a
                      WHERE a.attrelid = t.oid
                        AND a.attnum = ANY ((i.indkey::int2[])[0:i.indnkeyatts - 1])

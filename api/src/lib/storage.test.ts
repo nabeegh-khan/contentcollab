@@ -5,6 +5,7 @@ const send = jest.fn<(command: MockCommand) => Promise<unknown>>();
 const done = jest.fn<() => Promise<unknown>>();
 const uploadOptions = jest.fn<(options: Record<string, unknown>) => void>();
 const abort = jest.fn<() => Promise<void>>();
+const s3ClientOptions = jest.fn<(options: Record<string, unknown>) => void>();
 
 class MockCommand {
   input: Record<string, unknown>;
@@ -32,6 +33,10 @@ class MockUpload {
 jest.unstable_mockModule("@aws-sdk/client-s3", () => ({
   S3Client: class {
     send = send;
+
+    constructor(options: Record<string, unknown>) {
+      s3ClientOptions(options);
+    }
   },
   CopyObjectCommand: MockCommand,
   DeleteObjectCommand: MockCommand,
@@ -49,31 +54,104 @@ process.env.SPACES_REGION = "tor1";
 process.env.SPACES_KEY = "test-key";
 process.env.SPACES_SECRET = "test-secret";
 
-const { putStream, getStream, copy, remove } = await import("./storage.js");
-
+const { putStream, getStream, copy, remove, StorageNotFoundError, validateStorageConfig } =
+  await import("./storage.js");
 afterEach(() => {
   send.mockReset();
   done.mockReset();
   uploadOptions.mockClear();
-  abort.mockReset();
 });
 
 describe("Spaces storage", () => {
-  it("uploads a stream using the multipart Upload helper", async () => {
-    const stream = Readable.from(["document contents"]);
-    done.mockResolvedValue({});
-    const signal = new AbortController().signal;
-    await putStream("documents/doc-1/version-1", stream, "text/plain", signal);
+  it("validates required Spaces configuration", () => {
+    expect(() => validateStorageConfig()).not.toThrow();
 
-    expect(uploadOptions).toHaveBeenCalledWith({
-      client: expect.anything(),
-      params: {
-        Bucket: "test-bucket",
-        Key: "documents/doc-1/version-1",
-        Body: stream,
-        ContentType: "text/plain",
+    const requiredVariables = [
+      "SPACES_ENDPOINT",
+      "SPACES_REGION",
+      "SPACES_BUCKET",
+      "SPACES_KEY",
+      "SPACES_SECRET",
+    ] as const;
+
+    for (const variable of requiredVariables) {
+      const originalValue = process.env[variable];
+
+      try {
+        delete process.env[variable];
+
+        expect(() => validateStorageConfig()).toThrow(
+          `Missing required Spaces configuration: ${variable}`,
+        );
+      } finally {
+        if (originalValue !== undefined) {
+          process.env[variable] = originalValue;
+        }
+      }
+    }
+  });
+  it("throws when the Spaces bucket is not configured", async () => {
+    const originalBucket = process.env.SPACES_BUCKET;
+    delete process.env.SPACES_BUCKET;
+
+    try {
+      await expect(remove("documents/doc-1/version-1")).rejects.toThrow(
+        "SPACES_BUCKET is not configured",
+      );
+    } finally {
+      if (originalBucket === undefined) {
+        delete process.env.SPACES_BUCKET;
+      } else {
+        process.env.SPACES_BUCKET = originalBucket;
+      }
+    }
+  });
+
+  it("configures the S3 client using Spaces environment variables", () => {
+    const options = s3ClientOptions.mock.calls[0]?.[0];
+
+    expect(options).toMatchObject({
+      endpoint: "https://tor1.digitaloceanspaces.com",
+      region: "tor1",
+      credentials: {
+        accessKeyId: "test-key",
+        secretAccessKey: "test-secret",
       },
     });
+  });
+
+  it("maps a missing object error to StorageNotFoundError", async () => {
+    const error = new Error("The specified key does not exist.");
+    error.name = "NoSuchKey";
+
+    send.mockRejectedValue(error);
+
+    const result = getStream("documents/missing");
+
+    await expect(result).rejects.toBeInstanceOf(StorageNotFoundError);
+    await expect(result).rejects.toMatchObject({ statusCode: 404 });
+  });
+
+  it("uploads a stream using the multipart Upload helper", async () => {
+    const signal = new AbortController().signal;
+    const stream = Readable.from(["document contents"]);
+    done.mockResolvedValue({});
+
+    await putStream("documents/doc-1/version-1", stream, "text/plain", signal);
+
+    expect(uploadOptions).toHaveBeenCalledTimes(1);
+
+    const options = uploadOptions.mock.calls[0]?.[0];
+
+    expect(options?.client).toBeDefined();
+    expect(options?.params).toEqual({
+      Bucket: "test-bucket",
+      Key: "documents/doc-1/version-1",
+      Body: stream,
+      ContentType: "text/plain",
+    });
+    expect(options?.queueSize).toBe(1);
+    expect(options?.partSize).toBe(5 * 1024 * 1024);
 
     expect(done).toHaveBeenCalledTimes(1);
   });
@@ -105,19 +183,19 @@ describe("Spaces storage", () => {
     send.mockResolvedValue({ Body: undefined });
 
     await expect(getStream("documents/doc-1/version-1")).rejects.toThrow(
-      "Object not found or empty: documents/doc-1/version-1",
+      "Object not found: documents/doc-1/version-1",
     );
   });
 
   it("copies an object to a new key", async () => {
     send.mockResolvedValue({});
 
-    await copy("documents/doc-1/version-1", "documents/doc-1/version-2");
+    await copy("documents/my file&draft/version-1", "documents/doc-1/version-2");
 
     expect(send).toHaveBeenCalledTimes(1);
     expect(send.mock.calls[0]?.[0].input).toEqual({
       Bucket: "test-bucket",
-      CopySource: "test-bucket/documents/doc-1/version-1",
+      CopySource: "test-bucket/documents/my%20file%26draft/version-1",
       Key: "documents/doc-1/version-2",
     });
   });
