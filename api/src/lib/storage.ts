@@ -84,7 +84,6 @@ export async function putStream(
   } finally {
     signal.removeEventListener("abort", onAbort);
   }
-  await upload.done();
 }
 
 // Retrieves an object as a Node.js readable stream.
