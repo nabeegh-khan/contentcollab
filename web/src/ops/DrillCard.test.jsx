@@ -285,4 +285,38 @@ describe("DrillCard", () => {
     expect(disabled.disabled).toBe(false);
     expect(screen.queryByText(/Next drill allowed/)).toBeNull();
   });
+
+  it("a Cancel during a request that then fails does not steal the focus from a later success's message", async () => {
+    let rejectFirst;
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise((_resolve, reject) => {
+            rejectFirst = () => reject(new TypeError("Failed to fetch"));
+          }),
+      )
+      .mockResolvedValue(
+        respond(200, {
+          target: "api",
+          pod: "api-old",
+          startedAt: "2026-11-21T19:40:00.000Z",
+          nextAllowedAt: "2026-11-21T19:40:00.000Z",
+        }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    render(<DrillCard token="t" nextAllowedAt={null} onStarted={() => {}} />);
+
+    const dialog = open("Restart an API pod");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Restart" }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Cancel" }));
+    await act(async () => {
+      rejectFirst();
+    });
+    await screen.findByRole("alert");
+
+    fireEvent.click(within(open("Restart an API pod")).getByRole("button", { name: "Restart" }));
+    const status = await screen.findByRole("status");
+    await waitFor(() => expect(document.activeElement).toBe(status));
+  });
 });
