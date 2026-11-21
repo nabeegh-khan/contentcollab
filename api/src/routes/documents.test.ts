@@ -249,6 +249,40 @@ describe("POST /api/v1/documents", () => {
     expect(objects.get(stored.rows[0]!.object_key)).toEqual(bytes);
   });
 
+  it("returns 400 VALIDATION for an extra field", async () => {
+    const owner = await user();
+    const res = await request(app)
+      .post(base)
+      .set("Authorization", bearer(owner))
+      .field("title", "Valid title")
+      .field("extra", "unexpected")
+      .attach("file", Buffer.from("contents"), {
+        filename: "file.txt",
+        contentType: "text/plain",
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe("VALIDATION");
+  });
+
+  it("returns 400 VALIDATION for an extra file", async () => {
+    const owner = await user();
+    const res = await request(app)
+      .post(base)
+      .set("Authorization", bearer(owner))
+      .attach("file", Buffer.from("first"), {
+        filename: "first.txt",
+        contentType: "text/plain",
+      })
+      .attach("file", Buffer.from("second"), {
+        filename: "second.txt",
+        contentType: "text/plain",
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe("VALIDATION");
+  });
+
   it("returns 400 VALIDATION for a disallowed file type", async () => {
     const owner = await user();
     const res = await request(app)

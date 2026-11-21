@@ -41,7 +41,6 @@ export function parseUpload(
           fileSize: MAX_FILE_SIZE,
           files: 1,
           fields: 1,
-          parts: 2,
           fieldSize: 1024,
         },
       });
@@ -130,10 +129,6 @@ export function parseUpload(
 
     busboy.on("fieldsLimit", () => {
       failure ??= new HttpError(400, "VALIDATION", "Too Many Fields");
-    });
-
-    busboy.on("partsLimit", () => {
-      failure ??= new HttpError(400, "VALIDATION", "Too Many Parts");
     });
 
     busboy.on("error", () => {
