@@ -1,5 +1,5 @@
 // Tests for the root: sign-in gate, a stored token checked with /auth/me, and sign out.
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import Root from "./Root.jsx";
 import { loadToken, saveToken } from "./session.js";
@@ -89,7 +89,7 @@ describe("Root", () => {
 
     expect(await screen.findByText("Signed in as Ann")).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Documents" })).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "Document" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "Document" })).toBeNull();
     expect(loadToken()).toBe("t0k");
   });
 
@@ -141,5 +141,55 @@ describe("Root", () => {
 
     expect(screen.getByRole("heading", { name: "Sign in" })).toBeTruthy();
     expect(loadToken()).toBeNull();
+  });
+
+  it("opens the version in the address after sign-in, and follows the address when it changes", async () => {
+    const DOC = "11111111-1111-4111-8111-111111111111";
+    const VER = "22222222-2222-4222-8222-222222222222";
+    saveToken("t0k");
+    window.location.hash = `#/documents/${DOC}/versions/${VER}`;
+    routeFetch({
+      "/health": health,
+      "/api/v1/auth/me": () => json(200, ANN),
+      [`/api/v1/documents/${DOC}/versions/${VER}/comments?limit=100`]: () =>
+        json(200, { items: [], nextCursor: null }),
+    });
+
+    render(<Root />);
+
+    expect(await screen.findByRole("heading", { name: "Document" })).toBeTruthy();
+    expect(await screen.findByText("No comments yet.")).toBeTruthy();
+
+    act(() => {
+      window.location.hash = "";
+    });
+
+    expect(await screen.findByRole("heading", { name: "Documents" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "Document" })).toBeNull();
+  });
+
+  it("keeps the token in memory when storage is blocked, so comments still send it", async () => {
+    const DOC = "11111111-1111-4111-8111-111111111111";
+    const VER = "22222222-2222-4222-8222-222222222222";
+    window.location.hash = `#/documents/${DOC}/versions/${VER}`;
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("blocked");
+    });
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => null);
+    const fetchMock = routeFetch({
+      "/health": health,
+      "/api/v1/auth/login": () => json(200, { token: "mem0ry", user: ANN }),
+      [`/api/v1/documents/${DOC}/versions/${VER}/comments?limit=100`]: () =>
+        json(200, { items: [], nextCursor: null }),
+    });
+    render(<Root />);
+
+    fireEvent.change(screen.getByLabelText("Email"), { target: { value: "a@b.co" } });
+    fireEvent.change(screen.getByLabelText("Password"), { target: { value: "pass1234" } });
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+    await screen.findByText("No comments yet.");
+
+    const call = fetchMock.mock.calls.find(([url]) => String(url).includes("/comments?limit=100"));
+    expect(call[1].headers.Authorization).toBe("Bearer mem0ry");
   });
 });

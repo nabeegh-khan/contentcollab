@@ -636,3 +636,51 @@ Checked which routes are on main (auth and status only), then proposed one `requ
 - Kept #93 and #91 open and untouched; the skeleton's own files changed by two lines in `main.jsx` and new scripts in `package.json`.
 - Checked routing precedence in the Gateway API v1.6 reference, the nginx non-root note on Docker Hub, package visibility in GitHub Docs and package release dates on npm, instead of from memory.
 - An independent review found that the first deploy would push a private image the cluster cannot pull, and that the sign-in page was also served over plain HTTP. The route now uses the HTTPS listener only, and the package is created and made public by hand before merging. With three Deployments, each rollout wait is 120 s so the deploy stays inside its ten-minute cluster login.
+
+## Comments and live comments in the web client, 21 November 2026
+
+### Prompt
+
+Comments and mentions (#135) and the Socket.IO rooms (#136) are on main, but the browser client still shows the document view disabled. Wire the client to them: list, post, reply, resolve and delete comments, and show a comment that another browser posts without a reload. The documents routes (#116) are not on main, so open a version by its address. Write the decision first, tests before code, and read the server files for the contract.
+
+### AI Response
+
+Drafted the decision (ARCHITECTURE D28), a hash address parser, one function per comment route on the existing `request()` helper, a Socket.IO connection that joins the version room on every `connect`, one pure function that applies the three comment events to the list, and the comments panel with its tests.
+
+### What Your Team Did With It
+
+- Read the Socket.IO client documentation (the `connect` event also fires on reconnection, rooms are lost on disconnect) and the server's own files for the routes, the events and the join acknowledgement instead of relying on memory.
+- An independent review found three errors that were fixed test first: Resolve was offered on threads the API refuses it on (only the thread's author may resolve), a slow or old list answer could overwrite a live comment or bring back a deleted one, and the token was read from storage on each render, so blocked storage sent requests without it. D28 was corrected where it claimed a role-based form and a document name in the mention notice.
+- Left for later: roles are not known to the client, so viewers still see the form and get a refusal; Delete is shown on the user's own comments only; comment authors show as "Member" plus part of an id until the API returns a name.
+
+## Share form and a cross-replica check, 21 November 2026
+
+### Prompt
+
+The demo needs a way to share a document with another user from the browser, using the shares routes that are on main, and the real-time claim needs proof that a comment crosses API pods. Build a minimal share form (tests first), and a script that holds two Socket.IO connections on different API pods through the Gateway and requires a posted comment to reach both.
+
+### AI Response
+
+Drafted the share form with the API's refusals in plain words and its tests, then a script split into a tested logic module (reading `/proc/net/tcp`, deciding which pod holds a socket, the run and its failure cases) and a thin entry that wires kubectl, fetch and `socket.io-client`.
+
+### What Your Team Did With It
+
+- Read the shares route and the role middleware to see what a non-owner and a non-member actually receive (403 and 404), and the socket server for the join answer and event names.
+- Independent reviews found that a 401 showed the server's raw text on the form, that a socket reconnecting could move to another pod and give a PASS with no crossing, and that the pod attribution (a before and after connection count) could be fooled; these got tests first, a recount after the comment, and the counts written to the evidence.
+- Left for later: link shares and role changes in the form, and running the script on the cluster, which needs a document with a version (#116).
+
+## An operations panel: the design and its read-only backend, 21 November 2026
+
+### Prompt
+
+The demo has no terminal: the audience should see the app and then a live operations panel showing what `kubectl` would show (containers, autoscaler, node load, traffic, storage, events, logs) with an operator-only restart drill. Design it first, against the current Kubernetes, Prometheus and RBAC documentation and the cluster itself, then build the read-only backend, tests first.
+
+### AI Response
+
+Drafted decision D31 (a read-only `GET /api/v1/ops` behind sign-in and an admin check, an Eviction-based drill, Redis rate limit, an audit table, the page and its evidence file) and then the first of three pull requests: small functions that turn Kubernetes replies into cards, the Prometheus reads, the admin middleware, the route with a 5 s cache, and the RBAC manifests with render tests.
+
+### What Your Team Did With It
+
+- Checked every path, field and PromQL expression against the live cluster read-only (events carry their time only in a deprecated field on this cluster; metrics.k8s.io is served as v1beta1) instead of relying on the documentation alone.
+- An independent review found a CPU quantity suffix the code could not read, a log line that would have shown an address, and a failed pod log read that dropped the whole card; each got a failing test first.
+- Left for later: the drill, the page, setting the admin ids from the setup script, and measuring the panel's cost on the API pods.
