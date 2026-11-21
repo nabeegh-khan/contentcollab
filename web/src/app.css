@@ -1,5 +1,5 @@
-/* Layout and type for the demo client (D27, D28): light theme only, sized for a projector at 100% zoom.
-   Text is #111111 on white; the one accent (--primary) carries primary buttons and links. */
+/* Layout and type for the demo client (D27, D28): a dashboard on a light grey page, one white card per task,
+   sized for a projector at 100% zoom. The one accent (--primary) carries primary buttons and links. */
 .shell {
   display: flex;
   flex: 1;
@@ -14,25 +14,27 @@
   align-items: center;
   justify-content: space-between;
   gap: 0.5rem;
-  padding: 0.75rem 1rem;
+  padding: 0.75rem 1.5rem;
   color: var(--text-h);
 }
 
 header.bar {
-  border-bottom: 2px solid var(--border);
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
 }
 
 .footer-line {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  color: var(--text-2);
 }
 
 .status-dot {
   width: 12px;
   height: 12px;
   border-radius: 50%;
-  background: #767676;
+  background: #6b7280;
 }
 
 .status-up {
@@ -53,22 +55,23 @@ main {
   display: grid;
   flex: 1;
   align-content: start;
-  gap: 1rem;
+  gap: 1.5rem;
   box-sizing: border-box;
   width: 100%;
-  max-width: 72rem;
+  max-width: 1200px;
   margin: 0 auto;
-  padding: 0 1rem;
+  padding: 1rem 1.5rem;
 }
 
 .card {
   box-sizing: border-box;
   width: 100%;
   max-width: 40rem;
-  margin: 2rem auto;
-  padding: 1.5rem;
-  border: 2px solid var(--border);
+  margin: 1rem auto;
+  padding: 1.75rem;
+  border: 1px solid var(--border);
   border-radius: 12px;
+  background: var(--card);
   box-shadow: var(--shadow);
 }
 
@@ -80,10 +83,11 @@ main {
   margin: 3rem auto;
 }
 
-/* The document, documents and comments cards use the width of the column */
+/* The document and comments cards use the whole 1200px column */
 .card.comments,
 .card.wide {
-  max-width: 64rem;
+  max-width: none;
+  margin: 0;
 }
 
 .card h1,
@@ -94,18 +98,18 @@ main {
 }
 
 .card h1 {
-  font-size: 2.4rem;
+  font-size: 1.8rem;
   line-height: 1.2;
   letter-spacing: 0;
   margin: 0 0 1.25rem;
 }
 
 .card h2 {
-  font-size: 2rem;
+  font-size: 1.8rem;
 }
 
 .card h3 {
-  font-size: 1.6rem;
+  font-size: 1.4rem;
 }
 
 .field {
@@ -122,11 +126,11 @@ main {
 .field textarea {
   box-sizing: border-box;
   width: 100%;
-  min-height: 2.4rem;
+  min-height: 2.6rem;
   padding: 0.5rem 0.75rem;
-  border: 2px solid var(--border);
-  border-radius: 6px;
-  background: var(--bg);
+  border: 2px solid var(--text-2);
+  border-radius: 8px;
+  background: var(--card);
   color: var(--text-h);
   font: inherit;
   font-size: 1rem;
@@ -146,11 +150,11 @@ a {
 
 button {
   font: inherit;
-  min-height: 2.4rem;
-  padding: 0.4rem 1rem;
+  min-height: 2.6rem;
+  padding: 0.4rem 1.1rem;
   border: 2px solid var(--text-h);
-  border-radius: 6px;
-  background: var(--bg);
+  border-radius: 8px;
+  background: var(--card);
   color: var(--text-h);
   cursor: pointer;
 }
@@ -172,8 +176,8 @@ form > button[type="submit"] {
 button:disabled {
   cursor: not-allowed;
   border-style: dashed;
-  border-color: var(--border);
-  background: var(--bg);
+  border-color: var(--text-2);
+  background: var(--card);
   color: var(--text-h);
 }
 
@@ -186,7 +190,6 @@ button[type="submit"]:disabled {
 
 button.link {
   margin-top: 0.75rem;
-  min-height: 2.4rem;
   padding: 0 0.25rem;
   border: none;
   background: none;
@@ -198,7 +201,7 @@ button.link {
   padding: 0.5rem 0.75rem;
   margin-bottom: 1rem;
   border: 2px solid var(--danger);
-  border-radius: 6px;
+  border-radius: 8px;
   background: #fdecea;
   color: var(--danger);
 }
@@ -214,20 +217,23 @@ button.link {
 
 .pending {
   font-style: italic;
+  color: var(--text-2);
 }
 
 .comments .live {
   font-size: 0.9em;
+  color: var(--text-2);
 }
 
 .comment-body {
-  font-size: 1rem;
+  font-size: 1.1rem;
   line-height: 1.5;
 }
 
 .comment-meta {
-  margin: 0.5rem 0 0.125rem;
+  margin: 0.75rem 0 0.125rem;
   font-size: 0.9em;
+  color: var(--text-2);
 }
 
 .comment-actions {
@@ -241,9 +247,14 @@ button.link {
 }
 
 .threads,
-.replies {
+.replies,
+.versions {
   list-style: none;
   padding: 0;
+}
+
+.versions li {
+  margin: 0 0 0.5rem;
 }
 
 .replies {
@@ -262,5 +273,5 @@ button.link {
 .notice {
   padding: 0.5rem 0.75rem;
   border: 2px solid var(--primary);
-  border-radius: 6px;
+  border-radius: 8px;
 }
