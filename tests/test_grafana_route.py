@@ -72,12 +72,23 @@ class GrafanaLinkOnTheCluster(unittest.TestCase):
         )
         self.assertEqual(grant["spec"]["to"], [{"group": "", "kind": "Service", "name": "grafana"}])
 
+    def test_the_grant_the_route_and_the_service_name_the_same_backend(self):
+        route = one(self.doks, "HTTPRoute", "grafana")
+        [backend] = route["spec"]["rules"][0]["backendRefs"]
+        grant = one(self.observability, "ReferenceGrant", "grafana-from-gateway-route")
+        service = one(self.observability, "Service", "grafana")
+        self.assertEqual(grant["spec"]["to"][0]["name"], backend["name"])
+        self.assertEqual(service["metadata"]["name"], backend["name"])
+        self.assertIn(backend["port"], [p["port"] for p in service["spec"]["ports"]])
+
     def test_grafana_builds_its_links_for_the_public_path_and_keeps_its_login(self):
         env = env_of(one(self.observability, "Deployment", "grafana"))
         self.assertEqual(env.get("GF_SERVER_ROOT_URL"), PUBLIC_URL)
         # The Gateway strips the prefix, so Grafana must not also serve from the sub path
         self.assertNotEqual(env.get("GF_SERVER_SERVE_FROM_SUB_PATH"), "true")
         self.assertEqual(env.get("GF_AUTH_ANONYMOUS_ENABLED"), "false")
+        # /metrics answers without a login by default; nothing scrapes Grafana, so the public path closes it
+        self.assertEqual(env.get("GF_METRICS_ENABLED"), "false")
 
 
 if __name__ == "__main__":
