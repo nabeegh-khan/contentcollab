@@ -18,8 +18,9 @@ function refusal(error) {
   return "Something went wrong. Try again.";
 }
 
-// `documentId` is the document chosen in the list ("Share" on a row); it fills the id field and the field stays editable
-export default function ShareForm({ token, documentId: chosen = "" }) {
+// `documentId` is the document chosen in the list ("Share" on a row); it fills the id field and the field stays editable.
+// `choiceCount` rises with every click, so choosing the same document again refills the field.
+export default function ShareForm({ token, documentId: chosen = "", choiceCount = 0 }) {
   const [documentId, setDocumentId] = useState(chosen);
   const [email, setEmail] = useState("");
   const [role, setRole] = useState("viewer");
@@ -28,8 +29,11 @@ export default function ShareForm({ token, documentId: chosen = "" }) {
   const [problem, setProblem] = useState(null);
 
   useEffect(() => {
-    if (chosen) setDocumentId(chosen);
-  }, [chosen]);
+    if (!chosen) return;
+    setDocumentId(chosen);
+    setDone(null);
+    setProblem(null);
+  }, [chosen, choiceCount]);
 
   // Editing a field drops the last message, so a stale "Shared" never sits beside new input
   function edit(setter, value) {

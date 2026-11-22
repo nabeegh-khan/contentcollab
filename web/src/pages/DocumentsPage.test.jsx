@@ -304,3 +304,19 @@ describe("DocumentsPage sharing from the list", () => {
     expect(screen.getByLabelText("Id of the document to share").value).toBe(D1);
   });
 });
+
+describe("DocumentsPage sharing, choosing again", () => {
+  it("refills the id when the same document's Share is clicked again after the field was edited", async () => {
+    server({ pages: [{ items: [doc(D1, V1, "Mine")], nextCursor: null }] });
+    render(<DocumentsPage token="t0k" />);
+    await screen.findByRole("link", { name: "Open Mine" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Share Mine" }));
+    fireEvent.change(screen.getByLabelText("Id of the document to share"), {
+      target: { value: "edited" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Share Mine" }));
+
+    expect(screen.getByLabelText("Id of the document to share").value).toBe(D1);
+  });
+});

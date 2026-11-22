@@ -48,7 +48,7 @@ function DocumentRow({ document: doc, onShare }) {
 export default function DocumentsPage({ token }) {
   const [items, setItems] = useState([]);
   const [nextCursor, setNextCursor] = useState(null);
-  const [shareId, setShareId] = useState("");
+  const [share, setShare] = useState({ id: "", count: 0 });
   const [loadState, setLoadState] = useState("loading");
   const [title, setTitle] = useState("");
   const [problem, setProblem] = useState(null);
@@ -148,7 +148,11 @@ export default function DocumentsPage({ token }) {
         {items.length > 0 && (
           <ul className="documents">
             {items.map((doc) => (
-              <DocumentRow key={doc.id} document={doc} onShare={setShareId} />
+              <DocumentRow
+                key={doc.id}
+                document={doc}
+                onShare={(id) => setShare((last) => ({ id, count: last.count + 1 }))}
+              />
             ))}
           </ul>
         )}
@@ -158,7 +162,7 @@ export default function DocumentsPage({ token }) {
           </button>
         )}
       </section>
-      <ShareForm token={token} documentId={shareId} />
+      <ShareForm token={token} documentId={share.id} choiceCount={share.count} />
     </>
   );
 }

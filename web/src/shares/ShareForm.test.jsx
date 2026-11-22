@@ -169,3 +169,17 @@ describe("ShareForm with a chosen document", () => {
     expect(screen.getByLabelText("Id of the document to share").value).toBe(OTHER);
   });
 });
+
+describe("ShareForm when another document is chosen", () => {
+  it("drops the last success message when a new document is chosen", async () => {
+    const OTHER = "22222222-2222-4222-8222-222222222222";
+    answer(201, { id: "s1", role: "viewer" });
+    const { rerender } = render(<ShareForm token="t0k" documentId={DOC} choiceCount={1} />);
+    fill({ doc: DOC });
+    await screen.findByText("Shared with bo@x.co as viewer.");
+
+    rerender(<ShareForm token="t0k" documentId={OTHER} choiceCount={2} />);
+
+    expect(screen.queryByText("Shared with bo@x.co as viewer.")).toBeNull();
+  });
+});
