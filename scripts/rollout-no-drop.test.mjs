@@ -266,11 +266,28 @@ test('decimal and Ti units are read at their own factor', () => {
   assert.match(m.out, /\(needs 757\)/);
   const ti = rollout({ STUB_NODES: '1', STUB_ALLOC: '1Ti' });
   assert.match(ti.out, /node-a s-2vcpu-4gb 1048576 MiB allocatable/);
+  // 1Ti as the api memory limit is 1048576 MiB per surge pod: 512 + 1048576 = 1049088
+  const limit = rollout({ STUB_API_LIMIT: '1Ti' });
+  assert.equal(limit.code, 1, limit.out);
+  assert.match(limit.out, /needs 1049088/);
+});
+
+test('a maxSurge of five or more digits is reported as out of range, not as a non-number', () => {
+  const r = rollout({ STUB_SURGE: '10000' });
+  assert.equal(r.code, 1, r.out);
+  assert.match(r.out, /maxSurge '10000' is out of range/);
+  assert.doesNotMatch(r.out, /a whole number of pods is needed/);
+  assert.ok(!r.calls.some((c) => /apply|rollout restart/.test(c)), r.calls.join('
+'));
+  const word = rollout({ STUB_SURGE: '25%' });
+  assert.equal(word.code, 1, word.out);
+  assert.match(word.out, /a whole number of pods is needed/);
 });
 
 test('a maxSurge with a leading zero is read as decimal, not octal', () => {
   // 08 is not an octal number; as decimal it is 8 pods: 512 + 8 x 256 = 2560
   const r = rollout({ STUB_SURGE: '08', MIN_NODE_FREE_MIB: '' });
+  assert.equal(r.code, 1, r.out); // 2560 MiB is more than the stub nodes have free: refused, not a shell error
   assert.match(r.out, /needs 2560|MIN_NODE_FREE_MIB=2560/);
   assert.doesNotMatch(r.out, /value too great for base/);
 });
