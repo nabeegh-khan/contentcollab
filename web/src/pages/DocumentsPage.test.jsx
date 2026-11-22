@@ -168,4 +168,92 @@ describe("DocumentsPage upload", () => {
     await waitFor(() => expect(screen.getByRole("alert").textContent).toMatch(/too large/));
     expect(screen.getByRole("link", { name: "Open Keep" })).toBeTruthy();
   });
+
+  it("names the allowed file types for a refused type, and only offers those in the picker", async () => {
+    server({ post: [400, { error: "type", code: "UNSUPPORTED" }] });
+    render(<DocumentsPage token="t0k" />);
+    await screen.findByText(/You have no documents yet/);
+    expect(screen.getByLabelText("File").getAttribute("accept")).toBe(
+      ".pdf,.png,.jpg,.jpeg,.docx,.xlsx,.pptx,.txt,.md",
+    );
+
+    choose(new File(["x"], "pic.gif"));
+    fireEvent.click(screen.getByRole("button", { name: "Upload" }));
+
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toMatch(/\.pdf.*\.md/));
+  });
+
+  it("shows the API's own message for a validation refusal such as a title that is too long", async () => {
+    server({
+      post: [
+        400,
+        {
+          error: "Invalid Request",
+          code: "VALIDATION",
+          details: [
+            { field: "title", message: "Too big: expected string to have <=255 characters" },
+          ],
+        },
+      ],
+    });
+    render(<DocumentsPage token="t0k" />);
+    await screen.findByText(/You have no documents yet/);
+
+    choose(new File(["x"], "a.pdf"), "x".repeat(300));
+    fireEvent.click(screen.getByRole("button", { name: "Upload" }));
+
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toMatch(/<=255/));
+  });
+
+  it("keeps the list and the success message when the reload after an upload fails", async () => {
+    server({
+      pages: [
+        { items: [doc(D1, V1, "Keep")], nextCursor: null },
+        { status: 500, body: { error: "boom", code: "INTERNAL" } },
+      ],
+      post: [201, doc(D2, V2, "Plan")],
+    });
+    render(<DocumentsPage token="t0k" />);
+    await screen.findByRole("link", { name: "Open Keep" });
+
+    choose(new File(["x"], "plan.pdf"), "Plan");
+    fireEvent.click(screen.getByRole("button", { name: "Upload" }));
+
+    await screen.findByRole("status");
+    expect(screen.getByRole("link", { name: "Open Keep" })).toBeTruthy();
+    expect(screen.queryByText(/Could not load your documents/)).toBeNull();
+  });
+});
+
+describe("DocumentsPage edge cases", () => {
+  it("shows no link for a document without a current version", async () => {
+    server({ pages: [{ items: [doc(D1, null, "Empty shell")], nextCursor: null }] });
+
+    render(<DocumentsPage token="t0k" />);
+
+    const row = (await screen.findByText("Empty shell")).closest("li");
+    expect(within(row).queryByRole("link")).toBeNull();
+    expect(within(row).getByText(/No version yet/)).toBeTruthy();
+  });
+
+  it("sends one request for a double click on Load more, and shows an error if it fails", async () => {
+    const fetchMock = server({
+      pages: [
+        { items: [doc(D1, V1, "First")], nextCursor: "c1" },
+        { status: 500, body: { error: "boom", code: "INTERNAL" } },
+      ],
+    });
+    render(<DocumentsPage token="t0k" />);
+    await screen.findByRole("link", { name: "Open First" });
+
+    const more = screen.getByRole("button", { name: "Load more" });
+    fireEvent.click(more);
+    fireEvent.click(more);
+
+    await waitFor(() =>
+      expect(screen.getByRole("alert").textContent).toMatch(/Could not load more/),
+    );
+    expect(fetchMock.mock.calls.filter(([url]) => url.includes("cursor=c1"))).toHaveLength(1);
+    expect(screen.getByRole("link", { name: "Open First" })).toBeTruthy();
+  });
 });

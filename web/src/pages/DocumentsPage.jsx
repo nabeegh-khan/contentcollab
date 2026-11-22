@@ -5,13 +5,17 @@ import { createDocument, listDocuments } from "../api/documents.js";
 import { formatClock } from "../comments/time.js";
 import { documentHash } from "../route.js";
 
-// A readable reason for a refused upload
+// The extensions api/src/lib/parseUpload.ts accepts
+const ACCEPT = ".pdf,.png,.jpg,.jpeg,.docx,.xlsx,.pptx,.txt,.md";
+
+// A readable reason for a refused upload; a validation refusal (a long title) says what the API says
 function uploadReason(error) {
   if (error instanceof ApiError) {
     if (error.status === 413) return "That file is too large: the limit is 50 MiB.";
+    const detail = error.details[0]?.message;
+    if (error.status === 400 && detail) return `The upload was refused: ${detail}.`;
     if (error.status === 400)
-      return "That file type is not allowed (PDF, images, Office files, text).";
-    if (error.status === 429) return "Too many uploads in a minute. Wait a moment and try again.";
+      return "That file type is not allowed. Allowed: .pdf, .png, .jpg, .jpeg, .docx, .xlsx, .pptx, .txt, .md.";
   }
   return "Could not upload. Try again.";
 }
@@ -21,9 +25,13 @@ function DocumentRow({ document: doc }) {
     <li>
       <span>{doc.title}</span> <small>Role: {doc.role}</small>{" "}
       <small>Updated {formatClock(doc.updatedAt)}</small>{" "}
-      <a href={documentHash(doc.id, doc.currentVersionId)} aria-label={`Open ${doc.title}`}>
-        Open
-      </a>
+      {doc.currentVersionId ? (
+        <a href={documentHash(doc.id, doc.currentVersionId)} aria-label={`Open ${doc.title}`}>
+          Open
+        </a>
+      ) : (
+        <small>No version yet</small>
+      )}
     </li>
   );
 }
@@ -36,7 +44,9 @@ export default function DocumentsPage({ token }) {
   const [problem, setProblem] = useState(null);
   const [message, setMessage] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [moreBusy, setMoreBusy] = useState(false);
   const fileInput = useRef(null);
+  const loadingMore = useRef(false);
 
   const loadFirstPage = useCallback(async () => {
     try {
@@ -45,9 +55,8 @@ export default function DocumentsPage({ token }) {
       setNextCursor(page.nextCursor ?? null);
       setLoadState("ready");
     } catch {
-      setItems([]);
-      setNextCursor(null);
-      setLoadState("error");
+      // A reload that fails keeps what is already shown; only a first load with nothing shows the error
+      setLoadState((state) => (state === "ready" ? "ready" : "error"));
     }
   }, [token]);
 
@@ -56,6 +65,9 @@ export default function DocumentsPage({ token }) {
   }, [loadFirstPage]);
 
   async function loadMore() {
+    if (loadingMore.current) return;
+    loadingMore.current = true;
+    setMoreBusy(true);
     setProblem(null);
     try {
       const page = await listDocuments(token, { cursor: nextCursor });
@@ -63,6 +75,9 @@ export default function DocumentsPage({ token }) {
       setNextCursor(page.nextCursor ?? null);
     } catch {
       setProblem("Could not load more documents. Try again.");
+    } finally {
+      loadingMore.current = false;
+      setMoreBusy(false);
     }
   }
 
@@ -95,7 +110,7 @@ export default function DocumentsPage({ token }) {
       <form className="upload" onSubmit={upload}>
         <label className="field">
           <span>File</span>
-          <input type="file" name="file" ref={fileInput} />
+          <input type="file" name="file" accept={ACCEPT} ref={fileInput} />
         </label>
         <label className="field">
           <span>Title</span>
@@ -127,7 +142,7 @@ export default function DocumentsPage({ token }) {
         </ul>
       )}
       {nextCursor && (
-        <button type="button" onClick={loadMore}>
+        <button type="button" disabled={moreBusy} onClick={loadMore}>
           Load more
         </button>
       )}
