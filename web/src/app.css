@@ -1,0 +1,414 @@
+/* Layout and type for the demo client (D27, D28): a dashboard on a light grey page, one white card per task,
+   sized for a projector at 100% zoom. The one accent (--primary) carries primary buttons and links. */
+.shell {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 1rem;
+  text-align: left;
+}
+
+.bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.75rem 1.5rem;
+  color: var(--text-h);
+}
+
+header.bar {
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+}
+
+.footer-line {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--text-2);
+}
+
+.status-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #6b7280;
+}
+
+.status-up {
+  background: #1b6b2a;
+}
+
+.status-down {
+  background: #a31515;
+}
+
+.who {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+main {
+  display: grid;
+  flex: 1;
+  align-content: start;
+  gap: 1.5rem;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 1rem 1.5rem;
+}
+
+.card {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 40rem;
+  margin: 1rem auto;
+  padding: 1.75rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card);
+  box-shadow: var(--shadow);
+}
+
+/* Sign-in and register: centred, 40% of the screen (768px at 1920), never narrower than 28rem */
+.card.auth {
+  width: 40vw;
+  min-width: 28rem;
+  max-width: 48rem;
+  margin: 3rem auto;
+}
+
+/* The document and comments cards use the whole 1200px column */
+.card.comments,
+.card.wide {
+  max-width: none;
+  margin: 0;
+}
+
+.card h1,
+.card h2,
+.card h3 {
+  color: var(--text-h);
+  margin: 0 0 0.75rem;
+}
+
+.card h1 {
+  font-size: 1.8rem;
+  line-height: 1.2;
+  letter-spacing: 0;
+  margin: 0 0 1.25rem;
+}
+
+.card h2 {
+  font-size: 1.8rem;
+}
+
+.card h3 {
+  font-size: 1.4rem;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-bottom: 1rem;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-h);
+}
+
+.field input,
+.field textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 2.6rem;
+  padding: 0.5rem 0.75rem;
+  border: 2px solid var(--text-2);
+  border-radius: 8px;
+  background: var(--card);
+  color: var(--text-h);
+  font: inherit;
+  font-size: 1rem;
+  font-weight: 400;
+}
+
+a {
+  color: var(--primary);
+  text-decoration: underline;
+}
+
+/* One visible focus ring for every control, keyboard focus only */
+:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+button {
+  font: inherit;
+  min-height: 2.6rem;
+  padding: 0.4rem 1.1rem;
+  border: 2px solid var(--text-h);
+  border-radius: 8px;
+  background: var(--card);
+  color: var(--text-h);
+  cursor: pointer;
+}
+
+/* The primary action: a solid accent with white text */
+button[type="submit"],
+button.primary {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: #fff;
+  font-weight: 600;
+}
+
+form > button[type="submit"] {
+  width: 100%;
+}
+
+/* A disabled control keeps its full-contrast text; a dashed edge says it is off */
+button:disabled {
+  cursor: not-allowed;
+  border-style: dashed;
+  border-color: var(--text-2);
+  background: var(--card);
+  color: var(--text-h);
+}
+
+button[type="submit"]:disabled {
+  border-style: solid;
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+
+button.link {
+  margin-top: 0.75rem;
+  padding: 0 0.25rem;
+  border: none;
+  background: none;
+  color: var(--primary);
+  text-decoration: underline;
+}
+
+.error {
+  padding: 0.5rem 0.75rem;
+  margin-bottom: 1rem;
+  border: 2px solid var(--danger);
+  border-radius: 8px;
+  background: #fdecea;
+  color: var(--danger);
+}
+
+.error p {
+  margin: 0 0 0.25rem;
+}
+
+[role="alert"] {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.pending {
+  font-style: italic;
+  color: var(--text-2);
+}
+
+.comments .live {
+  font-size: 0.9em;
+  color: var(--text-2);
+}
+
+.comment-body {
+  font-size: 1.1rem;
+  line-height: 1.5;
+}
+
+.comment-meta {
+  margin: 0.75rem 0 0.125rem;
+  font-size: 0.9em;
+  color: var(--text-2);
+}
+
+.comment-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin: 0.25rem 0 0.5rem;
+}
+
+.mention {
+  color: var(--primary);
+}
+
+.threads,
+.replies,
+.versions {
+  list-style: none;
+  padding: 0;
+}
+
+.versions li {
+  margin: 0 0 0.5rem;
+}
+
+.replies {
+  margin-left: 1.25rem;
+  padding-left: 0.75rem;
+  border-left: 3px solid var(--border);
+}
+
+.badge {
+  margin-left: 0.5rem;
+  padding: 0.0625rem 0.5rem;
+  border: 2px solid var(--text-h);
+  border-radius: 10px;
+}
+
+.notice {
+  padding: 0.5rem 0.75rem;
+  border: 2px solid var(--primary);
+  border-radius: 8px;
+}
+
+/* Operations page (D31): one screen at 1280 x 720, large numbers, readable from the back of a room */
+.ops h1 {
+  margin: 0;
+}
+
+.ops-head {
+  display: flex;
+  align-items: baseline;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+
+.ops-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+  gap: 16px;
+  margin-top: 12px;
+}
+
+.ops-card {
+  padding: 16px;
+  border: 2px solid var(--border);
+  border-radius: 8px;
+  font-size: 20px;
+}
+
+.ops-card h2 {
+  margin: 0 0 8px;
+  font-size: 22px;
+  color: var(--text-h);
+}
+
+.ops-card table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.ops-card th,
+.ops-card td {
+  padding: 4px 8px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+
+.ops-big {
+  font-size: 28px;
+  color: var(--text-h);
+}
+
+.ops-meter {
+  height: 14px;
+  margin: 0 0 8px;
+  border: 1px solid var(--text);
+  border-radius: 7px;
+  overflow: hidden;
+}
+
+.ops-meter span {
+  display: block;
+  height: 100%;
+  background: var(--text-h);
+}
+
+.ops-banner {
+  padding: 8px 12px;
+  border: 2px solid #c62828;
+  border-radius: 6px;
+  font-weight: 600;
+}
+
+.ops ul {
+  margin: 0;
+  padding-left: 20px;
+}
+
+/* Fixes after review: key numbers at 48 px (D31), the containers card across the whole row, long lists capped */
+.ops-big {
+  font-size: 48px;
+  line-height: 1.1;
+}
+
+.ops-card:first-child {
+  grid-column: 1 / -1;
+  overflow-x: auto;
+}
+
+.ops-card ul {
+  max-height: 9em;
+  overflow-y: auto;
+}
+
+/* Restart drill (D31): large buttons and a plain dialog, readable from the back of a lecture room */
+.ops-action,
+.ops-dialog button {
+  display: block;
+  margin: 8px 0;
+  padding: 12px 20px;
+  font-size: 22px;
+}
+
+.ops-dialog button {
+  display: inline-block;
+}
+
+.ops-dialog {
+  margin-top: 12px;
+  padding: 16px;
+  border: 3px solid var(--text-h);
+  border-radius: 8px;
+  background: var(--bg);
+  font-size: 22px;
+}
+
+.ops-danger {
+  border-width: 3px;
+  font-weight: 700;
+}
+
+/* Per-pod charts and the node tables (D31 follow-up) */
+.ops-wide {
+  grid-column: 1 / -1;
+}
+
+.ops-chart {
+  max-height: 220px;
+  color: var(--text-h);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.ops-card caption {
+  text-align: left;
+  font-weight: 700;
+  color: var(--text-h);
+  padding: 6px 0;
+}

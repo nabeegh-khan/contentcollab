@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "@jest/globals";
 import express, { type Request, type Response } from "express";
 import request from "supertest";
+import { StorageNotFoundError } from "../lib/storage.js";
 import {
   HTTP_BAD_REQUEST,
   HTTP_CONFLICT,
@@ -174,6 +175,15 @@ describe("errorHandler edge cases", () => {
     const line = out.lines().find((l) => l.msg === "request failed");
     expect(line?.level).toBe("error");
     expect(line?.http?.request_id).toBe("rid-1");
+  });
+
+  it("answers a missing Spaces object with 404", async () => {
+    const err = new StorageNotFoundError("missing-key");
+    const res = await request(failingApp(err)).get("/fail");
+
+    expect(res.status).toBe(HTTP_NOT_FOUND);
+    expect(res.body).toEqual({ error: "Not Found", code: "NOT_FOUND" });
+    expect(out.lines().find((l) => l.msg === "request failed")?.level).toBe("warn");
   });
 });
 

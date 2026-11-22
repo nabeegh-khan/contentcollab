@@ -602,3 +602,149 @@ Proposed recording each Deployment's revision before the apply and undoing only 
 - Checked the paths-filter rule on GitHub's workflow syntax page and the revision annotation on the cluster (read-only) instead of from memory.
 - Found that on Windows the test's `bash` could resolve to a shell whose `kubectl` is the real one; the harness now refuses to run unless every command resolves to its stand-in, and puts the stand-ins first inside bash itself.
 - Left out the HPA replicas item: removing the field scales the api to one replica on the next apply unless the live object is edited first (Kubernetes HPA page), which is the cluster owner's step.
+
+## API that survives a PostgreSQL restart, 19 November 2026
+
+### Prompt
+
+The restart test on DOKS kept the data through a postgres pod deletion, but both API containers crashed, and the previous log ended with a printed pg client object. The pool in `db.ts` has no `error` listener. Fix it so the API logs the lost connection and stays up, with a test that fails first.
+
+### AI Response
+
+Proposed one `pool.on("error")` listener that writes a structured `error` line through `lib/log.ts` and does nothing else, since node-postgres has already removed the client and opens a new one on the next query, and a Jest test that emits `error` on the exported pool. Drafted the decision (D26), the test and the change.
+
+### What Your Team Did With It
+
+- Read the node-postgres Pool page for the `error` event instead of relying on memory, and checked the probes and `/health` in the repo before writing the decision.
+- Pushed the test before the fix: it failed with "Unhandled error", the same path as the crash in the pod.
+- An independent review found the log line dropped PostgreSQL's error code (57P01 on a server shutdown); a second test was added first and the code is now kept, the same way the Redis client does it.
+- Left out pool timeouts and the container running `npm` as PID 1; both are follow-ups, after 24 November.
+
+## A minimal browser client for the demo, 19 November 2026
+
+### Prompt
+
+The demo needs a page in a browser and none works yet. Build the smallest client on the merged `web/` skeleton, only against routes that are on main, with the rest shown disabled; serve it at `/` behind the existing Gateway and deploy it like the API. Tests first, and leave the open frontend pull requests alone.
+
+### AI Response
+
+Checked which routes are on main (auth and status only), then proposed one `request()` helper per the API contract, live sign-in and register pages, the documents and document view as disabled controls, a `web` Deployment, Service and HTTPRoute, and the web image in the deploy beside the api and worker. Drafted the decision row, the tests and the code.
+
+### What Your Team Did With It
+
+- Wrote the decision (ARCHITECTURE D27) before the code, and committed each set of tests before the code that makes it pass: 24 of 61 deploy and manifest tests failed before the Kubernetes change.
+- Kept #93 and #91 open and untouched; the skeleton's own files changed by two lines in `main.jsx` and new scripts in `package.json`.
+- Checked routing precedence in the Gateway API v1.6 reference, the nginx non-root note on Docker Hub, package visibility in GitHub Docs and package release dates on npm, instead of from memory.
+- An independent review found that the first deploy would push a private image the cluster cannot pull, and that the sign-in page was also served over plain HTTP. The route now uses the HTTPS listener only, and the package is created and made public by hand before merging. With three Deployments, each rollout wait is 120 s so the deploy stays inside its ten-minute cluster login.
+
+## Comments and live comments in the web client, 21 November 2026
+
+### Prompt
+
+Comments and mentions (#135) and the Socket.IO rooms (#136) are on main, but the browser client still shows the document view disabled. Wire the client to them: list, post, reply, resolve and delete comments, and show a comment that another browser posts without a reload. The documents routes (#116) are not on main, so open a version by its address. Write the decision first, tests before code, and read the server files for the contract.
+
+### AI Response
+
+Drafted the decision (ARCHITECTURE D28), a hash address parser, one function per comment route on the existing `request()` helper, a Socket.IO connection that joins the version room on every `connect`, one pure function that applies the three comment events to the list, and the comments panel with its tests.
+
+### What Your Team Did With It
+
+- Read the Socket.IO client documentation (the `connect` event also fires on reconnection, rooms are lost on disconnect) and the server's own files for the routes, the events and the join acknowledgement instead of relying on memory.
+- An independent review found three errors that were fixed test first: Resolve was offered on threads the API refuses it on (only the thread's author may resolve), a slow or old list answer could overwrite a live comment or bring back a deleted one, and the token was read from storage on each render, so blocked storage sent requests without it. D28 was corrected where it claimed a role-based form and a document name in the mention notice.
+- Left for later: roles are not known to the client, so viewers still see the form and get a refusal; Delete is shown on the user's own comments only; comment authors show as "Member" plus part of an id until the API returns a name.
+
+## Share form and a cross-replica check, 21 November 2026
+
+### Prompt
+
+The demo needs a way to share a document with another user from the browser, using the shares routes that are on main, and the real-time claim needs proof that a comment crosses API pods. Build a minimal share form (tests first), and a script that holds two Socket.IO connections on different API pods through the Gateway and requires a posted comment to reach both.
+
+### AI Response
+
+Drafted the share form with the API's refusals in plain words and its tests, then a script split into a tested logic module (reading `/proc/net/tcp`, deciding which pod holds a socket, the run and its failure cases) and a thin entry that wires kubectl, fetch and `socket.io-client`.
+
+### What Your Team Did With It
+
+- Read the shares route and the role middleware to see what a non-owner and a non-member actually receive (403 and 404), and the socket server for the join answer and event names.
+- Independent reviews found that a 401 showed the server's raw text on the form, that a socket reconnecting could move to another pod and give a PASS with no crossing, and that the pod attribution (a before and after connection count) could be fooled; these got tests first, a recount after the comment, and the counts written to the evidence.
+- Left for later: link shares and role changes in the form, and running the script on the cluster, which needs a document with a version (#116).
+
+## An operations panel: the design and its read-only backend, 21 November 2026
+
+### Prompt
+
+The demo has no terminal: the audience should see the app and then a live operations panel showing what `kubectl` would show (containers, autoscaler, node load, traffic, storage, events, logs) with an operator-only restart drill. Design it first, against the current Kubernetes, Prometheus and RBAC documentation and the cluster itself, then build the read-only backend, tests first.
+
+### AI Response
+
+Drafted decision D31 (a read-only `GET /api/v1/ops` behind sign-in and an admin check, an Eviction-based drill, Redis rate limit, an audit table, the page and its evidence file) and then the first of three pull requests: small functions that turn Kubernetes replies into cards, the Prometheus reads, the admin middleware, the route with a 5 s cache, and the RBAC manifests with render tests.
+
+### What Your Team Did With It
+
+- Checked every path, field and PromQL expression against the live cluster read-only (events carry their time only in a deprecated field on this cluster; metrics.k8s.io is served as v1beta1) instead of relying on the documentation alone.
+- An independent review found a CPU quantity suffix the code could not read, a log line that would have shown an address, and a failed pod log read that dropped the whole card; each got a failing test first.
+- Left for later: the drill, the page, setting the admin ids from the setup script, and measuring the panel's cost on the API pods.
+
+## Gateway upload limit, nightly backup, demo seed and a patch to #116, 21 November 2026
+
+### Prompt
+
+Uploads through #116 would pass the Gateway, whose default body limit is 1 MiB; the database has no backup; the demo needs a document when uploads are not available; and #116 still carried a published Postgres port, an unused kustomization and a lockfile without integrity fields. Build, tests first: a ClientSettingsPolicy for 50 MiB, a pg_dump CronJob to Spaces with a rehearsed restore and a runbook, a seed script, and the three fixes on the #116 branch.
+
+### AI Response
+
+Drafted decisions D29 and D30 with their sources, then each change with its failing test first: a rendered-overlay test for the policy; 22 tests for the CronJob, the runbook and the restore script; a seed script checked on a migrated PostgreSQL. It ran the backup and the restore on the cluster and wrote the evidence file, and it merged main into the #116 branch and applied the three fixes there.
+
+### What Your Team Did With It
+
+- Checked every claim against the artifact: the CRD fields with `kubectl explain` on the cluster, the default body limit on nginx.org, the pg_dump and pg_restore flags, the CronJob fields and the Spaces lifecycle API on their own pages (D29, D30 list them with the date).
+- The first seed script left the current version empty (a data-changing CTE cannot see rows another CTE of the same statement inserts); the check showed it and it was rewritten as one statement per step. The first CronJob run failed the repository's own SEC-2 check on who may read the Spaces keys; the check now names the backup job, and D30 says the backup shares the app's key until a key of its own exists.
+- Left for later: a backup bucket and key of their own, a nightly restore check, the live-database restore (written from the documentation, not rehearsed), and the database-backed API tests on the #116 patch, which only CI ran.
+
+## The operations page, the restart drill and its button, 21 November 2026
+
+### Prompt
+
+The demo has no terminal on screen: after an upload, show what kubectl would show, live, in the web client, and let an operator restart a pod on purpose so the audience watches Kubernetes replace it while the data stays. Build the page on the read-only route, then the drill (rate limited, audited, least privilege), then the button with a confirm dialog. Tests first, an independent review of each change.
+
+### AI Response
+
+Drafted the page (cards for containers, autoscaler, nodes, storage, traffic, events and requests, refreshing every 5 s), the drill route (Eviction API, Redis lock, audit table, its own RBAC file) and the button with its dialog and countdown, with their tests.
+
+### What Your Team Did With It
+
+- Checked each change with an independent reviewer before it was pushed; their findings were fixed with a failing test first: a blank page on a non-JSON answer, a stalled request ending the refresh, a drill response held by a hung database write, an unset host name failing open, focus and Tab handling in the dialog.
+- Found that deleting a merged branch had closed the pull requests stacked on it, and rebuilt those by cherry-picking their own commits onto main.
+- Left for later: per-pod CPU and memory charts, the image tag per service, a page layout check in a browser at lecture-room size, and measuring the panel's cost on the API pods.
+
+## Closing #146 and #147 and the introduction review, 22 November 2026
+
+### Prompt
+
+Bring the two open pull requests of mine up to date with main, fix what is red, and check each against its diff before merging; read the project introduction pull request (#134) against the course's four points and what is on main.
+
+### AI Response
+
+Merged main into both branches, found the share-token test in `web/src/Root.test.jsx` left without its closing brace by an earlier merge (so the operations test ran inside it), closed it, and drafted the review comments.
+
+### What Your Team Did With It
+
+- Ran lint, format check, the web tests (225) and the build for #146, and the manifest renders, the shell syntax check and the 22 backup tests for #147, then waited for CI on the pushed heads (9 of 9 for both).
+- Had each review comment checked against the repository by a second reader before it was posted; two word counts in the #134 comment were checked by hand.
+- Left for later: the merges themselves, and Milton's change to the first sentence of the introduction.
+
+## Grafana behind the Gateway, 22 November 2026
+
+### Prompt
+
+The demo path must show the Grafana dashboard without a terminal; the operations panel has the link but nothing sets it and Grafana has no public route. Add the smallest change, with the test written first.
+
+### AI Response
+
+Proposed a `/grafana` route on the HTTPS listener with a prefix rewrite, a `ReferenceGrant` for the cross-namespace Service, Grafana's `root_url`, and `GRAFANA_URL` on the doks overlay only; wrote the manifest test before the change.
+
+### What Your Team Did With It
+
+- Checked the Grafana and Gateway Fabric documentation for the sub-path and rewrite behaviour before using it, and kept anonymous access off.
+- Ran the new test red (4 of 4) and then green with the manifest tests (61 of 61).
+- Left for later: applying it to the cluster and the browser check of the link, which the presenter does.

@@ -20,7 +20,7 @@ cd "$(dirname "$0")/.."   # paths below are relative to the repository root
 : "${DATADOG_API_KEY:=}"                      # optional: empty skips the Datadog agent
 : "${DATADOG_SITE:=datadoghq.com}"            # the account's site: datadoghq.eu, us3.datadoghq.com, ...
 
-NGF_VERSION="v2.8.0"            # https://docs.nginx.com/nginx-gateway-fabric/install/helm/
+NGF_VERSION="v2.9.0"            # https://docs.nginx.com/nginx-gateway-fabric/install/helm/
 CERT_MANAGER_VERSION="v1.19.2"  # https://cert-manager.io/docs/installation/helm/
 DATADOG_CHART_VERSION="3.269.1" # https://github.com/DataDog/helm-charts/blob/main/charts/datadog/Chart.yaml (8 Nov 2026)
 

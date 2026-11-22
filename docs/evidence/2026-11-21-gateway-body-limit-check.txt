@@ -1,0 +1,11 @@
+# 21 Nov 2026, 16:12 EST: a 2 MiB upload through the live Gateway after #116 merged (d0a6c33) and the 50m ClientSettingsPolicy (D29, #145)
+# A throwaway user uploads a 2 MiB file named check.pdf (twice the old 1 MiB nginx default), lists versions, downloads it back and compares sha256; the document is deleted afterwards.
+21:12:54Z register: HTTP 201
+21:12:55Z login: HTTP 200
+21:12:56Z file: check.pdf, 2097152 bytes, sha256 8625dc2cfc6033dca2ff08576f94dde8550fe033034e84a0bbd4059dfec4411d
+21:13:04Z upload POST /documents: HTTP 201
+21:13:05Z document id: 7187d100-f944-4855-ab1c-a45b5e3d6e1b, version id: 6d68b64f-0ce9-4ded-8dc1-83e7c0be784c
+21:13:06Z GET versions: HTTP 200, 1 version(s), first number 1 size 2097152
+21:13:08Z download: HTTP 200, sha256 8625dc2cfc6033dca2ff08576f94dde8550fe033034e84a0bbd4059dfec4411d, identical
+21:13:09Z GET /documents (list): HTTP 200
+21:13:09Z state kept for the cross-replica run (document not deleted yet; run with CLEANUP=1 after)

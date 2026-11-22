@@ -8,7 +8,23 @@ import { request, type RequestOptions } from "node:https";
 export const DEPLOYMENT_PATH = "/apis/apps/v1/namespaces/contentcollab/deployments/api";
 
 /** GET a Kubernetes API path and return the parsed JSON body. */
-export type KubeGet = (path: string) => Promise<unknown>;
+/** `text: true` returns the body as a string (pod logs) instead of parsed JSON. */
+export type KubeGet = (path: string, options?: KubeOptions) => Promise<unknown>;
+
+/** `method: "POST"` with a `body` sends JSON (the eviction call of the restart drill, D31). */
+export interface KubeOptions {
+  text?: boolean;
+  method?: "GET" | "POST";
+  body?: unknown;
+}
+
+/** A non-2xx answer from the apiserver, with its HTTP status for the caller. */
+export class KubeApiError extends Error {
+  constructor(public readonly status: number) {
+    super(`kubernetes API answered ${status}`);
+    this.name = "KubeApiError";
+  }
+}
 
 export async function readyReplicas(get: KubeGet): Promise<{ api: number }> {
   const reply = (await get(DEPLOYMENT_PATH)) as {
@@ -58,7 +74,7 @@ export function inClusterGet(
   const host = env.KUBERNETES_SERVICE_HOST;
   const port = Number(env.KUBERNETES_SERVICE_PORT);
   if (!host || !Number.isInteger(port)) return null;
-  return (path) =>
+  return (path, options) =>
     new Promise((resolve, reject) => {
       const token = String(deps.readFile(`${SERVICE_ACCOUNT_DIR}/token`, "utf8")).trim();
       const req = deps.request(
@@ -66,9 +82,13 @@ export function inClusterGet(
           host,
           port,
           path,
-          method: "GET",
+          method: options?.method ?? "GET",
           ca: deps.readFile(`${SERVICE_ACCOUNT_DIR}/ca.crt`),
-          headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: options?.text ? "text/plain" : "application/json",
+            ...(options?.body === undefined ? {} : { "Content-Type": "application/json" }),
+          },
           timeout: REQUEST_TIMEOUT_MS,
         },
         (res) => {
@@ -78,11 +98,12 @@ export function inClusterGet(
           res.on("end", () => {
             const code = res.statusCode ?? 0;
             if (code < HTTP_OK_MIN || code > HTTP_OK_MAX) {
-              reject(new Error(`kubernetes API answered ${code}`));
+              reject(new KubeApiError(code));
               return;
             }
             try {
-              resolve(JSON.parse(Buffer.concat(chunks).toString("utf8")));
+              const body = Buffer.concat(chunks).toString("utf8");
+              resolve(options?.text ? body : JSON.parse(body));
             } catch (err) {
               reject(err);
             }
@@ -91,7 +112,7 @@ export function inClusterGet(
       );
       req.on("timeout", () => req.destroy(new Error("kubernetes API: no answer")));
       req.on("error", reject);
-      req.end();
+      req.end(options?.body === undefined ? undefined : JSON.stringify(options.body));
     });
 }
 

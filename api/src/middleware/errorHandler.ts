@@ -17,6 +17,7 @@ import { HttpError, type ValidationDetail } from "../lib/httpError.js";
 import { errorFields, log } from "../lib/log.js";
 import { markFailedMidResponse } from "../lib/midResponse.js";
 import { routeLabel } from "../lib/routeLabel.js";
+import { StorageNotFoundError } from "../lib/storage.js";
 
 // The codes of the error shape in docs/API.md. Another 4xx gets its status
 // name in upper snake case ("IM_A_TEAPOT"); every 5xx is INTERNAL.
@@ -78,6 +79,7 @@ function isClientStatus(status: unknown): status is number {
 // toward the 5xx error rate. A 4xx status without either (an upstream client's
 // 404, say) is our failure: a 500. So is an HttpError with a 5xx status.
 function clientErrorStatus(err: unknown): number | undefined {
+  if (err instanceof StorageNotFoundError) return HTTP_NOT_FOUND;
   if (err instanceof HttpError) return isClientStatus(err.status) ? err.status : undefined;
   const { status, expose } = (err ?? {}) as { status?: unknown; expose?: unknown };
   return expose === true && isClientStatus(status) ? status : undefined;

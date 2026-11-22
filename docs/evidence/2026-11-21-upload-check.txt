@@ -1,0 +1,10 @@
+# 21 Nov 2026 upload through the live app after #116 merged (d0a6c33), as demo-a, new version of the seeded document
+21:06:49Z file upload-check.pdf, 612 bytes, sha256 78127590e22eb433771ab0a102a89b13b8f320f5db62ca8dd5f7936346277f7e
+21:06:50Z sign in as demo-a: HTTP 200
+21:06:50Z versions before: HTTP 200, 1
+21:06:51Z upload POST /documents/<seeded>/versions: HTTP 201, new version number 2, size 612
+21:06:51Z new version id 5ded0b94-86b8-4640-a8a8-ed870e8d3ea2
+21:06:51Z versions after: HTTP 200, numbers [1, 2]
+21:06:51Z download version 5ded0b94: HTTP 200, sha256 78127590e22eb433771ab0a102a89b13b8f320f5db62ca8dd5f7936346277f7e, identical
+21:06:51Z document now points at the new version: True (HTTP 200)
+21:06:52Z download of the seeded version 1 (no file in Spaces): HTTP 404
