@@ -41,3 +41,16 @@ Every tab working on the presentation, slides, demo or recording reads this file
 
 ## Q&A
 Direct answer, then the reason or evidence, then the trade-off. Say plainly what is untested or unfinished.
+
+## Final deliverable, due Sat 5 Dec (35% of the grade; project handout, read 22 Nov 2026)
+
+Source: https://www.eecg.utoronto.ca/~cying/courses/ece1779-cloud/project/handout/ (sections "Final Project Deliverable" and "Marking Rubric"). The 35% is the handout's own line: "Final Project Deliverable (due Saturday, December 5, 2026, 11:59 PM): 35% of final grade" (page read 22 Nov 2026); the proposal and README repeat it.
+
+- Submit the URL of the GitHub repository. If it is private, add `cying17`, `Gabeinstein` and `YirenZzz` as collaborators.
+- The repository must contain: the final report (`README.md`, at most 5000 words, images visible on GitHub), complete source code, `ai-session.md`, and a video demo.
+- **README sections required:** Team Information (names, student numbers, active preferred emails); Motivation; Objectives; Technical Stack (including Swarm or Kubernetes); Features (and how they meet the course requirements); User Guide (each main feature, screenshots); Development Guide (environment, database, storage, local testing); Deployment Information (live URL); AI Assistance & Verification summary (where AI helped, one representative mistake or limitation, how correctness was verified; no full prompts); Individual Contributions (aligned with the Git history); Lessons Learned and Concluding Remarks. A `## Video Demo` section holds the video URL.
+- **Source code:** application code, Dockerfiles and Compose or Kubernetes configs, database schemas and migrations, monitoring setup scripts, environment templates; consistent formatting, comments on complex logic, a `.gitignore`. If running it needs sensitive keys, they go in a password-protected archive emailed to TA Gabriel Ona (gabriel.ona@mail.utoronto.ca) and the password in a separate email, both by the deadline, once per team; the Development Guide must then say "Credentials sent to TA".
+- **`ai-session.md`:** 2 to 4 representative interactions, each with Prompt, AI Response and What Your Team Did With It (1 to 3 bullets: what was useful, what was wrong or incomplete, how it was verified). No word limit.
+- **Video demo:** 2 to 5 minutes, key features, user flow, technical highlights (containers, PostgreSQL queries, orchestration, monitoring), the app running in the deployed environment; the team's own voice (no AI voiceover); the URL in the README's `## Video Demo`; hosted on YouTube, Dropbox or Drive, or in the repository if under 100 MB.
+- **Rubric:** Cloud Architecture and Technical Implementation 35%; Functionality and Engineering Quality 25%; Documentation and Reproducibility 15%; Technical Reasoning and AI Evaluation 10%; Individual Contribution 15% (assessed per student from Git history, proposal responsibilities, report, artifacts and confidential peer feedback). Anchors: 95 exceptional, 80 strong, 70 satisfactory, 55 needs improvement, 0 missing. Depth and quality are valued over breadth.
+- The draft of the report is `docs/report/FINAL_REPORT_DRAFT.md`; the live `README.md` is the file that is submitted.
