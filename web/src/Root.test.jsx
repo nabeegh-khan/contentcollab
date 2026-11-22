@@ -219,6 +219,8 @@ describe("Root", () => {
     await screen.findByText("Shared with bo@x.co as viewer.");
     const call = fetchMock.mock.calls.find(([url]) => String(url).endsWith("/shares"));
     expect(call[1].headers.Authorization).toBe("Bearer mem0ry");
+  });
+
   it("opens the operations page at #/ops, and offers a way to it once signed in", async () => {
     saveToken("t0k");
     window.location.hash = "#/ops";
@@ -236,5 +238,4 @@ describe("Root", () => {
     const call = fetchMock.mock.calls.find(([url]) => url === "/api/v1/ops");
     expect(call[1].headers.Authorization).toBe("Bearer t0k");
   });
-});
 });
