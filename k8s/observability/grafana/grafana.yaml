@@ -1,8 +1,11 @@
 # Grafana: the one pane for the stack (ARCHITECTURE D19, #109). Its data
 # sources and dashboards are provisioned from files in this directory, so its
 # SQLite database on the emptyDir holds nothing that a restart would lose.
-# Reached only through `kubectl port-forward`; the admin password is in the
-# Secret grafana-admin, created by scripts/observability-up.sh.
+# Reached at https://contentcollab.app/grafana/ through the Gateway (the grafana
+# HTTPRoute in k8s/doks/gateway.yaml strips the prefix; referencegrant.yaml
+# allows it, #161) and through `kubectl port-forward`. Anonymous access is off:
+# the login is the gate, and the admin password is in the Secret grafana-admin,
+# created by scripts/observability-up.sh.
 apiVersion: v1
 kind: Service
 metadata:
@@ -55,6 +58,11 @@ spec:
                   key: admin-password
             - name: GF_AUTH_ANONYMOUS_ENABLED
               value: "false"
+            # Links and redirects use the public path. The Gateway strips the
+            # /grafana prefix, so serve_from_sub_path stays off (Grafana,
+            # "Run Grafana behind a reverse proxy", checked 22 Nov 2026)
+            - name: GF_SERVER_ROOT_URL
+              value: https://contentcollab.app/grafana/
             # No usage reports and no update checks leave the cluster
             - name: GF_ANALYTICS_REPORTING_ENABLED
               value: "false"
