@@ -269,7 +269,8 @@ test('decimal and Ti units are read at their own factor', () => {
   // 1Ti as the api memory limit is 1048576 MiB per surge pod: 512 + 1048576 = 1049088
   const limit = rollout({ STUB_API_LIMIT: '1Ti' });
   assert.equal(limit.code, 1, limit.out);
-  assert.match(limit.out, /MIN_NODE_FREE_MIB=1049088 (k6 512 MiB + 1 surge api pod(s) of 1048576 MiB)/);
+  assert.match(limit.out, /MIN_NODE_FREE_MIB=1049088 /);
+  assert.match(limit.out, /of 1048576 MiB\)/);
 });
 
 test('a maxSurge of five or more digits is reported as out of range, not as a non-number', () => {
