@@ -21,7 +21,7 @@ function uploadReason(error) {
   return "Could not upload. Try again.";
 }
 
-function DocumentRow({ document: doc }) {
+function DocumentRow({ document: doc, onShare }) {
   return (
     <li>
       <span>{doc.title}</span> <small>Role: {doc.role}</small>{" "}
@@ -33,6 +33,14 @@ function DocumentRow({ document: doc }) {
       ) : (
         <small>No version yet</small>
       )}
+      {doc.role === "owner" && (
+        <>
+          {" "}
+          <button type="button" aria-label={`Share ${doc.title}`} onClick={() => onShare(doc.id)}>
+            Share
+          </button>
+        </>
+      )}
     </li>
   );
 }
@@ -40,6 +48,7 @@ function DocumentRow({ document: doc }) {
 export default function DocumentsPage({ token }) {
   const [items, setItems] = useState([]);
   const [nextCursor, setNextCursor] = useState(null);
+  const [shareId, setShareId] = useState("");
   const [loadState, setLoadState] = useState("loading");
   const [title, setTitle] = useState("");
   const [problem, setProblem] = useState(null);
@@ -139,7 +148,7 @@ export default function DocumentsPage({ token }) {
         {items.length > 0 && (
           <ul className="documents">
             {items.map((doc) => (
-              <DocumentRow key={doc.id} document={doc} />
+              <DocumentRow key={doc.id} document={doc} onShare={setShareId} />
             ))}
           </ul>
         )}
@@ -149,7 +158,7 @@ export default function DocumentsPage({ token }) {
           </button>
         )}
       </section>
-      <ShareForm token={token} />
+      <ShareForm token={token} documentId={shareId} />
     </>
   );
 }

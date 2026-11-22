@@ -284,3 +284,23 @@ describe("DocumentsPage edge cases", () => {
     expect(post[1].headers.Authorization).toBe("Bearer t0k");
   });
 });
+
+describe("DocumentsPage sharing from the list", () => {
+  it("offers Share on the documents the user owns, and puts that document's id in the share form", async () => {
+    server({
+      pages: [
+        {
+          items: [doc(D1, V1, "Mine"), doc(D2, V2, "Theirs", { role: "commenter" })],
+          nextCursor: null,
+        },
+      ],
+    });
+    render(<DocumentsPage token="t0k" />);
+    await screen.findByRole("link", { name: "Open Mine" });
+
+    expect(screen.queryByRole("button", { name: "Share Theirs" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Share Mine" }));
+
+    expect(screen.getByLabelText("Id of the document to share").value).toBe(D1);
+  });
+});

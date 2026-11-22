@@ -1,5 +1,5 @@
 // A small form to share a document with a user by email and a role (#114's POST /documents/:id/shares).
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createShare } from "../api/shares.js";
 import { ApiError } from "../api/client.js";
 
@@ -18,13 +18,18 @@ function refusal(error) {
   return "Something went wrong. Try again.";
 }
 
-export default function ShareForm({ token }) {
-  const [documentId, setDocumentId] = useState("");
+// `documentId` is the document chosen in the list ("Share" on a row); it fills the id field and the field stays editable
+export default function ShareForm({ token, documentId: chosen = "" }) {
+  const [documentId, setDocumentId] = useState(chosen);
   const [email, setEmail] = useState("");
   const [role, setRole] = useState("viewer");
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(null);
   const [problem, setProblem] = useState(null);
+
+  useEffect(() => {
+    if (chosen) setDocumentId(chosen);
+  }, [chosen]);
 
   // Editing a field drops the last message, so a stale "Shared" never sits beside new input
   function edit(setter, value) {

@@ -158,3 +158,14 @@ describe("ShareForm", () => {
     expect(screen.queryByText("Shared with bo@x.co as viewer.")).toBeNull();
   });
 });
+
+describe("ShareForm with a chosen document", () => {
+  it("fills the document id from the documentId it is given, and follows a new one", () => {
+    const OTHER = "22222222-2222-4222-8222-222222222222";
+    const { rerender } = render(<ShareForm token="t0k" documentId={DOC} />);
+    expect(screen.getByLabelText("Id of the document to share").value).toBe(DOC);
+
+    rerender(<ShareForm token="t0k" documentId={OTHER} />);
+    expect(screen.getByLabelText("Id of the document to share").value).toBe(OTHER);
+  });
+});
