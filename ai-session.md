@@ -716,3 +716,68 @@ Drafted the page (cards for containers, autoscaler, nodes, storage, traffic, eve
 - Checked each change with an independent reviewer before it was pushed; their findings were fixed with a failing test first: a blank page on a non-JSON answer, a stalled request ending the refresh, a drill response held by a hung database write, an unset host name failing open, focus and Tab handling in the dialog.
 - Found that deleting a merged branch had closed the pull requests stacked on it, and rebuilt those by cherry-picking their own commits onto main.
 - Left for later: per-pod CPU and memory charts, the image tag per service, a page layout check in a browser at lecture-room size, and measuring the panel's cost on the API pods.
+
+## Closing #146 and #147 and the introduction review, 22 November 2026
+
+### Prompt
+
+Bring the two open pull requests of mine up to date with main, fix what is red, and check each against its diff before merging; read the project introduction pull request (#134) against the course's four points and what is on main.
+
+### AI Response
+
+Merged main into both branches, found the share-token test in `web/src/Root.test.jsx` left without its closing brace by an earlier merge (so the operations test ran inside it), closed it, and drafted the review comments.
+
+### What Your Team Did With It
+
+- Ran lint, format check, the web tests (225) and the build for #146, and the manifest renders, the shell syntax check and the 22 backup tests for #147, then waited for CI on the pushed heads (9 of 9 for both).
+- Had each review comment checked against the repository by a second reader before it was posted; two word counts in the #134 comment were checked by hand.
+- Left for later: the merges themselves, and Milton's change to the first sentence of the introduction.
+
+## Grafana behind the Gateway, 22 November 2026
+
+### Prompt
+
+The demo path must show the Grafana dashboard without a terminal; the operations panel has the link but nothing sets it and Grafana has no public route. Add the smallest change, with the test written first.
+
+### AI Response
+
+Proposed a `/grafana` route on the HTTPS listener with a prefix rewrite, a `ReferenceGrant` for the cross-namespace Service, Grafana's `root_url`, and `GRAFANA_URL` on the doks overlay only; wrote the manifest test before the change.
+
+### What Your Team Did With It
+
+- Checked the Grafana and Gateway Fabric documentation for the sub-path and rewrite behaviour before using it, and kept anonymous access off.
+- Ran the new test red (4 of 4) and then green with the manifest tests (61 of 61).
+- Left for later: applying it to the cluster and the browser check of the link, which the presenter does.
+
+## Board audit and a non-root web image, 22 November 2026
+
+### Prompt
+
+Audit every open issue and pull request against the record (column, boxes, owner, need for 2 and 5 December), close what is done or past its date with a dated comment, rank my issues that go beyond the demo by grade value, and start the top one on its own branch with the test written first. The Q&A check had just shown that the web image runs as root, which the sheet had claimed otherwise.
+
+### AI Response
+
+Read the 24 open issues and 6 open pull requests with their comments, wrote the audit table, proposed closing #22, #54, #67 and #80, ranked the issues (#70 and #104 first but both need a cluster action), and for #96 proposed moving the web image to `nginx/nginx-unprivileged` with the tests first.
+
+### What Your Team Did With It
+
+- Closed the four issues with one dated sentence each; kept #70 and #104 for a decision because each needs a write on the cluster.
+- Checked the unprivileged image's user, port and the old repository's deprecation notice against its Dockerfile and Docker Hub page before using them (D27).
+- Ran the new tests red (4 failures, 1 error), then green with the other k8s tests; an independent reviewer found a wrong sentence about the Gateway route and a test that passed without the change, both fixed.
+- Left for later: building and running the image (CI builds it but does not start it), and the merge, which is Milton's review and Nabeegh's call (PR #164).
+
+## The documents page lists and uploads, 22 November 2026
+
+### Prompt
+
+The live site still shows "Your documents appear here after 24 Nov" although the documents routes are deployed. Replace the placeholder on the Documents page with the real list and a working upload, on my own branch, with the tests changed first, because the demo needs it and PR #93 is still waiting on changes.
+
+### AI Response
+
+Wrote the failing tests for the list, Load more, the empty and error states and upload, then the page and a small `documents.js` client; after an independent read of the diff it added tests and fixes for a document with no current version, a double click on Load more, a failed reload after an upload, the API's own validation message and the real list of allowed file types.
+
+### What Your Team Did With It
+
+- Checked the response shape, the cursor, the multipart fields, the 50 MiB limit and the allowed extensions against `api/src/routes/documents.ts` and `parseUpload.ts` before relying on them.
+- Ran the tests red, then green (225 web tests, lint, format check, build); the five edge-case tests were red before their fix.
+- Left for later: a browser check on the cluster after the deploy, search and tags on this page, and a version number in the list (the API does not return one).

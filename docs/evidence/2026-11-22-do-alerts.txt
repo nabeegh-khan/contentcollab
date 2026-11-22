@@ -1,0 +1,13 @@
+# 22 Nov 2026, DigitalOcean alert policies (#62), read-only: doctl monitoring alert list (doctl 2.1.0), taken 2026-11-22T22:18:10Z
+# The owner's e-mail address is redacted. The tag is the live cluster's id (doctl kubernetes cluster list: contentcollab, nyc3, 6b23c132-a898-4bc0-b08e-22d4e695aa64).
+# Not shown here: that an alert has fired or that the e-mail arrives; neither was tested.
+
+UUID                                    Type                                              Description                                                                                     Compare        Value    Window    Entities    Tags                                          Emails                       Slack Channels    Enabled
+e2701245-0364-41b7-a7d4-b9141497118a    v1/insights/droplet/disk_utilization_percent      contentcollab node disk above 80% for 5 minutes (k8s:6b23c132-a898-4bc0-b08e-22d4e695aa64)      GreaterThan    80       5m        []          [k8s:6b23c132-a898-4bc0-b08e-22d4e695aa64]    <owner email, redacted>                      true
+24fc0d81-04e6-4d20-a18c-6815b654d31b    v1/insights/droplet/cpu                           contentcollab node CPU above 80% for 5 minutes (k8s:6b23c132-a898-4bc0-b08e-22d4e695aa64)       GreaterThan    80       5m        []          [k8s:6b23c132-a898-4bc0-b08e-22d4e695aa64]    <owner email, redacted>                      true
+87a88659-dada-46ca-b88b-14f9d9c290d2    v1/insights/droplet/memory_utilization_percent    contentcollab node memory above 80% for 5 minutes (k8s:6b23c132-a898-4bc0-b08e-22d4e695aa64)    GreaterThan    80       5m        []          [k8s:6b23c132-a898-4bc0-b08e-22d4e695aa64]    <owner email, redacted>                      true
+
+## doctl compute droplet list --tag-name k8s:6b23c132-...
+Name              Region    Memory    VCPUs
+default-368do2    nyc3      4096      2
+default-3aodxs    nyc3      4096      2

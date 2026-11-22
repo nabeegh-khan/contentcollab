@@ -66,7 +66,7 @@ function SignedInPage({ route, token, user }) {
       />
     );
   }
-  return <DocumentsPage token={token} />;
+  return <DocumentsPage key={token} token={token} />;
 }
 
 export default function Root() {

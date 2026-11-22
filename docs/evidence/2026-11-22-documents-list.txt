@@ -1,0 +1,21 @@
+# 22 Nov 2026, documents list checked through the API on https://contentcollab.app after deploy ae04b08 (PR #165)
+# Taken at 2026-11-22T23:01:01Z. Demo accounts by e-mail only; no tokens or passwords are printed.
+PASS  web bundle served  1 script(s), 294287 bytes
+PASS  placeholder text is gone from the bundle
+PASS  bundle calls the documents list
+PASS  login admin@contentcollab.app  HTTP 200
+PASS  login reviewer@contentcollab.app  HTTP 200
+PASS  admin@contentcollab.app lists the seeded document  HTTP 200, 1 item(s), role owner, title 'Demo document', currentVersionId set True
+PASS  admin@contentcollab.app opens the current version's comments  HTTP 200, 0 comment(s)
+PASS  reviewer@contentcollab.app lists the seeded document  HTTP 200, 1 item(s), role commenter, title 'Demo document', currentVersionId set True
+PASS  reviewer@contentcollab.app opens the current version's comments  HTTP 200, 0 comment(s)
+PASS  upload 1 as admin  HTTP 201
+PASS  upload 2 as admin  HTTP 201
+PASS  limit=1 gives a next cursor (Load more would show)
+PASS  the cursor page is a different document  HTTP 200
+PASS  both uploads are in the list
+PASS  a .gif upload is refused with 400  HTTP 400
+PASS  clean up 7730b5e2  HTTP 204
+PASS  clean up 581e64c7  HTTP 204
+PASS  no check document is left behind  []
+RESULT: all checks passed

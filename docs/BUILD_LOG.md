@@ -428,3 +428,32 @@ Each of these pull requests was past its three-day review window with no review,
 
 - **Change.** Email input: `type="email"`, `autocomplete="username"`, `name="email"`; password input: `name="password"`, `autocomplete="current-password"` on sign-in and `"new-password"` on register; display name: `name="displayName"`, `autocomplete="name"`. Both pages were already one real form with a submit button, so Chrome's password manager can offer to save and fill the login. `AuthForm.test.jsx` (2 of 3 red before the change); 204 web tests, lint, format and build clean; CI 10/10.
 - **Limit.** The test shows the attributes, not Chrome's own save prompt, which needs a look in Chrome after the deploy.
+
+### 22 November: a merge left a test unclosed in #146 (PR #146, `74244af`)
+
+- **Incident.** After main was merged into `nabeegh/share-form`, `web/src/Root.test.jsx` had the share-token test without its closing `});`, so the operations test sat inside it; Vitest refuses a test inside a test, and Prettier already failed on the same file in CI (`web-test` red on `36be6f4`).
+- **Fix.** The missing `});` added and the stray one at the end removed. Lint, format check, 225 web tests and the build pass; CI 9 of 9 on `74244af`.
+- **Check that would have caught it.** CI's `web-test` job runs the Vitest suite after the format check; the format check stopped the job first, so the test error was only seen when run locally.
+
+### 22 November: Grafana behind the Gateway for the operations panel (issue #161, PR #162)
+
+- **Decision.** The operations panel's "Open Grafana" link needs a public address, because the demo runs without a terminal and Grafana was reachable only through `kubectl port-forward`. Chosen: Grafana at `https://contentcollab.app/grafana/` through the same Gateway, behind Grafana's own login (anonymous access stays off). The API shows the link when `GRAFANA_URL` is set (`api/src/server.ts`, `web/src/ops/OpsPage.jsx`), so the change adds `GRAFANA_URL` to the doks overlay only (minikube has no public host).
+- **Option it beat.** A public read-only viewer (anonymous access with the Viewer role): it would show the dashboard without a sign-in, but it publishes the cluster's metrics to anyone. The presenter signs in to Grafana once before the talk instead.
+- **How.** An `HTTPRoute` for `/grafana` on the HTTPS listener with a `URLRewrite` that replaces the prefix with `/`, to the Grafana Service in the `observability` namespace; a `ReferenceGrant` in that namespace allows the one route to reach the one Service; Grafana's `root_url` carries the prefix and `serve_from_sub_path` stays off because the proxy strips it.
+- **Sources, checked 22 November 2026.** Grafana, "Run Grafana behind a reverse proxy" (grafana.com/tutorials/run-grafana-behind-a-proxy): with a proxy that strips the sub path, set `root_url` with the path; `serve_from_sub_path` is the alternative for a proxy that does not. NGINX Gateway Fabric, "Gateway API compatibility" (docs.nginx.com/nginx-gateway-fabric/overview/gateway-api-compatibility): `urlRewrite` and `ReferenceGrant` are supported. Gateway API, HTTPRoute `ReplacePrefixMatch` (gateway-api.sigs.k8s.io, API reference).
+- **Tests first.** `tests/test_grafana_route.py`: 4 of 4 failed on main before the change, 61 of 61 pass with it (the other manifest tests included). Not run here: kubeconform and `observability.test.mjs` (no `yq` on the laptop), which CI runs.
+- **Limits.** Nothing has been applied to the cluster yet. The Grafana pod must roll for `root_url` to take effect (`scripts/observability-up.sh`), and the route and `GRAFANA_URL` arrive with the next deploy. The first check is a browser check by the presenter: the link appears for the admin, the page at `/grafana/` loads over HTTPS and asks for the Grafana login. WebSocket (Grafana Live) is not routed and is not needed to view a dashboard.
+
+### 22 November: web image runs non-root (issue #96, PR #164)
+
+- **Found.** The Q&A check on 22 November showed that only the API and worker images run as a non-root user; the web image ran nginx as root, which D27 had listed as an open follow-up (SEC-6).
+- **Decision (ARCHITECTURE D27).** Final stage `nginx/nginx-unprivileged:stable` (uid 101, port 8080), `runAsNonRoot` with `runAsUser: 101`, container port 8080, Service and Gateway route unchanged at 80. The `nginxinc/` repository says it is no longer maintained, so the `nginx/` one is used (Docker Hub and the upstream Dockerfile, read 22 November).
+- **Evidence.** Tests first in `tests/test_k8s_deploy.py`: 4 failures and 1 error on main, all pass with the change; the four k8s test modules pass (83); both overlays render. One independent review: no error; a wrong sentence in D27 and a test that did not fail without the change were fixed.
+- **Limits.** The image was not built or started locally and CI does not start it, so a runtime nginx fault would show on the cluster after the merge; the check is `kubectl -n contentcollab exec deploy/web -- id -u` printing 101. `stable` is a mutable tag.
+
+### 22 November: the documents page lists and uploads (issue #48, PR #165)
+
+- **Found.** On 22 November the live site still showed the placeholder "Your documents appear here after 24 Nov" for both demo accounts, although #116 (documents and versions routes) merged on 21 November and was deployed. The page, not the API, was the gap.
+- **Change (ARCHITECTURE D28).** `DocumentsPage` calls `GET /documents` and `POST /documents` through `web/src/api/documents.js`: title, role, updated time, a link to the current version, Load more with the cursor, empty and error states, upload with an optional title. The open-by-ids box is removed.
+- **Evidence.** Tests first: the new API-client and page tests were red (missing module, 8 of the page's tests), then green; a separate read of the diff found five edge cases (a document without a current version, a double click on Load more, a failed reload after an upload, a 400 that is not a type error, an over-claimed list of file types), each got a test that failed before its fix. 225 web tests, lint, format check and build pass.
+- **Limits.** Not run in a browser or on the cluster; the list shows no version number because the API returns none; search, tags and delete are not on the page.

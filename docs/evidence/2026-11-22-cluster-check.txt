@@ -1,0 +1,95 @@
+# 22 Nov 2026, read-only cluster check before the 24 Nov demo check (kubectl context do-nyc3-contentcollab)
+# Taken at 2026-11-22T21:36:11Z. Only get, top, exec-read and can-i commands; no passwords or keys appear below.
+
+## https://contentcollab.app/health
+{"status":"ok","postgres":"ok","redis":"ok"}
+## https://contentcollab.app/api/v1/ops without a token (expect 401)
+HTTP 401
+## https://contentcollab.app/ (web)
+HTTP 200
+
+## kubectl get nodes
+NAME             STATUS   ROLES    AGE   VERSION
+default-368do2   Ready    <none>   2d    v1.37.0
+default-3aodxs   Ready    <none>   11d   v1.37.0
+
+## kubectl -n contentcollab get deploy,sts,hpa,pdb,cronjob
+NAME                                  READY   UP-TO-DATE   AVAILABLE   AGE
+deployment.apps/api                   2/2     2            2           11d
+deployment.apps/contentcollab-nginx   1/1     1            1           11d
+deployment.apps/redis                 1/1     1            1           11d
+deployment.apps/web                   2/2     2            2           2d
+deployment.apps/worker                1/1     1            1           11d
+
+NAME                        READY   AGE
+statefulset.apps/postgres   1/1     11d
+
+NAME                                      REFERENCE        TARGETS        MINPODS   MAXPODS   REPLICAS   AGE
+horizontalpodautoscaler.autoscaling/api   Deployment/api   cpu: 15%/70%   2         5         2          11d
+
+NAME                             MIN AVAILABLE   MAX UNAVAILABLE   ALLOWED DISRUPTIONS   AGE
+poddisruptionbudget.policy/api   1               N/A               1                     11d
+
+NAME                      SCHEDULE    TIMEZONE          SUSPEND   ACTIVE   LAST SCHEDULE   AGE
+cronjob.batch/db-backup   0 3 * * *   America/Toronto   False     0        13h             26h
+
+## kubectl -n contentcollab get pods -o wide (completed migrate Jobs omitted)
+NAME                                                        READY   STATUS      RESTARTS   AGE   IP             NODE             NOMINATED NODE   READINESS GATES
+api-6dc7d4bfb5-d5xkn                                        1/1     Running     0          23h   10.109.0.203   default-368do2   <none>           <none>
+api-6dc7d4bfb5-wxwnt                                        1/1     Running     0          23h   10.109.0.124   default-3aodxs   <none>           <none>
+contentcollab-nginx-895f84697-95xhm                         1/1     Running     0          47h   10.109.0.221   default-368do2   <none>           <none>
+db-backup-29922240-9s6nd                                    0/1     Completed   0          13h   10.109.0.175   default-368do2   <none>           <none>
+postgres-0                                                  1/1     Running     0          47h   10.109.0.140   default-368do2   <none>           <none>
+redis-5495d876dd-fv2dd                                      1/1     Running     0          11d   10.109.0.23    default-3aodxs   <none>           <none>
+web-5f8945cdd8-49xzt                                        1/1     Running     0          23h   10.109.0.34    default-3aodxs   <none>           <none>
+web-5f8945cdd8-8lsb5                                        1/1     Running     0          23h   10.109.0.216   default-368do2   <none>           <none>
+worker-5d4bb55d49-76b4h                                     1/1     Running     0          23h   10.109.0.137   default-368do2   <none>           <none>
+
+## kubectl -n contentcollab top pods
+NAME                                  CPU(cores)   MEMORY(bytes)   
+api-6dc7d4bfb5-d5xkn                  10m          143Mi           
+api-6dc7d4bfb5-wxwnt                  11m          146Mi           
+contentcollab-nginx-895f84697-95xhm   12m          40Mi            
+postgres-0                            35m          55Mi            
+redis-5495d876dd-fv2dd                14m          14Mi            
+web-5f8945cdd8-49xzt                  1m           3Mi             
+web-5f8945cdd8-8lsb5                  1m           3Mi             
+worker-5d4bb55d49-76b4h               2m           125Mi           
+
+## kubectl -n contentcollab get pvc
+NAME              STATUS   VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS       VOLUMEATTRIBUTESCLASS   AGE
+data-postgres-0   Bound    pvc-6a857bd4-b129-4206-9d31-fd3827574e20   5Gi        RWO            do-block-storage   <unset>                 11d
+
+## kubectl get httproute,gateway -A
+NAMESPACE       NAME                                      HOSTNAMES               AGE
+contentcollab   httproute.gateway.networking.k8s.io/api   ["contentcollab.app"]   11d
+contentcollab   httproute.gateway.networking.k8s.io/web   ["contentcollab.app"]   2d
+
+NAMESPACE       NAME                                              CLASS   ADDRESS          PROGRAMMED   AGE
+contentcollab   gateway.gateway.networking.k8s.io/contentcollab   nginx   138.197.57.149   True         11d
+
+## kubectl -n observability get pods
+NAME                                  READY   STATUS    RESTARTS   AGE
+grafana-5b8886c47b-ndvxr              1/1     Running   0          47h
+kube-state-metrics-7b55d87b8f-x2rxx   1/1     Running   0          47h
+prometheus-9567ccb9b-w7j9l            1/1     Running   0          47h
+
+## Prometheus active targets (read from inside the prometheus pod)
+api 10.109.0.124:3000 up
+api 10.109.0.203:3000 up
+kube-state-metrics kube-state-metrics.observability.svc:8080 up
+kubelet-cadvisor default-368do2 up
+kubelet-cadvisor default-3aodxs up
+kubelet-resource default-368do2 up
+kubelet-resource default-3aodxs up
+prometheus localhost:9090 up
+
+## Operations panel prerequisites (booleans only, no values)
+OPS_ADMIN_USER_IDS set: True
+contains admin id: True
+GRAFANA_URL present: False
+api live image: ghcr.io/nabeegh-khan/contentcollab-api:29956b31e3c2c0addac1ed8a97bd2c3393a9a05c
+PROMETHEUS_URL in the ConfigMap: http://prometheus.observability.svc:9090
+RBAC for the drill, create on pods with subresource eviction: yes (delete on pods: no, as intended: the drill evicts, it never deletes)
+
+## Not checked: a signed-in view of #/ops, a drill click, or the Grafana link (not deployed yet, PR #162). Those are browser checks in the demo script.
