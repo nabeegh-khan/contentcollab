@@ -10,7 +10,8 @@ COPY . .
 
 RUN npm run build
 
-FROM nginx
+# Runs as uid 101 and listens on 8080 (D27, SEC-6)
+FROM nginx/nginx-unprivileged:stable
 
 COPY --from=build /web/dist /usr/share/nginx/html
 
