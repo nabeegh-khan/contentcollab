@@ -277,8 +277,7 @@ test('a maxSurge of five or more digits is reported as out of range, not as a no
   assert.equal(r.code, 1, r.out);
   assert.match(r.out, /maxSurge '10000' is out of range/);
   assert.doesNotMatch(r.out, /a whole number of pods is needed/);
-  assert.ok(!r.calls.some((c) => /apply|rollout restart/.test(c)), r.calls.join('
-'));
+  assert.ok(!r.calls.some((c) => /apply|rollout restart/.test(c)), r.calls.join('\n'));
   const word = rollout({ STUB_SURGE: '25%' });
   assert.equal(word.code, 1, word.out);
   assert.match(word.out, /a whole number of pods is needed/);
