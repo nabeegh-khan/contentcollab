@@ -732,3 +732,19 @@ Merged main into both branches, found the share-token test in `web/src/Root.test
 - Ran lint, format check, the web tests (225) and the build for #146, and the manifest renders, the shell syntax check and the 22 backup tests for #147, then waited for CI on the pushed heads (9 of 9 for both).
 - Had each review comment checked against the repository by a second reader before it was posted; two word counts in the #134 comment were checked by hand.
 - Left for later: the merges themselves, and Milton's change to the first sentence of the introduction.
+
+## Grafana behind the Gateway, 22 November 2026
+
+### Prompt
+
+The demo path must show the Grafana dashboard without a terminal; the operations panel has the link but nothing sets it and Grafana has no public route. Add the smallest change, with the test written first.
+
+### AI Response
+
+Proposed a `/grafana` route on the HTTPS listener with a prefix rewrite, a `ReferenceGrant` for the cross-namespace Service, Grafana's `root_url`, and `GRAFANA_URL` on the doks overlay only; wrote the manifest test before the change.
+
+### What Your Team Did With It
+
+- Checked the Grafana and Gateway Fabric documentation for the sub-path and rewrite behaviour before using it, and kept anonymous access off.
+- Ran the new test red (4 of 4) and then green with the manifest tests (61 of 61).
+- Left for later: applying it to the cluster and the browser check of the link, which the presenter does.
