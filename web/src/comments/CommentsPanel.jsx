@@ -7,6 +7,7 @@ import { connectVersion } from "../realtime.js";
 import CommentBody from "./CommentBody.jsx";
 import CommentForm from "./CommentForm.jsx";
 import { applyEvent, authorLabel, buildThreads } from "./thread.js";
+import { formatClock, relativeTime } from "./time.js";
 
 const LIVE_TEXT = {
   connecting: "Connecting for live updates...",
@@ -42,6 +43,13 @@ export default function CommentsPanel({
   const [mentioned, setMentioned] = useState(false);
   const [replyTo, setReplyTo] = useState(null);
   const [actionError, setActionError] = useState(null);
+
+  // The relative times ("2 min ago") move on without a reload: the clock ticks every 30 seconds
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 30000);
+    return () => clearInterval(timer);
+  }, []);
 
   // Only the newest list answer is used, and events that arrive while a list is loading are
   // replayed on top of it, so neither an old answer nor a slow one drops a live change
@@ -120,7 +128,9 @@ export default function CommentsPanel({
       <div className="comment">
         <p className="comment-meta">
           <span>{authorLabel(comment.authorId, user.id)}</span>{" "}
-          <time dateTime={comment.createdAt}>{new Date(comment.createdAt).toLocaleString()}</time>
+          <time dateTime={comment.createdAt}>
+            {formatClock(comment.createdAt)} ({relativeTime(comment.createdAt, now)})
+          </time>
           {comment === root && comment.resolved && <span className="badge">Resolved</span>}
         </p>
         <CommentBody body={comment.body} />

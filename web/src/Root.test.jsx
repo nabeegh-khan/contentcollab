@@ -192,4 +192,22 @@ describe("Root", () => {
     const call = fetchMock.mock.calls.find(([url]) => String(url).includes("/comments?limit=100"));
     expect(call[1].headers.Authorization).toBe("Bearer mem0ry");
   });
+
+  it("opens the operations page at #/ops, and offers a way to it once signed in", async () => {
+    saveToken("t0k");
+    window.location.hash = "#/ops";
+    const fetchMock = routeFetch({
+      "/health": health,
+      "/api/v1/auth/me": () => json(200, ANN),
+      "/api/v1/ops": () => json(403, { error: "Forbidden", code: "FORBIDDEN" }),
+    });
+
+    render(<Root />);
+
+    expect(await screen.findByText("This page is for operators")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Operations" }).getAttribute("href")).toBe("#/ops");
+    expect(screen.getByRole("link", { name: "Documents" }).getAttribute("href")).toBe("#/");
+    const call = fetchMock.mock.calls.find(([url]) => url === "/api/v1/ops");
+    expect(call[1].headers.Authorization).toBe("Bearer t0k");
+  });
 });

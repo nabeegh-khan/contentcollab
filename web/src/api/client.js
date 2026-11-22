@@ -38,11 +38,12 @@ async function readBody(response) {
   }
 }
 
-export async function request(path, { method = "GET", body, token } = {}) {
+export async function request(path, { method = "GET", body, token, signal } = {}) {
   const response = await fetch(`${API_BASE}${path}`, {
     method,
     headers: buildHeaders(body, token),
     body: encodeBody(body),
+    ...(signal ? { signal } : {}),
   });
   const parsed = await readBody(response);
   if (!response.ok) throw new ApiError(response.status, parsed);

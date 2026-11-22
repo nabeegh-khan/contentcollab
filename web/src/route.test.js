@@ -50,3 +50,10 @@ describe("isId", () => {
     expect(isId("")).toBe(false);
   });
 });
+
+describe("the operations page address", () => {
+  it("reads #/ops as the operations page, with or without a trailing slash", () => {
+    expect(parseHash("#/ops")).toEqual({ name: "ops" });
+    expect(parseHash("#/ops/")).toEqual({ name: "ops" });
+  });
+});

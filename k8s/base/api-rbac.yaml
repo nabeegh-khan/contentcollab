@@ -1,6 +1,7 @@
-# The API reads its own Deployment's ready replicas for GET /api/v1/status (#30, ARCHITECTURE D23),
-# and nothing else: its own ServiceAccount, a Role with `get` on deployments/api only, no
-# cluster-wide access (SEC-6, least privilege; lecture 8 on RBAC).
+# The API's own ServiceAccount and what it may read in the cluster. api-status: its own Deployment's
+# ready replicas for GET /api/v1/status (#30, ARCHITECTURE D23). api-ops and contentcollab-api-nodes:
+# the read-only operations panel (D31). The one write, evicting a pod for the restart drill, is its own
+# file, api-drill-rbac.yaml. Least privilege (SEC-6, lecture 8 on RBAC).
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -24,6 +25,71 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
   name: api-status
+subjects:
+  - kind: ServiceAccount
+    name: api
+    namespace: contentcollab
+---
+# The operations panel (D31, GET /api/v1/ops): read-only. Pods and their logs cannot be narrowed by name
+# (their names change on every rollout, and RBAC has no label selector), so the API's code decides which
+# pods it reads; the HPA and the one claim are named. No verb but get and list, no Secrets, no exec.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: api-ops
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+  - apiGroups: ["events.k8s.io"]
+    resources: ["events"]
+    verbs: ["list"]
+  - apiGroups: ["autoscaling"]
+    resources: ["horizontalpodautoscalers"]
+    resourceNames: ["api"]
+    verbs: ["get"]
+  - apiGroups: [""]
+    resources: ["persistentvolumeclaims"]
+    resourceNames: ["data-postgres-0"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: api-ops
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: api-ops
+subjects:
+  - kind: ServiceAccount
+    name: api
+    namespace: contentcollab
+---
+# Nodes are cluster-scoped, so a Role cannot grant them: the first and only cluster-wide objects here
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: contentcollab-api-nodes
+rules:
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "list"]
+  - apiGroups: ["metrics.k8s.io"]
+    resources: ["nodes"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: contentcollab-api-nodes
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: contentcollab-api-nodes
 subjects:
   - kind: ServiceAccount
     name: api
