@@ -1,0 +1,16 @@
+# Demo path walk, 22 Nov 2026 (API calls behind each step, live site; read-only except none). Taken 23:03:41Z
+step 3 ops snapshot, admin: HTTP 200 in 0.41s
+  errors: {}
+  containers: 8 listed; hpa: {'name': 'api', 'currentReplicas': 2, 'desiredReplicas': 2, 'minReplicas': 2, 'maxReplicas': 5, 'cpuPercent': 11, 'cpuTargetPercent': 70, 'lastScaleTime': '2026-11-21T19:18:01Z', 'limitedBy': None}
+  nodes: 2; traffic: present
+  storage: {'claim': {'name': 'data-postgres-0', 'phase': 'Bound', 'capacity': '5Gi', 'storageClass': 'do-block-storage'}, 'documents': 1, 'versions': 2, 'comments': 0}
+  events: 30 item(s); drills: {'nextAllowedAt': None}
+  links: {'grafana': None}
+step 3 ops snapshot, reviewer (must be refused): HTTP 403
+step 3 ops snapshot, no token (must be 401): HTTP 401
+step 7 series route: HTTP 200 in 0.32s; keys ['windowSeconds', 'stepSeconds', 'cpu', 'memory']
+step 8 https://contentcollab.app/grafana/ today (PR #162 not merged): HTTP 200
+health: HTTP 200 {'status': 'ok', 'postgres': 'ok', 'redis': 'ok'}
+status route: HTTP 200 replicas {'api': 2}
+# Reading: the 200 for /grafana/ is the web app's fallback page (the route `/` goes to the web Deployment, which serves index.html for any path), not Grafana; the Grafana route arrives with PR #162. links.grafana is null for the same reason. The comment count is 0 because the seeded document has no comments; the demo's own comment makes it 1.
+# Not exercised here (a browser or a write on the cluster): the ops page rendering, the pod restart drill, the live comment, Chrome's saved password.
