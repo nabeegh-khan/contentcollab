@@ -1,0 +1,16 @@
+# Lets the `grafana` HTTPRoute of the contentcollab namespace (k8s/doks/gateway.yaml) use the Grafana
+# Service here as a backend; Gateway API refuses a cross-namespace backend without this grant (#161).
+# One route and one Service only: nothing else in this namespace becomes reachable through the Gateway.
+apiVersion: gateway.networking.k8s.io/v1
+kind: ReferenceGrant
+metadata:
+  name: grafana-from-gateway-route
+spec:
+  from:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      namespace: contentcollab
+  to:
+    - group: ""
+      kind: Service
+      name: grafana

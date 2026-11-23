@@ -51,7 +51,7 @@ Out of scope on purpose: live text editing and track changes (D3).
 Core features (proposal 2.6), state on `main` at 22 November (`docs/ROADMAP_2026-11-22.md` has the pull request and owner for each):
 
 - **Sign-in and roles.** Registration and login with bcrypt-hashed passwords and signed tokens; four roles (Owner, Editor, Commenter, Viewer) enforced by middleware before each action (PR #111).
-- **Documents and versions.** Upload as a new version, download, version list; revert in the API (PR #116, web versions panel #154). An identical file is refused with 409.
+- **Documents and versions.** A documents page that lists and uploads (PR #165, 22 November), upload as a new version, download, version list; revert in the API (PR #116, web versions panel #154). An identical file is refused with 409.
 - **Sharing.** By user and by link with an expiry (PR #114); the share form in the web client is open as PR #146.
 - **Comments.** Threads, replies, resolve and @-mentions, live for everyone on the version (PRs #135, #136, #144; D28). Pins are stored but not drawn.
 - **Operations page.** For an admin: pods and containers by node, the autoscaler, nodes, storage, traffic, CPU and memory charts from Prometheus, recent events, and a restart drill for an API pod or the database pod, one a minute, admin only (D31; PRs #150, #151, #157, #158, #160). A link to Grafana at `/grafana/` is PR #162.
@@ -62,7 +62,7 @@ Advanced features, how they meet the course requirements:
 |---|---|---|---|
 | Security | bcrypt, signed tokens, role checks, expiring share links, HTTPS at the Gateway, keys in Kubernetes Secrets, 50 MiB upload cap at the Gateway | Every route checks the signed-in user and role; nothing sensitive is in an image or the repository | PRs #111, #114, #145, #98; D29 |
 | CI/CD | Tests gate the build; images pinned to the commit; migrations run as a Job before each rollout; a failed rollout is undone, only what that run changed | The deployed version is always known, and a bad release does not stay | D20, D24, D25; `docs/evidence/ci-cd.md` |
-| Real-time | Socket.IO with a Redis adapter, so an event on one API pod reaches a viewer on another | The reason the API is stateless and can be scaled | D4, D12, D28; `scripts/cross-replica.mjs` and `docs/evidence/2026-11-21T21-*-cross-replica.txt` |
+| Real-time | Socket.IO with a Redis adapter, so an event on one API pod reaches a viewer on another | The reason the API is stateless and can be scaled | D4, D12, D28; `scripts/cross-replica.mjs`; two passing runs against both API pods over a port-forward (`docs/evidence/2026-11-21T21-10-54-663Z-cross-replica.txt`, `...21-11-45-889Z-...`); the one run through the Gateway failed on counting, not on delivery (`...21-07-24-161Z-...`) |
 | Auto-scaling and high availability | HPA 2 to 5, pods spread over both nodes, rolling updates with `maxUnavailable: 0`, preStop drain | Scaling out needs stateless pods, shared events and a database that survives pod loss | D14; `docs/evidence/2026-11-21-hpa-watch.txt`: 2 to 5 pods, 0 failures at 50 req/s, 16 failures (0.06%) at 150 req/s within one second as the pod set changed |
 
 Stretch: backup and recovery (PR #147, open, CronJob already running on the cluster; the proposal named Milton as owner, the work was done by Nabeegh after the first attempt, #143, was closed); email on share and mention (issue #44, not started).
@@ -72,7 +72,7 @@ Stretch: backup and recovery (PR #147, open, CronJob already running on the clus
 `[TODO: Milton for sign-in and documents pages, Nabeegh for the operations page and versions; screenshots from the deployed site, in docs/img/, with alt text]`
 
 1. **Register and sign in** at https://contentcollab.app/. `[TODO: screenshot of the sign-in page; docs/evidence/2026-11-21-ui2-signin-1920x1080.png exists]`
-2. **Open a document.** The web client opens a document by its address; a documents list and new-document upload are not built yet (D28 Limits). `[TODO: Milton, #93 and #49 if merged by 5 Dec]`
+2. **Open a document.** After sign-in the Documents page lists the documents you can read, with your role and the time of the last change, and an Open link to the latest version; Load more shows the next 20. The same page uploads a new document (a file and an optional title; PDF, PNG, JPEG, Word, Excel, PowerPoint, text and Markdown, up to 50 MiB). The list was checked on the deployed site for both demo accounts on 22 November (`docs/evidence/2026-11-22-documents-list.txt`). Not built: search, tags and delete on this page, and a version number in the list (D28; PR #165). `[TODO: screenshot of the Documents page]`
 3. **Upload a new version.** Choose a file in the versions panel; the list shows the version and a download link. `[TODO: screenshot]`
 4. **Comment and mention.** Type a comment with `@Name`; everyone viewing the version sees it with no refresh, and the person mentioned gets a notice. `[TODO: screenshot of two windows; docs/evidence/2026-11-21-ui2-document-1920x1080.png exists]`
 5. **Share.** `[TODO: Nabeegh, after PR #146 merges: the share form]`
@@ -80,7 +80,7 @@ Stretch: backup and recovery (PR #147, open, CronJob already running on the clus
 
 ## Development Guide
 
-- **Prerequisites:** Docker with Compose, Node.js 24, `kubectl` and minikube for the manifests. `[TODO: Nabeegh, confirm versions against the Dockerfiles and CI]`
+- **Prerequisites:** Docker with Compose, Node.js 24, `kubectl` and minikube for the manifests. Versions as the Dockerfiles and CI use them (read 22 November): Node 24 for the api, worker and web build, PostgreSQL 18, Redis 8; `kubectl` and minikube are not pinned by the repository, so any current release.
 - **Environment:** copy `.env.example` to `.env`; it lists every variable; `.env` is never committed.
 - **Database and storage:** `docker compose up --build` starts the API, web, worker, PostgreSQL and Redis; migrations run before the API starts. Files go to Spaces in the cluster; locally `[TODO: Jyotiraditya, how local file storage works with PR #89]`.
 - **Tests:** API tests need PostgreSQL and Redis (`compose.test.yaml`); `npm test` in `api/` and `worker/`; `npm test` in `web/`; manifest checks with `python3 -m unittest tests.test_k8s_deploy tests.test_k8s_status_rbac tests.test_deploy_undo tests.test_gateway_body_size -v` (the `k8s` job in `.github/workflows/ci.yml`; PR #162 adds `tests.test_grafana_route`). `[TODO: Nabeegh, one exact command list, run once on a clean clone]`

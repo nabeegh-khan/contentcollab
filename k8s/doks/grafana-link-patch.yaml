@@ -1,0 +1,9 @@
+# Where the operations panel finds Grafana on the cluster (#161, ARCHITECTURE D31). The API shows the
+# link only when GRAFANA_URL is set; it is public-host only, so the minikube overlay does not get it.
+# Route: the grafana HTTPRoute in gateway.yaml. Grafana keeps its login, so the link opens a sign-in page.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+data:
+  GRAFANA_URL: https://contentcollab.app/grafana/
