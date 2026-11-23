@@ -53,6 +53,13 @@ export function sandbox(stubs) {
       });
       return { status: result.status, stdout: result.stdout, stderr: result.stderr, out: `${result.stdout}${result.stderr}` };
     },
+    /** Runs scripts/<script> with node (same sandbox and guards as run); `args` follow the script. */
+    runNode(script, { env = {}, args = [] } = {}) {
+      const full = envFor(env);
+      guard(full);
+      const result = spawnSync("node", [`scripts/${script}`, ...args], { cwd: repoRoot, env: full, encoding: "utf8", timeout: 60_000 });
+      return { status: result.status, stdout: result.stdout, stderr: result.stderr, out: `${result.stdout}${result.stderr}` };
+    },
     /** Contents of a file a stub wrote into the sandbox, or "" if it wrote none. */
     file: (name) => (existsSync(join(dir, name)) ? readFileSync(join(dir, name), "utf8") : ""),
     cleanup: () => rmSync(dir, { recursive: true, force: true }),
