@@ -30,10 +30,11 @@ spec:
       labels:
         app: web
     spec:
-      # The official nginx image as the skeleton builds it, run as is: running
-      # it as another user needs its own config (Docker Hub, "Running nginx
-      # as a non-root user"), so no runAsNonRoot here. Moving to
-      # nginx-unprivileged is the follow-up (D27).
+      # nginx/nginx-unprivileged runs as uid 101 and listens on 8080; the
+      # numeric user lets the kubelet check runAsNonRoot (SEC-6, D27)
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101
       # No ConfigMap or Secret: the page holds nothing private (SEC-2)
       containers:
         - name: web
@@ -42,7 +43,7 @@ spec:
           image: ghcr.io/nabeegh-khan/contentcollab-web:unpinned
           ports:
             - name: http
-              containerPort: 80 # `listen 80` in web/nginx.conf
+              containerPort: 8080 # `listen 8080` in web/nginx.conf
           # Ready once Nginx serves the page itself; `/health` in nginx.conf
           # is proxied to the API, so it would test the wrong thing
           readinessProbe:

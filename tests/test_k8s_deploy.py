@@ -265,7 +265,7 @@ class WebServing(unittest.TestCase):
                             if d["kind"] == "Service" and d["metadata"]["name"] == "web")
 
     def test_named_port_and_probes_by_name(self):
-        self.assertEqual(self.container["ports"], [{"name": "http", "containerPort": 80}])
+        self.assertEqual(self.container["ports"], [{"name": "http", "containerPort": 8080}])
         self.assertEqual(self.container["readinessProbe"]["httpGet"], {"path": "/", "port": "http"})
         self.assertEqual(self.container["livenessProbe"]["tcpSocket"]["port"], "http")
 
@@ -284,6 +284,19 @@ class WebServing(unittest.TestCase):
         # SEC-2: nothing into web
         self.assertNotIn("envFrom", self.container)
         self.assertNotIn("env", self.container)
+
+    def test_runs_as_the_unprivileged_nginx_user(self):
+        # SEC-6, D27: nginx/nginx-unprivileged runs as uid 101; runAsNonRoot
+        # needs a numeric user, which runAsUser makes explicit
+        pod = self.web["spec"]["template"]["spec"]
+        self.assertEqual(pod["securityContext"], {"runAsNonRoot": True, "runAsUser": 101})
+
+    def test_gateway_and_service_keep_port_80_in_front_of_the_container(self):
+        # the Gateway route targets Service port 80 and the Service reaches
+        # the container by name, so neither sees the container's 8080
+        self.assertEqual([p["port"] for p in self.service["spec"]["ports"]], [80])
+        web = next(d for d in self.docs if d["kind"] == "HTTPRoute" and d["metadata"]["name"] == "web")
+        self.assertEqual([r["port"] for rule in web["spec"]["rules"] for r in rule["backendRefs"]], [80])
 
     def test_service_targets_the_named_port(self):
         self.assertEqual(self.service["spec"]["selector"], {"app": "web"})
@@ -329,6 +342,23 @@ def keys_of(path, section):
     doc = yaml.safe_load((ROOT / path).read_text())
     return set(doc[section])
 
+
+class WebImage(unittest.TestCase):
+    """D27, SEC-6: the web image and its local runs agree with the unprivileged user and port 8080."""
+
+    def test_final_stage_is_the_unprivileged_nginx_image(self):
+        froms = re.findall(r"^FROM\s+(\S+)", (ROOT / "web" / "Dockerfile").read_text(), re.M)
+        self.assertEqual(froms[-1].split(":")[0], "nginx/nginx-unprivileged")
+
+    def test_nginx_listens_on_8080_not_80(self):
+        conf = (ROOT / "web" / "nginx.conf").read_text()
+        self.assertRegex(conf, r"listen\s+8080\s*;")
+        self.assertNotRegex(conf, r"listen\s+80\s*;")
+
+    def test_compose_maps_and_checks_port_8080(self):
+        web = yaml.safe_load((ROOT / "compose.yaml").read_text())["services"]["web"]
+        self.assertEqual(web["ports"], ["8080:8080"])
+        self.assertIn("http://localhost:8080", " ".join(web["healthcheck"]["test"]))
 
 class MigrationJob(unittest.TestCase):
     """D20 (#117): the Job that runs api/migrations before each rollout."""

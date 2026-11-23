@@ -256,4 +256,67 @@ describe("DocumentsPage edge cases", () => {
     expect(fetchMock.mock.calls.filter(([url]) => url.includes("cursor=c1"))).toHaveLength(1);
     expect(screen.getByRole("link", { name: "Open First" })).toBeTruthy();
   });
+
+  it("shows the share form and sends the page's token with it", async () => {
+    // the page lists documents first (GET /documents), then the form posts the share
+    const answer = (status, body) =>
+      new Response(JSON.stringify(body), {
+        status,
+        headers: { "Content-Type": "application/json" },
+      });
+    const fetchMock = vi.fn(async (url) =>
+      String(url).includes("/shares")
+        ? answer(201, { id: "s1", role: "viewer" })
+        : answer(200, { items: [], nextCursor: null }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    render(<DocumentsPage token="t0k" />);
+
+    expect(screen.getByRole("heading", { name: "Share a document" })).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("Id of the document to share"), {
+      target: { value: "11111111-1111-4111-8111-111111111111" },
+    });
+    fireEvent.change(screen.getByLabelText("Email of the user"), { target: { value: "a@b.co" } });
+    fireEvent.click(screen.getByRole("button", { name: "Share" }));
+
+    await screen.findByText("Shared with a@b.co as viewer.");
+    const post = fetchMock.mock.calls.find(([url]) => String(url).includes("/shares"));
+    expect(post[1].headers.Authorization).toBe("Bearer t0k");
+  });
+});
+
+describe("DocumentsPage sharing from the list", () => {
+  it("offers Share on the documents the user owns, and puts that document's id in the share form", async () => {
+    server({
+      pages: [
+        {
+          items: [doc(D1, V1, "Mine"), doc(D2, V2, "Theirs", { role: "commenter" })],
+          nextCursor: null,
+        },
+      ],
+    });
+    render(<DocumentsPage token="t0k" />);
+    await screen.findByRole("link", { name: "Open Mine" });
+
+    expect(screen.queryByRole("button", { name: "Share Theirs" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Share Mine" }));
+
+    expect(screen.getByLabelText("Id of the document to share").value).toBe(D1);
+  });
+});
+
+describe("DocumentsPage sharing, choosing again", () => {
+  it("refills the id when the same document's Share is clicked again after the field was edited", async () => {
+    server({ pages: [{ items: [doc(D1, V1, "Mine")], nextCursor: null }] });
+    render(<DocumentsPage token="t0k" />);
+    await screen.findByRole("link", { name: "Open Mine" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Share Mine" }));
+    fireEvent.change(screen.getByLabelText("Id of the document to share"), {
+      target: { value: "edited" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Share Mine" }));
+
+    expect(screen.getByLabelText("Id of the document to share").value).toBe(D1);
+  });
 });

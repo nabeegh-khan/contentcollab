@@ -796,3 +796,18 @@ Added a Share button on owned rows and a `documentId` prop on the form; after an
 
 - Ran the four web checks (244 tests, lint, format check, build) before pushing to PR #146.
 - Left for later: a browser check, and unique button names for documents with the same title.
+
+## Follow-ups to the rollout check, 22 November 2026
+
+### Prompt
+
+Do the four small follow-ups on my own issue #113 (a comment, two exit-code assertions, a clearer message for a huge maxSurge), tests first, in CI rather than on this laptop where the script tests are slow.
+
+### AI Response
+
+Wrote the tests and pushed them alone so CI showed the out-of-range case failing, then changed the script; an independent read found no error.
+
+### What Your Team Did With It
+
+- Corrected two mistakes of the first test commit (a broken newline escape and a message pattern that did not match the script's wording) before the fix went in.
+- Left for later: item 5 of #113 and the merge of PR #166.
