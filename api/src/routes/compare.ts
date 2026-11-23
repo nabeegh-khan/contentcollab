@@ -1,17 +1,90 @@
+// GET /documents/:documentId/versions/compare?from=&to= (#23, ARCHITECTURE D33): the line diff of two text versions.
+// Sign-in and any role on the document, as for reading a version. Mounted before the versions router, so
+// "compare" is never taken for a version id.
 import { Router } from "express";
+import { z } from "zod";
+import { pool } from "../lib/db.js";
+import { HttpError } from "../lib/httpError.js";
+import { HTTP_BAD_REQUEST, HTTP_PAYLOAD_TOO_LARGE } from "../lib/httpStatus.js";
+import { getStream } from "../lib/storage.js";
+import {
+  compareVersions,
+  MAX_VERSION_BYTES,
+  type CompareDeps,
+  type VersionRow,
+} from "../lib/versionCompare.js";
+import { requireAuth } from "../middleware/requireAuth.js";
+import { requireRole } from "../middleware/requireRole.js";
 
-// Version comparison (#23, ARCHITECTURE D21). Mounted only when FEATURE_VERSION_COMPARE=1. The worker
-// computes the diff (worker/src/jobs/versionDiff.ts); this route cannot read versions until they are
-// stored (#116), so it answers 501 in the API's error shape. Not in docs/API.md until it returns data.
-const NOT_IMPLEMENTED = 501;
+const router = Router({ mergeParams: true });
 
-export const compareEnabled = (env: Record<string, string | undefined>): boolean =>
-  env.FEATURE_VERSION_COMPARE === "1";
+const query = z.object({ from: z.uuid(), to: z.uuid() });
 
-const router = Router();
+async function loadVersion(documentId: string, versionId: string): Promise<VersionRow | null> {
+  const result = await pool.query<{
+    id: string;
+    number: number;
+    filename: string;
+    content_type: string;
+    size: string; // BIGINT: pg gives a string
+    object_key: string;
+  }>(
+    `SELECT id, number, filename, content_type, size, object_key
+       FROM document_versions
+      WHERE id = $1 AND document_id = $2`,
+    [versionId, documentId],
+  );
+  const row = result.rows[0];
+  if (!row) return null;
+  return {
+    id: row.id,
+    number: row.number,
+    filename: row.filename,
+    contentType: row.content_type,
+    size: Number(row.size),
+    objectKey: row.object_key,
+  };
+}
 
-router.get("/:documentId/versions/:versionId/compare", (_req, res) => {
-  res.status(NOT_IMPLEMENTED).json({ error: "Not Implemented", code: "NOT_IMPLEMENTED" });
-});
+/** The stored file as text; stops reading past the comparison limit, whatever the row said. */
+async function readText(objectKey: string): Promise<string> {
+  const chunks: Buffer[] = [];
+  let bytes = 0;
+  const stream = await getStream(objectKey);
+  for await (const chunk of stream) {
+    const buffer = Buffer.from(chunk as Buffer);
+    bytes += buffer.length;
+    if (bytes > MAX_VERSION_BYTES) {
+      stream.destroy();
+      throw new HttpError(HTTP_PAYLOAD_TOO_LARGE, "TOO_LARGE", "A version is too large to compare");
+    }
+    chunks.push(buffer);
+  }
+  return Buffer.concat(chunks).toString("utf8");
+}
+
+const deps: CompareDeps = { loadVersion, readText };
+
+router.get(
+  "/:documentId/versions/compare",
+  requireAuth,
+  requireRole("owner", "editor", "commenter", "viewer"),
+  async (req, res) => {
+    const parsed = query.safeParse(req.query);
+    if (!parsed.success) {
+      throw new HttpError(
+        HTTP_BAD_REQUEST,
+        "VALIDATION",
+        "from and to must be version ids",
+        parsed.error.issues.map((issue) => ({
+          field: String(issue.path[0] ?? "query"),
+          message: "invalid UUID",
+        })),
+      );
+    }
+    const documentId = res.locals.documentId as string;
+    res.json(await compareVersions(documentId, parsed.data.from, parsed.data.to, deps));
+  },
+);
 
 export default router;

@@ -1,32 +1,202 @@
-import { describe, expect, it } from "@jest/globals";
-import express from "express";
+// GET /api/v1/documents/:documentId/versions/compare (#23, ARCHITECTURE D33): sign-in, a role on the document,
+// versions of this document only, text only. Real database, object store replaced as in versions.test.ts.
+import { randomUUID } from "node:crypto";
+import { Readable } from "node:stream";
+import { afterAll, afterEach, beforeAll, describe, expect, it, jest } from "@jest/globals";
+import jwt from "jsonwebtoken";
 import request from "supertest";
-import compareRoutes, { compareEnabled } from "./compare.js";
+import { pool } from "../lib/db.js";
+import { requireDatabase } from "../lib/dbReady.js";
+import { requireServices } from "../lib/reachable.js";
 
-// Version comparison (#23, ARCHITECTURE D21): the route exists only behind FEATURE_VERSION_COMPARE
-// and answers 501 until versions are stored (#116). No database or Redis is needed here.
-const NOT_IMPLEMENTED = 501;
-const DOC = "7d6f1f8e-2f55-4c3e-9b8a-0a7e6c1d2b3f";
-const V1 = "3b2a1c0d-4e5f-4a6b-8c7d-9e0f1a2b3c4d";
-const V2 = "5c4b3a2d-1e0f-4a9b-8c7d-6e5f4a3b2c1d";
+const objects = new Map<string, Buffer>();
+const getStream = jest.fn<(key: string) => Promise<Readable>>(async (key) => {
+  const bytes = objects.get(key);
+  if (!bytes) throw new Error("Missing test object");
+  return Readable.from([bytes]);
+});
+class StorageNotFoundError extends Error {
+  readonly statusCode = 404;
+}
+jest.unstable_mockModule("../lib/storage.js", () => ({
+  putStream: jest.fn(),
+  remove: jest.fn(),
+  getStream,
+  copy: jest.fn(),
+  validateStorageConfig: jest.fn(),
+  StorageNotFoundError,
+}));
+const { default: app } = await import("../server.js");
 
-const appWith = () => express().use("/api/v1/documents", compareRoutes);
+const signingKey = "compare-route-test-key";
+const previousKey = process.env.JWT_SECRET;
+const userIds: string[] = [];
+const documentIds: string[] = [];
+const root = "/api/v1/documents";
 
-describe("GET /api/v1/documents/:documentId/versions/:versionId/compare", () => {
-  it("answers 501 NOT_IMPLEMENTED in the API's error shape until versions are stored", async () => {
-    const res = await request(appWith()).get(
-      `/api/v1/documents/${DOC}/versions/${V2}/compare?to=${V1}`,
-    );
-    expect(res.status).toBe(NOT_IMPLEMENTED);
-    expect(res.body).toEqual({ error: "Not Implemented", code: "NOT_IMPLEMENTED" });
-  });
+async function user(): Promise<string> {
+  const result = await pool.query<{ id: string }>(
+    `INSERT INTO users (email, password_hash, display_name)
+     VALUES ($1, 'test-hash', 'Compare Test User') RETURNING id`,
+    [`compare-${randomUUID()}@example.com`],
+  );
+  userIds.push(result.rows[0]!.id);
+  return result.rows[0]!.id;
+}
+
+const bearer = (userId: string) =>
+  `Bearer ${jwt.sign({}, signingKey, { subject: userId, expiresIn: "1h" })}`;
+
+async function document(ownerId: string): Promise<string> {
+  const result = await pool.query<{ id: string }>(
+    "INSERT INTO documents (title, owner_id) VALUES ('Compare Fixture', $1) RETURNING id",
+    [ownerId],
+  );
+  const id = result.rows[0]!.id;
+  documentIds.push(id);
+  await pool.query("INSERT INTO shares (document_id, user_id, role) VALUES ($1, $2, 'owner')", [
+    id,
+    ownerId,
+  ]);
+  return id;
+}
+
+async function version(
+  documentId: string,
+  userId: string,
+  number: number,
+  text: string,
+  contentType = "text/plain",
+): Promise<string> {
+  const id = randomUUID();
+  const key = `documents/${documentId}/${id}`;
+  const bytes = Buffer.from(text);
+  objects.set(key, bytes);
+  await pool.query(
+    `INSERT INTO document_versions
+       (id, document_id, number, filename, content_type, size, checksum, object_key, uploaded_by)
+     VALUES ($1, $2, $3, 'fixture.txt', $4, $5, $6, $7, $8)`,
+    [
+      id,
+      documentId,
+      number,
+      contentType,
+      bytes.length,
+      randomUUID().replaceAll("-", ""),
+      key,
+      userId,
+    ],
+  );
+  return id;
+}
+
+beforeAll(async () => {
+  process.env.JWT_SECRET = signingKey;
+  await requireServices(
+    [
+      {
+        name: "PostgreSQL",
+        host: process.env.DB_HOST ?? "localhost",
+        port: Number(process.env.DB_PORT ?? 5432),
+      },
+    ],
+    1000,
+  );
+  await requireDatabase(pool, 1000);
 });
 
-describe("compareEnabled", () => {
-  it("is on only when FEATURE_VERSION_COMPARE is exactly 1", () => {
-    expect(compareEnabled({ FEATURE_VERSION_COMPARE: "1" })).toBe(true);
-    expect(compareEnabled({})).toBe(false);
-    expect(compareEnabled({ FEATURE_VERSION_COMPARE: "true" })).toBe(false);
-    expect(compareEnabled({ FEATURE_VERSION_COMPARE: "0" })).toBe(false);
+afterEach(() => {
+  getStream.mockClear();
+  objects.clear();
+});
+
+afterAll(async () => {
+  try {
+    if (documentIds.length) {
+      await pool.query("DELETE FROM documents WHERE id = ANY($1::uuid[])", [documentIds]);
+    }
+    if (userIds.length) {
+      await pool.query("DELETE FROM users WHERE id = ANY($1::uuid[])", [userIds]);
+    }
+  } finally {
+    if (previousKey === undefined) delete process.env.JWT_SECRET;
+    else process.env.JWT_SECRET = previousKey;
+    await pool.end();
+  }
+});
+
+const compare = (documentId: string, from: string, to: string, auth?: string) => {
+  const req = request(app).get(`${root}/${documentId}/versions/compare?from=${from}&to=${to}`);
+  return auth ? req.set("Authorization", auth) : req;
+};
+
+describe("GET /documents/:documentId/versions/compare", () => {
+  it("returns the line diff for a viewer, and is not taken for a version id", async () => {
+    const owner = await user();
+    const viewer = await user();
+    const doc = await document(owner);
+    await pool.query("INSERT INTO shares (document_id, user_id, role) VALUES ($1, $2, 'viewer')", [
+      doc,
+      viewer,
+    ]);
+    const v1 = await version(doc, owner, 1, "a\nb\n");
+    const v2 = await version(doc, owner, 2, "a\nc\n");
+    const res = await compare(doc, v1, v2, bearer(viewer));
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      from: { id: v1, number: 1 },
+      to: { id: v2, number: 2 },
+      added: 1,
+      removed: 1,
+    });
+    expect(res.body.lines).toHaveLength(3);
+  });
+
+  it("is 401 without a token", async () => {
+    const owner = await user();
+    const doc = await document(owner);
+    const v1 = await version(doc, owner, 1, "a");
+    const v2 = await version(doc, owner, 2, "b");
+    expect((await compare(doc, v1, v2)).status).toBe(401);
+  });
+
+  it("is 404 for a user with no share on the document, and reads no file", async () => {
+    const owner = await user();
+    const stranger = await user();
+    const doc = await document(owner);
+    const v1 = await version(doc, owner, 1, "a");
+    const v2 = await version(doc, owner, 2, "b");
+    const res = await compare(doc, v1, v2, bearer(stranger));
+    expect(res.status).toBe(404);
+    expect(getStream).not.toHaveBeenCalled();
+  });
+
+  it("is 404 when one version belongs to another document", async () => {
+    const owner = await user();
+    const doc = await document(owner);
+    const other = await document(owner);
+    const v1 = await version(doc, owner, 1, "a");
+    const foreign = await version(other, owner, 1, "b");
+    const res = await compare(doc, v1, foreign, bearer(owner));
+    expect(res.status).toBe(404);
+    expect(getStream).not.toHaveBeenCalled();
+  });
+
+  it("is 400 for ids that are not UUIDs or are equal", async () => {
+    const owner = await user();
+    const doc = await document(owner);
+    const v1 = await version(doc, owner, 1, "a");
+    expect((await compare(doc, "x", v1, bearer(owner))).status).toBe(400);
+    expect((await compare(doc, v1, v1, bearer(owner))).status).toBe(400);
+  });
+
+  it("is 415 when a version is not text", async () => {
+    const owner = await user();
+    const doc = await document(owner);
+    const v1 = await version(doc, owner, 1, "a");
+    const v2 = await version(doc, owner, 2, "%PDF-", "application/pdf");
+    const res = await compare(doc, v1, v2, bearer(owner));
+    expect(res.status).toBe(415);
+    expect(res.body.code).toBe("UNSUPPORTED_TYPE");
   });
 });

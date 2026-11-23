@@ -17,7 +17,7 @@ import { httpDuration } from "./lib/metrics.js";
 import authRoutes from "./routes/auth.js";
 import commentsRoutes from "./routes/comments.js";
 import { jwtSecret } from "./middleware/requireAuth.js";
-import compareRoutes, { compareEnabled } from "./routes/compare.js";
+import compareRoutes from "./routes/compare.js";
 import { createServer } from "node:http";
 import { createSocketServer } from "./lib/socket.js";
 import sharesRoutes from "./routes/shares.js";
@@ -119,8 +119,8 @@ app.use(
   ),
 );
 app.use("/api/v1/auth", authRoutes);
-// Version comparison (#23, D21): off unless FEATURE_VERSION_COMPARE=1
-if (compareEnabled(process.env)) app.use("/api/v1/documents", compareRoutes);
+// Version comparison (#23, D33): before the versions router, so "compare" is not read as a version id
+app.use("/api/v1/documents", compareRoutes);
 
 app.use("/api/v1", commentsRoutes);
 
