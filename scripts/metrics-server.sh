@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Installs metrics-server on the DOKS cluster so the API's HPA can read CPU (#69, ARCHITECTURE D5).
 #
-#   bash scripts/metrics-server.sh   # from Git Bash, at the repo root; kubectl must point at the cluster
+#   bash scripts/metrics-server.sh   # from Git Bash, at the repo root; KUBE_CONTEXT must name the cluster kubectl points at
 #   & 'C:\Program Files\Git\bin\bash.exe' scripts/metrics-server.sh   # from PowerShell; plain `bash` there is WSL
 #
 # DOKS has no resource metrics API until metrics-server is installed
@@ -16,6 +16,8 @@ set -euo pipefail
 
 command -v helm >/dev/null || { echo "helm is required" >&2; exit 1; }
 command -v node >/dev/null || { echo "node is required (hpa-ready.mjs)" >&2; exit 1; }
+source "$(dirname "$0")/lib/kube-context.sh"
+require_kube_context "${KUBE_CONTEXT:-}"   # a wrong current context would install on the wrong cluster (#106)
 kubectl cluster-info >/dev/null || { echo "kubectl is not pointed at a cluster" >&2; exit 1; }
 
 # Helm 4 renamed --atomic to --rollback-on-failure; Helm 3 only knows --atomic.

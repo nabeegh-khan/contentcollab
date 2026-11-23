@@ -33,6 +33,7 @@ import { execFile, execFileSync } from "node:child_process";
 import { promisify } from "node:util";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { hpaReadiness, readHpa } from "./hpa-ready.mjs";
+import { requireKubeContext } from "./kube-context-lib.mjs";
 import {
   readConfig,
   summarizeStep,
@@ -48,6 +49,8 @@ if (!BASE) {
   console.error("BASE is required, e.g. BASE=https://contentcollab.example node scripts/loadtest.mjs");
   process.exit(1);
 }
+// KUBE_CONTEXT, when set, must be the current context; a ROLLOUT=1 run restarts the API, so it must be set (#106)
+requireKubeContext({ writes: process.env.ROLLOUT === "1" });
 const PATH = process.env.TARGET_PATH ?? "/health";
 const ROLLOUT = process.env.ROLLOUT === "1";
 const NS = process.env.NAMESPACE ?? "contentcollab";

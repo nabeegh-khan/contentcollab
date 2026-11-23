@@ -8,6 +8,7 @@
 
 import { execFileSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
+import { requireKubeContext } from "./kube-context-lib.mjs";
 
 /**
  * @param {object|null} hpa an autoscaling/v2 HorizontalPodAutoscaler as `kubectl get hpa -o json` prints it
@@ -52,6 +53,7 @@ export function readHpa(namespace = "contentcollab", name = "api") {
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
+  requireKubeContext({ writes: false }); // KUBE_CONTEXT, when set, must be the current context (#106)
   const ns = process.env.NAMESPACE ?? "contentcollab";
   const name = process.env.HPA ?? "api";
   const read = readHpa(ns, name);

@@ -38,6 +38,10 @@ if ! doctl kubernetes cluster get "$CLUSTER_NAME" >/dev/null 2>&1; then
 fi
 # Writes the cluster's credentials into ~/.kube/config and selects it
 doctl kubernetes cluster kubeconfig save "$CLUSTER_NAME"
+# doctl selects "the newest cluster in your account", so confirm it is this one before anything is applied (#106, D32)
+region=$(doctl kubernetes cluster get "$CLUSTER_NAME" --format Region --no-header)
+source scripts/lib/kube-context.sh
+require_kube_context "${KUBE_CONTEXT:-do-$region-$CLUSTER_NAME}"
 kubectl get nodes
 
 # 2. Gateway API CRDs (standard channel) and the NGINX controller.
