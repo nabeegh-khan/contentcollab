@@ -170,6 +170,30 @@ describe("GET /api/v1/ops document", () => {
     expect(res.body.traffic).toBeNull();
   });
 
+  it("gives the worker queue's waiting jobs, and a reason when the queue cannot be read (#30)", async () => {
+    const ok = await get(appWith(sources({ queue: async () => 3 })));
+    expect(ok.body.queue).toEqual({ depth: 3 });
+    expect(ok.body.errors).toEqual({});
+    const failed = await get(
+      appWith(
+        sources({
+          queue: async () => {
+            throw new Error("redis down");
+          },
+        }),
+      ),
+    );
+    expect(failed.body.queue).toEqual({ depth: null });
+    expect(failed.body.errors).toEqual({ queue: "unavailable" });
+    expect(JSON.stringify(failed.body)).not.toContain("redis down");
+  });
+
+  it("has no queue figure where no queue source is given", async () => {
+    const res = await get(appWith(sources()));
+    expect(res.body.queue).toEqual({ depth: null });
+    expect(res.body.errors).toEqual({});
+  });
+
   it("claim and counts fail separately", async () => {
     const res = await get(
       appWith(

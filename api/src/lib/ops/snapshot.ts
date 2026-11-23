@@ -26,6 +26,8 @@ export interface OpsSources {
   counts: Source<{ documents: number; versions: number; comments: number }>;
   events: Source<TimelineEvent[]>;
   logs: Source<{ lines: LogLine[]; hidden: number }>;
+  /** Jobs waiting in the worker's queue (#30); left out where there is no Redis. */
+  queue?: Source<number> | undefined;
   /** When the next drill may start (ISO time), or null; left out where there are no drills. */
   nextDrill?: Source<string | null> | undefined;
 }
@@ -68,7 +70,7 @@ export async function buildSnapshot(
   options: { grafanaUrl: string | null; timeoutMs?: number },
 ) {
   const limit = options.timeoutMs ?? SOURCE_TIMEOUT_MS;
-  const [containers, hpa, nodes, traffic, claim, counts, events, logs, nextDrill] =
+  const [containers, hpa, nodes, traffic, claim, counts, events, logs, nextDrill, queue] =
     await Promise.all([
       attempt("containers", sources.containers, limit),
       attempt("hpa", sources.hpa, limit),
@@ -81,8 +83,11 @@ export async function buildSnapshot(
       sources.nextDrill
         ? attempt("nextDrill", sources.nextDrill, limit)
         : { ok: true as const, value: null },
+      sources.queue
+        ? attempt("queue", sources.queue, limit)
+        : ({ ok: true, value: null } as Outcome<number | null>),
     ]);
-  const named = { containers, hpa, nodes, traffic, claim, counts, events, logs, nextDrill };
+  const named = { containers, hpa, nodes, traffic, claim, counts, events, logs, nextDrill, queue };
   const errors = Object.fromEntries(
     Object.entries(named).flatMap(([name, outcome]) => (outcome.ok ? [] : [[name, outcome.error]])),
   );
@@ -104,6 +109,7 @@ export async function buildSnapshot(
     },
     events: valueOr(events) ?? [],
     logs: valueOr(logs) ?? { lines: [], hidden: 0 },
+    queue: { depth: valueOr(queue) },
     drills: { nextAllowedAt: valueOr(nextDrill) ?? null },
     links: { grafana: options.grafanaUrl },
   };

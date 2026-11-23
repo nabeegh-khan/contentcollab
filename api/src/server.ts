@@ -71,6 +71,8 @@ app.use(
       // a read is not started while the last one still runs: a hung database holds one pool client, not one per window
       drillRows: store.drillRows,
       nextDrill: () => nextDrillAt(redis),
+      queueDepth: () =>
+        redis.isReady ? queueDepth(redis) : Promise.reject(new Error("redis not ready")),
       sql: async () => {
         if (countsRunning) throw new Error("the previous count is still running");
         countsRunning = true;

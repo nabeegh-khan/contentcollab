@@ -8,6 +8,7 @@ import {
   HpaCard,
   LogsCard,
   NodesCard,
+  QueueCard,
   StorageCard,
   TrafficCard,
 } from "./cards.jsx";
@@ -137,6 +138,7 @@ export default function OpsPage({ token }) {
           <SeriesCard token={token} />
           <NodesCard data={data} />
           <StorageCard data={data} />
+          <QueueCard data={data} />
           <TrafficCard data={data} />
           <DrillCard token={token} nextAllowedAt={data.drills?.nextAllowedAt ?? null} />
           <EventsCard data={data} />

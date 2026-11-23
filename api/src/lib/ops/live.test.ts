@@ -185,6 +185,12 @@ describe("liveSources", () => {
     expect(s.counts).not.toBeNull();
   });
 
+  it("reads the queue depth with the function it is given, and has none without one (#30)", async () => {
+    const { deps: d } = deps({ queueDepth: async () => 4 });
+    expect(await liveSources(d).queue?.()).toBe(4);
+    expect(liveSources(deps().deps).queue).toBeUndefined();
+  });
+
   it("counts documents and versions with the sql it is given", async () => {
     const { deps: d } = deps();
     expect(await liveSources(d).counts?.()).toEqual({ documents: 12, versions: 19, comments: 7 });

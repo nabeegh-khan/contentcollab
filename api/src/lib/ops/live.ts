@@ -23,6 +23,8 @@ export interface LiveDeps {
   sql: () => Promise<{ documents: number; versions: number; comments: number }>;
   /** The latest rows of ops_drills, for the timeline (D31). */
   drillRows?: (() => Promise<DrillRow[]>) | undefined;
+  /** Jobs waiting in the worker's queue (#30). */
+  queueDepth?: (() => Promise<number>) | undefined;
   /** When the next drill may start, from the Redis lock. */
   nextDrill?: (() => Promise<string | null>) | undefined;
 }
@@ -100,6 +102,7 @@ export function liveSources(deps: LiveDeps): OpsSources {
       : null,
     counts: deps.sql,
     nextDrill: deps.nextDrill,
+    queue: deps.queueDepth,
     events:
       kubeGet || deps.drillRows
         ? async () => {

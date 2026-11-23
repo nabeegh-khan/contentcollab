@@ -139,6 +139,16 @@ export function StorageCard({ data }) {
   );
 }
 
+export function QueueCard({ data }) {
+  const depth = data.queue?.depth;
+  const hasDepth = depth !== null && depth !== undefined;
+  return (
+    <Card title="Job queue" problem={hasDepth ? null : (problemOf(data, "queue") ?? "no data")}>
+      <p>Jobs waiting: {depth}</p>
+    </Card>
+  );
+}
+
 export function TrafficCard({ data }) {
   const t = data.traffic;
   return (
