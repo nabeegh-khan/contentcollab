@@ -494,3 +494,10 @@ Each of these pull requests was past its three-day review window with no review,
 - **Change.** `KUBE_CONTEXT=do-nyc3-contentcollab bash scripts/pv-retain.sh` (already on `main` since #122, with its test) patched the PV to Retain; 23:08 UTC, claim still Bound, pod still Running, `/health` ok. Before and after: `docs/evidence/2026-11-23-retain.txt`. D30 and the rebuild steps in `docs/COST_PLAN.md` (step 12) say how a rebuild gets the same.
 - **Option not taken.** Putting the claim on `do-block-storage-retain` in the overlay: `volumeClaimTemplates` are immutable, so the next `kubectl apply -k k8s/doks` (every deploy) would fail.
 - **Limits.** Nothing was deleted to test that the volume survives; the file shows the policy field only. `doctl kubernetes cluster delete --dangerous` still removes the volume.
+
+### 23 November: jobs waiting in the worker queue on the operations panel (issue #30)
+
+- **Decision.** The operations snapshot (D31) gets `queue: { depth }`, the number of jobs waiting in the worker's BullMQ queue, shown as a "Job queue" card. It reads the same two Redis keys as the public status route (`queueDepth` in `api/src/lib/status.ts`: the waiting list plus the prioritized set), so the two pages cannot disagree. Like every other source it has its own 1-second limit; if Redis is down the card says "Not available: unavailable" and the rest of the panel still answers.
+- **Option it beat.** A worker metric scraped by Prometheus: it would need a metrics endpoint on the worker and a scrape job, for one number the API can already read.
+- **Tests first.** Three API tests (route, source function) and two web tests failed before the change (`api/src/routes/ops.test.ts`, `api/src/lib/ops/live.test.ts`, `web/src/ops/OpsPage.test.jsx`); then 87 ops tests in the API and 246 web tests pass, with typecheck, lint and format check clean. The rest of the API suite needs PostgreSQL and runs in CI.
+- **Limits.** The depth is almost always 0: nothing in the API enqueues jobs yet (the worker is not on a user path, STUDY_GUIDE section 2), so the card shows a working number, not load. Not run in a browser or on the cluster.

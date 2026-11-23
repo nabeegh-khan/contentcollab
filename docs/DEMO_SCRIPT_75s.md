@@ -43,6 +43,10 @@ The restart is the only step with dead time, so Grafana sits inside it. The team
 - The comment does not appear in the right window: the right window lost its connection. Reload it, then post again.
 - The restart button is greyed: another drill ran less than a minute ago ("Next drill allowed in ... s").
 
+## Optional: the job queue card
+
+Once the pull request for #30 is merged and deployed, the Operations page has a "Job queue" card (jobs waiting for the worker). It reads 0 almost always, because nothing in the API enqueues jobs yet, so it adds nothing to the 75 seconds; leave it out of the script and use it only to answer "where do background jobs show up".
+
 ## The recorded backup
 
 The same path, recorded once on the same laptop at 1920x1080 as an MP4, played in VLC, muted. It stays open on the laptop and is played only if the network or the site fails; the talk narrates it while it plays, as the course allows for short clips that back up a network-dependent part. The recording is made after a rehearsal that follows this table without a miss.
