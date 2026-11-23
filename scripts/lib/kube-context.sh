@@ -8,7 +8,8 @@ require_kube_context() {
     exit 1
   fi
   if [ "$current" != "$expected" ]; then
-    echo "kubectl's current context is ${current:+\"$current\"}${current:-not set}, not \"$expected\" (KUBE_CONTEXT): run kubectl config use-context $expected" >&2
+    local shown=${current:+\"$current\"}
+    echo "kubectl's current context is ${shown:-not set}, not \"$expected\" (KUBE_CONTEXT): run kubectl config use-context $expected" >&2
     exit 1
   fi
   echo "kubectl context: $current"

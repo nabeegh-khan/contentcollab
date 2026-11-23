@@ -59,8 +59,7 @@ test("metrics-server.sh on another context stops before helm and names both", ()
   setup();
   const r = sb.run("metrics-server.sh", { env: { KUBE_CONTEXT: WANT, STUB_CONTEXT: "minikube" } });
   assert.equal(r.status, 1, r.out);
-  assert.match(r.out, /minikube/);
-  assert.match(r.out, new RegExp(WANT));
+  assert.match(r.out, /current context is "minikube", not "do-nyc3-contentcollab"/);
   assert.equal(calls("helm").length, 0);
   assert.deepEqual(otherKubectl(), []);
 });
@@ -97,6 +96,12 @@ test("cluster-up.sh goes on when the context is do-<region>-<cluster>", () => {
   const r = sb.run("cluster-up.sh", { env: { ...up, STUB_CONTEXT: WANT } });
   assert.match(r.out, /not a full commit SHA/); // stopped later, by the image-tag check
   assert.ok(otherKubectl().some((l) => l.startsWith("get nodes")), calls("kubectl").join("\n"));
+});
+
+test("cluster-up.sh accepts a KUBE_CONTEXT that is the current context", () => {
+  setup();
+  const r = sb.run("cluster-up.sh", { env: { ...up, KUBE_CONTEXT: "my-alias", STUB_CONTEXT: "my-alias" } });
+  assert.match(r.out, /not a full commit SHA/);
 });
 
 test("cluster-up.sh honours KUBE_CONTEXT as the expected name", () => {
