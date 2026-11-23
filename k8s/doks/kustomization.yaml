@@ -13,6 +13,8 @@ resources:
 # nodes and the volume follows it (DB-2)
 patches:
   - path: postgres-storage-patch.yaml
+  # GRAFANA_URL for the operations panel's link (#161)
+  - path: grafana-link-patch.yaml
 
 # preStop drain for the API (ARCHITECTURE D14, #69)
 components:
