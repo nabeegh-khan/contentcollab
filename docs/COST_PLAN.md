@@ -106,6 +106,7 @@ Steps, in Git Bash from the repository:
 9. **Take the plain-text copy off the Secret** the file-based apply left (SEC-10): once #98 is merged, `KUBE_CONTEXT=do-tor1-contentcollab bash scripts/app-secret.sh` (it keeps the values and removes the annotation; `k8s/README.md`; tested on a local k3s cluster in #98, not on DOKS).
 10. **Smoke:** `BASE=https://contentcollab.app bash scripts/smoke.sh`, with `METRICS_BASE` pointing at a port-forward, because the Gateway does not route `/metrics` (`scripts/README.md`); then the restart test (#68, on its branch until it merges): `KUBE_CONTEXT=do-tor1-contentcollab DRAIN=1 bash scripts/restart-test.sh`.
 11. **Confirm the saving:** `doctl kubernetes cluster get contentcollab -o json | jq '.[0].ha'` prints `false`; the next day's `doctl invoice get preview` has no new High Availability Control Plane hours and the hourly total is about 0.077 before tax.
+12. **Keep the database volume (#104):** once the first deploy has bound the claim, `KUBE_CONTEXT=<cluster> bash scripts/pv-retain.sh` sets its PersistentVolume to Retain (the claim's class cannot be changed in the manifest, D30). Check: `kubectl --context <cluster> get pv` shows RECLAIM POLICY Retain.
 
 Risks: the outage runs from step 3 to step 8; a failed certificate order still counts against the Let's Encrypt limit, so do not loop on it; once the schema (#37) holds data, a rebuild needs a dump and restore, and there is no backup job, so this is the cheap moment.
 

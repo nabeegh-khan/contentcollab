@@ -1,0 +1,124 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" font-family="Helvetica, Arial, sans-serif">
+<title>ContentCollab architecture on one slide: the request path from the browser to the data stores</title>
+<!--
+  One-slide architecture diagram: the request path left to right, ten boxes (the cluster frame counts as one).
+  Checked against main (k8s/, .github/workflows/) on 23 Nov 2026. The full diagram, with the worker, the load
+  balancer, the certificate manager and the monitoring detail, is architecture.svg.
+  Hand-editable: one <g id="..."> per box, boxes first, arrows last. Text sizes: names 23, everything else 21
+  (a 1600-wide slide image shown 13.33 in wide gives 12.6 pt for 21 and 13.8 pt for 23).
+  Colours: orange = traffic entry, green = application, blue = state, purple = monitoring, grey = outside the cluster.
+-->
+<defs>
+  <marker id="arr" markerUnits="userSpaceOnUse" markerWidth="14" markerHeight="14" refX="13" refY="7" orient="auto"><path d="M0,0 L14,7 L0,14 z" fill="#333"/></marker>
+  <style>
+    .n { font-size: 23px; font-weight: 700; fill: #1a1a1a; text-anchor: middle; }
+    .d { font-size: 21px; fill: #2b2b2b; text-anchor: middle; }
+    .t { font-size: 21px; font-weight: 700; }
+    .l { font-size: 21px; fill: #222; text-anchor: middle; }
+    .ls { font-size: 21px; fill: #222; text-anchor: start; }
+    .le { font-size: 21px; fill: #222; text-anchor: end; }
+    .a { fill: none; stroke: #333; stroke-width: 2.5; }
+    .dash { stroke-dasharray: 8 6; }
+    .bg { fill: #fff; }
+  </style>
+</defs>
+<rect width="1600" height="900" fill="#fff"/>
+
+<!-- Legend -->
+<g id="legend">
+  <path d="M40,45 L84,45" class="a" marker-end="url(#arr)"/>
+  <text x="94" y="52" class="ls">traffic and data</text>
+  <path d="M40,85 L84,85" class="a dash" marker-end="url(#arr)"/>
+  <text x="94" y="92" class="ls">deploy, monitoring</text>
+</g>
+
+<!-- Outside the cluster -->
+<g id="browser">
+  <rect x="40" y="380" width="210" height="100" rx="8" fill="#eef2f7" stroke="#5b6b80" stroke-width="2.5"/>
+  <text x="145" y="420" class="n">Browser</text>
+  <text x="145" y="450" class="d">React web app</text>
+</g>
+<g id="github-actions">
+  <rect x="655" y="20" width="300" height="125" rx="8" fill="#f3f3f3" stroke="#777" stroke-width="2.5"/>
+  <text x="805" y="58" class="n">GitHub Actions</text>
+  <text x="805" y="88" class="d">tests must pass first</text>
+  <text x="805" y="116" class="d">then build and roll out</text>
+</g>
+<g id="spaces">
+  <path d="M1350,554 a115,14 0 0 1 230,0 v112 a115,14 0 0 1 -230,0 z" fill="#f3f3f3" stroke="#777" stroke-width="2.5"/>
+  <ellipse cx="1465" cy="554" rx="115" ry="14" fill="#f3f3f3" stroke="#777" stroke-width="2.5"/>
+  <text x="1465" y="598" class="n">Spaces</text>
+  <text x="1465" y="628" class="d">files and backups</text>
+</g>
+
+<!-- The cluster -->
+<g id="cluster">
+  <rect x="300" y="175" width="1000" height="635" rx="12" fill="#fcfcfc" stroke="#6b6b6b" stroke-width="2" stroke-dasharray="8 6"/>
+  <text x="1285" y="208" class="t le" fill="#555">DigitalOcean Kubernetes · New York (nyc3)</text>
+</g>
+<g id="gateway">
+  <rect x="330" y="370" width="240" height="125" rx="8" fill="#fff4e0" stroke="#b7791f" stroke-width="2.5"/>
+  <text x="450" y="408" class="n">Gateway</text>
+  <text x="450" y="438" class="d">NGINX Gateway Fabric</text>
+  <text x="450" y="466" class="d">HTTPS</text>
+</g>
+<g id="web">
+  <rect x="720" y="235" width="250" height="125" rx="8" fill="#e8f3ea" stroke="#3f7d4e" stroke-width="2.5"/>
+  <text x="845" y="273" class="n">web · 2 pods</text>
+  <text x="845" y="303" class="d">React app, nginx</text>
+  <text x="845" y="331" class="d">operations panel</text>
+</g>
+<g id="api">
+  <rect x="720" y="370" width="250" height="125" rx="8" fill="#e8f3ea" stroke="#3f7d4e" stroke-width="2.5"/>
+  <text x="845" y="408" class="n">api · 2 to 5 pods</text>
+  <text x="845" y="438" class="d">autoscaled on CPU</text>
+  <text x="845" y="466" class="d">JWT sign-in, roles</text>
+</g>
+<g id="redis">
+  <rect x="1050" y="235" width="230" height="100" rx="8" fill="#e9eefb" stroke="#3d5bb8" stroke-width="2.5"/>
+  <text x="1165" y="273" class="n">Redis</text>
+  <text x="1165" y="303" class="d">live events, job queue</text>
+</g>
+<g id="postgres">
+  <path d="M1050,394 a115,14 0 0 1 230,0 v104 a115,14 0 0 1 -230,0 z" fill="#e9eefb" stroke="#3d5bb8" stroke-width="2.5"/>
+  <ellipse cx="1165" cy="394" rx="115" ry="14" fill="#e9eefb" stroke="#3d5bb8" stroke-width="2.5"/>
+  <text x="1165" y="436" class="n">PostgreSQL</text>
+  <text x="1165" y="463" class="d">StatefulSet</text>
+  <text x="1165" y="489" class="d">5 GiB volume</text>
+</g>
+<g id="monitoring">
+  <rect x="330" y="640" width="300" height="125" rx="8" fill="#f1ebf9" stroke="#7a4fb0" stroke-width="2.5"/>
+  <text x="480" y="678" class="n">Prometheus, Grafana</text>
+  <text x="480" y="708" class="d">metrics and dashboards</text>
+  <text x="480" y="736" class="d">Grafana at /grafana</text>
+</g>
+
+<!-- Arrows: traffic and data (solid) -->
+<g id="arrows-traffic">
+  <path d="M250,430 L330,430" class="a" marker-end="url(#arr)"/>
+  <path d="M570,395 L645,395 L645,285 L720,285" class="a" marker-end="url(#arr)"/>
+  <path d="M570,440 L720,440" class="a" marker-end="url(#arr)"/>
+  <path d="M970,385 L1010,385 L1010,285 L1050,285" class="a" marker-end="url(#arr)"/>
+  <path d="M970,445 L1050,445" class="a" marker-end="url(#arr)"/>
+  <path d="M845,495 L845,625 L1350,625" class="a" marker-end="url(#arr)"/>
+  <path d="M1165,512 L1165,585 L1350,585" class="a" marker-end="url(#arr)"/>
+</g>
+<!-- Arrows: deploy and monitoring (dashed) -->
+<g id="arrows-dashed">
+  <path d="M805,145 L805,175" class="a dash" marker-end="url(#arr)"/>
+  <path d="M630,700 L770,700 L770,495" class="a dash" marker-end="url(#arr)"/>
+</g>
+
+<!-- Arrow labels (white backing so lines do not run through the text) -->
+<g id="labels">
+  <rect class="bg" x="650" y="257" width="70" height="28"/><text x="655" y="278" class="ls">pages</text>
+  <rect class="bg" x="572" y="411" width="146" height="28"/><text x="645" y="432" class="l">/api, /socket.io</text>
+  <rect class="bg" x="975" y="416" width="70" height="28"/><text x="1010" y="437" class="l">SQL</text>
+  <rect class="bg" x="1000" y="596" width="90" height="28"/><text x="1045" y="617" class="l">files</text>
+  <rect class="bg" x="1005" y="535" width="156" height="28"/><text x="1157" y="556" class="le">nightly pg_dump</text>
+  <rect class="bg" x="682" y="580" width="84" height="28"/><text x="762" y="601" class="le">metrics</text>
+  <rect class="bg" x="812" y="146" width="250" height="28"/><text x="817" y="167" class="ls">roll out, undo on failure</text>
+</g>
+
+<text id="caption" x="40" y="868" class="ls">Simplified for one slide: the request path only.</text>
+</svg>

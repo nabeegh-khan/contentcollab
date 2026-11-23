@@ -1,0 +1,17 @@
+# 2026-11-23 #104: the PostgreSQL volume's reclaim policy, live cluster do-nyc3-contentcollab
+$ kubectl get pv (before, 2026-11-23T23:08:04Z)
+NAME                                       CAPACITY   ACCESS MODES   RECLAIM POLICY   STATUS   CLAIM                           STORAGECLASS       VOLUMEATTRIBUTESCLASS   REASON   AGE
+pvc-6a857bd4-b129-4206-9d31-fd3827574e20   5Gi        RWO            Delete           Bound    contentcollab/data-postgres-0   do-block-storage   <unset>                          12d
+$ KUBE_CONTEXT=do-nyc3-contentcollab bash scripts/pv-retain.sh
+pvc-6a857bd4-b129-4206-9d31-fd3827574e20: Delete -> Retain (claim contentcollab/data-postgres-0, context do-nyc3-contentcollab)
+$ kubectl get pv (after, 2026-11-23T23:08:08Z)
+NAME                                       CAPACITY   ACCESS MODES   RECLAIM POLICY   STATUS   CLAIM                           STORAGECLASS       VOLUMEATTRIBUTESCLASS   REASON   AGE
+pvc-6a857bd4-b129-4206-9d31-fd3827574e20   5Gi        RWO            Retain           Bound    contentcollab/data-postgres-0   do-block-storage   <unset>                          12d
+$ kubectl get pvc,pod postgres-0 (still bound, still running; nothing deleted)
+NAME              STATUS   VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS       VOLUMEATTRIBUTESCLASS   AGE
+data-postgres-0   Bound    pvc-6a857bd4-b129-4206-9d31-fd3827574e20   5Gi        RWO            do-block-storage   <unset>                 12d
+NAME         READY   STATUS    RESTARTS   AGE
+postgres-0   1/1     Running   0          17m
+$ curl /health
+{"status":"ok","postgres":"ok","redis":"ok"}
+Not done on purpose: no claim or volume was deleted to test the policy. What is shown is the reclaim-policy field of the bound volume; that a Retain volume survives its claim is the Kubernetes documentation's statement, not something this file demonstrates.

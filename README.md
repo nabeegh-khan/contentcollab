@@ -6,13 +6,13 @@ Team project for ECE1779 Introduction to Cloud Computing, University of Toronto,
 
 Presentation (Google Slides, owned by Milton): https://docs.google.com/presentation/d/1Q0jZCyI9xU0S2YT01DisHQQTtqmOpkKVYMcomWg6VtE/edit
 
-**Status, 13 November (evening):** merged to `main`: the Compose and CI harness, the cluster bring-up scripts, the worker, `/metrics`, the Datadog install, the autoscaler load test, replica spreading, the deploy checks gate, smoke checks and alert policies (#62), the listen-before-Redis fix (#75), image pinning with undo on a failed rollout (#83), CI that runs the migrations before the tests (#99) the schema with its first migration (#88) and the reviewed API contract (#85). The cluster runs in nyc3 and serves https://contentcollab.app. The migration Job that creates the tables on the cluster before each rollout is in [#118](https://github.com/nabeegh-khan/contentcollab/pull/118) (green). API contract ([#85](https://github.com/nabeegh-khan/contentcollab/pull/85)) merged 13 November. Feature code in review, changes requested: auth ([#111](https://github.com/nabeegh-khan/contentcollab/pull/111)), shares ([#114](https://github.com/nabeegh-khan/contentcollab/pull/114)), documents and versions ([#116](https://github.com/nabeegh-khan/contentcollab/pull/116)), web skeleton ([#86](https://github.com/nabeegh-khan/contentcollab/pull/86)); also open: storage ([#89](https://github.com/nabeegh-khan/contentcollab/pull/89)), sign-in and document list ([#93](https://github.com/nabeegh-khan/contentcollab/pull/93)), document view ([#91](https://github.com/nabeegh-khan/contentcollab/pull/91)). Cloud and advanced-feature pull requests opened 13 November, each with tests written first: migration Job (#118), restart test (#120), Service by port name (#121), volume kept on claim delete (#122), version diff (#123), status endpoint (#124, #126), summaries and tags (#125); the Spaces setup (#98) is ready for review. What the 14 November checkpoint shows: [docs/DEMO_CHECKPOINT_2026-11-14.md](docs/DEMO_CHECKPOINT_2026-11-14.md). Plan status: [docs/PLAN.md](docs/PLAN.md#status-13-november-evening).
+**Status, 23 November:** live at https://contentcollab.app on DigitalOcean Kubernetes (nyc3, two nodes). Working: sign-in and roles, a documents page that lists and uploads, versions, sharing by user and role with a form in the web client ([#146](https://github.com/nabeegh-khan/contentcollab/pull/146)), threaded comments and mentions delivered live across API pods, and an admin operations page with a restart drill (the database-pod drill was run on the live site through the API on 23 November; the page has not yet been clicked in a browser). Also merged since 13 November: the nightly database backup to Spaces ([#147](https://github.com/nabeegh-khan/contentcollab/pull/147)), Grafana at `/grafana/` ([#162](https://github.com/nabeegh-khan/contentcollab/pull/162); the login page and health answer, a browser sign-in is not yet checked), and the web image running as the unprivileged nginx user ([#164](https://github.com/nabeegh-khan/contentcollab/pull/164)). Checked on the live site on 23 November: [docs/evidence/2026-11-23-cloud-test.txt](docs/evidence/2026-11-23-cloud-test.txt) and [docs/evidence/2026-11-23-backup-live.txt](docs/evidence/2026-11-23-backup-live.txt). Not built: PDF and image rendering in the page, comment pins drawn on the page, search and tags, email on share and mention. What is left and who owns it: [docs/ROADMAP_2026-11-22.md](docs/ROADMAP_2026-11-22.md); the draft of the final report: [docs/report/FINAL_REPORT_DRAFT.md](docs/report/FINAL_REPORT_DRAFT.md).
 
 ## Architecture
 
 ![Components and their connections](docs/img/architecture.png)
 
-Solid lines carry application traffic; dashed lines are configuration, deployment and monitoring. Source: [docs/img/architecture.svg](docs/img/architecture.svg).
+Solid arrows carry traffic and data; dashed arrows are deploys, certificates and monitoring. Source: [docs/img/architecture.svg](docs/img/architecture.svg). A simpler version for one slide, the request path only: [docs/img/architecture-slide.png](docs/img/architecture-slide.png) (source [architecture-slide.svg](docs/img/architecture-slide.svg)).
 
 Decisions and trade-offs: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
@@ -27,7 +27,7 @@ Decisions and trade-offs: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## What it does
 
-A workspace where people share files and discuss them in place. Members are invited by email as Owner, Editor, Commenter or Viewer, and a link with an expiry admits people without an account. PDFs and images render in the browser; Office files are converted to PDF by the worker, with the original kept for download; other types are stored, versioned and downloadable. Collaborators leave threaded comments and pins on a page position and @-mention each other; everyone viewing the same version sees new comments without refreshing. Each upload is a version, and any version can be restored.
+A workspace where people share files and discuss them in place. Members are invited by email as Owner, Editor, Commenter or Viewer, and a link with an expiry admits people without an account. Files are stored, versioned and downloadable (rendering PDFs and images in the page, and converting Office files to PDF, are not built yet). Collaborators leave threaded comments and @-mention each other (the page position is stored with a comment, pins are not drawn yet); everyone viewing the same version sees new comments without refreshing. Each upload is a version, and any version can be restored through the API.
 
 This is a review tool, not an editor. Live text editing and track changes are out of scope; the reasons are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), decision D3.
 
@@ -40,9 +40,9 @@ This is a review tool, not an editor. Live text editing and track changes are ou
 | Files | DigitalOcean Spaces (S3-compatible object storage) |
 | Orchestration | DigitalOcean Kubernetes: Deployments, Services, a StatefulSet for PostgreSQL, HorizontalPodAutoscaler; one Kustomize base with minikube and DigitalOcean overlays ([k8s/](k8s/)) |
 | Frontend | small React app served as static files by its own container |
-| Background jobs | worker container on a Redis queue (BullMQ): Office-to-PDF conversion, bulk imports, thumbnails |
+| Background jobs | worker container on a Redis queue (BullMQ): version comparison and summaries behind one provider interface; Office-to-PDF conversion is planned, not built |
 | Local development | Docker Compose |
-| Monitoring | DigitalOcean metrics and alerts; `/metrics` on the API (Prometheus format) and JSON request logs read with `kubectl`; no agent in the cluster (the nodes cannot carry one: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) D18) |
+| Monitoring | Prometheus, kube-state-metrics and Grafana in the `observability` namespace ([docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) D19); `/metrics` on the API and JSON request logs; an operations page in the web client (D31); DigitalOcean metrics and alert policies; no Datadog agent (D17, D18) |
 | CI/CD | GitHub Actions: lint and test on every pull request, build and deploy on merge to `main` |
 
 Advanced features committed in the proposal: security (sign-in, roles, HTTPS, secrets), CI/CD, real-time, and auto-scaling with high availability. Stretch goals: backup and recovery, external email. Everything else on the board is for the final report, not the proposal.
@@ -67,7 +67,7 @@ Course deadlines are 11:59pm Toronto with no late submissions. The windows are w
 ```
 api/                 the JSON API (Express, Socket.IO); routes, middleware, services, db, tests
 web/                 the small React frontend, served as static files by its own container
-worker/              background jobs on a Redis queue: imports, thumbnails, backup trigger
+worker/              background jobs on a Redis queue: version comparison and summaries
 k8s/                 Kubernetes manifests, with minikube and DigitalOcean overlays
 scripts/             cluster, volume, migration, backup and smoke-test scripts
 tests/               cross-service checks: restart, scale, end-to-end smoke

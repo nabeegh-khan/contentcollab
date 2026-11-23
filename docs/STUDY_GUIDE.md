@@ -24,7 +24,7 @@ Roles on a document are Owner, Editor, Commenter and Viewer. Allowed file types 
 
 Follow four actions. All of them enter through the same front door.
 
-**The front door.** The browser connects to a DigitalOcean load balancer. Behind it is the Gateway: NGINX Gateway Fabric, which implements the Kubernetes Gateway API. It ends HTTPS using a certificate that cert-manager gets from Let's Encrypt. It sends `/api`, `/socket.io` and `/health` to the API, `/grafana` to Grafana (route on `main` since #162; live only after the manual Grafana rollout step, see the monitoring section), and everything else to the web pods (`k8s/doks/gateway.yaml`). It also allows uploads up to 50 MiB, because its default limit is 1 MiB (D29).
+**The front door.** The browser connects to a DigitalOcean load balancer. Behind it is the Gateway: NGINX Gateway Fabric, which implements the Kubernetes Gateway API. It ends HTTPS using a certificate that cert-manager gets from Let's Encrypt. It sends `/api`, `/socket.io` and `/health` to the API, `/grafana` to Grafana (route on `main` since #162, live since the Grafana rollout of 23 November), and everything else to the web pods (`k8s/doks/gateway.yaml`). It also allows uploads up to 50 MiB, because its default limit is 1 MiB (D29).
 
 **Sign in.** The browser loads the web app from the web pods: a React app built with Vite, served by NGINX. The user types an email and password. The browser sends them to `POST /api/v1/auth/login`. One of the two API pods answers. It compares the password with a bcrypt hash stored in PostgreSQL (bcrypt with cost 12), and returns a signed token that is valid for 24 hours (`api/src/routes/auth.ts`). The browser keeps the token and sends it on every later call. Because the token is signed, any API pod can check it. No pod keeps a session in memory, so it does not matter which pod answers.
 
@@ -72,7 +72,7 @@ Why: the proposal made the web client small on purpose, so the time could go to 
 
 Cost: tiny. Each pod asks for 10 millicores of CPU and 32 MiB of memory.
 
-Failure: two pods, rolling updates, so a deploy does not take the page down. The web image runs as the unprivileged nginx user on port 8080 (PR #164, merged 22 November, deploy succeeded; D27). A live check of the running web pods (`id -u` prints 101) is still to be done, so say "merged and deployed" until it is.
+Failure: two pods, rolling updates, so a deploy does not take the page down. The web image runs as the unprivileged nginx user on port 8080 (PR #164, merged 22 November, deploy succeeded; D27). Checked live on 23 November: `id -u` in the running web pod prints 101 and both web pods are Running (`docs/evidence/2026-11-23-cloud-test.txt`).
 
 Not built: rendering a PDF or an image inside the page, search, tags and delete on the documents page, and drawing comment pins on the page. Pins are stored with each comment but not drawn.
 
@@ -124,7 +124,7 @@ Failure: managed by DigitalOcean. If Spaces is unreachable, uploads fail with an
 
 ### Backups
 
-What: a CronJob, `db-backup`, runs `pg_dump` every night at 03:00 Toronto time and writes the dump to Spaces (D30). A runbook and a restore script describe how to bring a dump back. The CronJob was running on the cluster on 22 November (a run completed 13 hours before the check). It was applied from the branch of PR #147, which is open and green. When #147 merges, it reaches `main`.
+What: a CronJob, `db-backup`, runs `pg_dump` every night at 03:00 Toronto time and writes the dump to Spaces (D30). A runbook and a restore script describe how to bring a dump back. PR #147 is merged (23 November) and deployed. The CronJob ran on its own at 03:00 Toronto on 22 and 23 November, and on 23 November a job started by hand from it wrote `backups/contentcollab-20261123T224507Z.dump` (29,362 bytes) to Spaces (`docs/evidence/2026-11-23-backup-live.txt`).
 
 What was proven: one restore into a scratch database (`docs/evidence/2026-11-21-backup-restore.txt`, on the PR's branch until it merges).
 
@@ -138,7 +138,7 @@ Why: we first planned Datadog. The agent did not fit the memory of the original 
 
 Cost: Prometheus asks for 192 MiB. Its data sits on an emptyDir, so a restart loses history.
 
-Grafana's route: PR #162 added a `/grafana` route and a link from the operations panel, and is on `main`. The step that rolls Grafana out on the cluster and the sign-in check are done by hand. Until that is done, do not say the Grafana link works. DigitalOcean also has three alert policies on the account (CPU, memory and disk above 80% for 5 minutes). Their firing and e-mail delivery were not tested. There is no Alertmanager.
+Grafana's route: PR #162 added a `/grafana` route and a link from the operations panel, and is on `main`. The Grafana rollout was done on 23 November: `/grafana/` answers through the Gateway (login page 200, health ok) and the operations snapshot carries the link (`docs/evidence/2026-11-23-cloud-test.txt`). The browser sign-in with a saved login is still to be done by hand; until then say the route answers, not that the demo dashboard was opened in a browser. DigitalOcean also has three alert policies on the account (CPU, memory and disk above 80% for 5 minutes). Their firing and e-mail delivery were not tested. There is no Alertmanager.
 
 ### The restart drill
 
@@ -156,9 +156,9 @@ Limit: this stops a bad release. It is not a canary or a blue-green deploy.
 
 ## 4. Who built what (from the Git history)
 
-This is read from `git log` and `gh pr list` on 22 November. Commit counts are a rough measure and many of Nabeegh's are docs and logs, so read the work by pull request.
+This is read from `git log` and `gh pr list` on 22 and 23 November. Commit counts are a rough measure and many of Nabeegh's are docs and logs, so read the work by pull request.
 
-**Nabeegh Khan:** the cluster and everything around it. The Compose skeleton, Kubernetes manifests, GitHub Actions CI and deploy, cluster bring-up and tear-down scripts, the autoscaling and rolling-update tuning and load tests, the restart test for PostgreSQL, the migration Job and migration checks, the observability stack (Prometheus, Grafana, kube-state-metrics), JSON request logs and metrics, DigitalOcean alerts, the Gateway upload limit, the worker (skeleton, version diff, summaries), the operations page and the restart drill, the web client's comments, versions panel, documents page and share form, the cross-replica check, the nightly backup (PR #147, open and not yet on `main`), and the Grafana route. Also the engineering docs.
+**Nabeegh Khan:** the cluster and everything around it. The Compose skeleton, Kubernetes manifests, GitHub Actions CI and deploy, cluster bring-up and tear-down scripts, the autoscaling and rolling-update tuning and load tests, the restart test for PostgreSQL, the migration Job and migration checks, the observability stack (Prometheus, Grafana, kube-state-metrics), JSON request logs and metrics, DigitalOcean alerts, the Gateway upload limit, the worker (skeleton, version diff, summaries), the operations page and the restart drill, the web client's comments, versions panel, documents page and share form, the cross-replica check, the nightly backup (PR #147, merged 23 November), and the Grafana route. Also the engineering docs.
 
 **Eyrika (Yiqing) Liu:** the access layer of the API. Auth with register, login and the role middleware (#111), shares by user and by link with expiry (#114), and documents and versions (#116). Proposal section 1.
 
@@ -174,7 +174,7 @@ When a question is about a part someone else built, you can still answer from th
 
 Each has a direct answer first, then the evidence.
 
-**Containerization.** Each of api, web and worker has its own Dockerfile and Compose runs the full stack locally. The web image is multi-stage; api and worker are single-stage and run as the non-root `node` user. Evidence: `api/Dockerfile`, `compose.yaml`, D7, D10, D27. Trade-off: the live check that the running web pods use the non-root user is still to do.
+**Containerization.** Each of api, web and worker has its own Dockerfile and Compose runs the full stack locally. The web image is multi-stage; api and worker are single-stage and run as the non-root `node` user. Evidence: `api/Dockerfile`, `compose.yaml`, D7, D10, D27. Checked live on 23 November: the web pods run as uid 101 (`docs/evidence/2026-11-23-cloud-test.txt`).
 
 **PostgreSQL and persistent storage.** PostgreSQL runs as a StatefulSet on a 5 GiB DigitalOcean volume, and files are in Spaces. A deleted pod, a restarted API, a database scaled to zero and back, and a drained node all left the data intact. Evidence: `docs/evidence/2026-11-19-restart-test.txt`, `2026-11-20-restart-test-drain.txt`, D15. Trade-off: it does not prove recovery from losing the volume; nightly dumps to Spaces help, and a live restore is not rehearsed.
 
@@ -214,10 +214,10 @@ Known limits, in plain words:
 
 - Two nodes only. A node drain works; two failures do not.
 - Single pods for the Gateway, Redis, PostgreSQL and the worker. No automatic failover for the database.
-- Backups run on the cluster, but the pull request that carries them (#147) is not merged yet.
+- The backup has not been restored into the live database (a restore ran once into a scratch database on 21 November), and the dumps have no retention rule yet (the Spaces lifecycle rule is still to do).
 - No PDF or image rendering in the page, no comment pins drawn, no search, tags or delete on the documents page, no email on share or mention. Other users' comments show as "Member" and a short id.
 - The load test used `/health` from one laptop.
-- The architecture picture `docs/img/architecture.svg` is stale (it still shows Datadog and Toronto). Do not point at it.
+- The architecture picture `docs/img/architecture.svg` was redrawn on 23 November from `main` (a one-slide version is `docs/img/architecture-slide.svg`).
 - Alerts exist at DigitalOcean but firing and e-mail delivery were not tested.
 
 The plan, by date (from `docs/ROADMAP_2026-11-22.md`):

@@ -811,3 +811,19 @@ Wrote the tests and pushed them alone so CI showed the out-of-range case failing
 
 - Corrected two mistakes of the first test commit (a broken newline escape and a message pattern that did not match the script's wording) before the fix went in.
 - Left for later: item 5 of #113 and the merge of PR #166.
+
+## Redrawing the architecture figure from main, 23 November 2026
+
+### Prompt
+
+The architecture picture still shows Datadog, Toronto and two nodes. Redraw it from what is on main (the manifests in k8s/ and the workflows), plus a simpler one-slide version of at most ten boxes, readable when projected, and keep the SVG editable.
+
+### AI Response
+
+Read the manifests, workflows and code behind each box, wrote both figures as plain SVG, measured every label and arrow in a headless browser (text inside its box, no overlaps, no arrow through a box) and rendered 1920 px PNGs; an independent read of the result found no wrong box or number, and three drawing problems (dashed and solid arrows used inconsistently, one arrow pointing the wrong way, a label that read as Postgres writing to Spaces) plus three over-strong sentences in the log entry, all fixed.
+
+### What Your Team Did With It
+
+- Kept only what the manifests prove, and listed in BUILD_LOG what is left off on purpose (node count, Spaces region, alert policies, the Kubernetes API read by the operations page).
+- Checked the region, schedule, replica counts and routes against the files, not against the old figure.
+- Left for later: the Mermaid diagram at the top of docs/ARCHITECTURE.md still says Toronto and two nodes.
