@@ -72,6 +72,36 @@ spec:
         - name: web
           port: 80
 ---
+# Grafana for the operations panel's link (#161, D31). The path prefix is stripped before the request
+# reaches Grafana (urlRewrite, supported by NGF: Gateway API compatibility page, checked 22 Nov 2026), and
+# Grafana's root_url carries the prefix for its own links. HTTPS only, so the Grafana login is never served
+# over plain HTTP. The backend lives in another namespace: referencegrant.yaml there allows it. Longer
+# prefix than the web route's "/", so this wins for /grafana.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: grafana
+spec:
+  parentRefs:
+    - name: contentcollab
+      sectionName: https
+  hostnames: ["contentcollab.app"]
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /grafana
+      filters:
+        - type: URLRewrite
+          urlRewrite:
+            path:
+              type: ReplacePrefixMatch
+              replacePrefixMatch: /
+      backendRefs:
+        - name: grafana
+          namespace: observability
+          port: 3000
+---
 # Uploads: NGF applies nginx's client_max_body_size (1 MiB unless set), so a normal PDF would get a
 # 413 at the Gateway before reaching the API, whose own limit is 50 MiB (D29). maxSize "0" would switch
 # the check off, so it is a number (NGF API reference, ClientBody.maxSize; checked 21 Nov 2026).

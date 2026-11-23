@@ -781,3 +781,33 @@ Wrote the failing tests for the list, Load more, the empty and error states and 
 - Checked the response shape, the cursor, the multipart fields, the 50 MiB limit and the allowed extensions against `api/src/routes/documents.ts` and `parseUpload.ts` before relying on them.
 - Ran the tests red, then green (225 web tests, lint, format check, build); the five edge-case tests were red before their fix.
 - Left for later: a browser check on the cluster after the deploy, search and tags on this page, and a version number in the list (the API does not return one).
+
+## Share from the documents list, 22 November 2026
+
+### Prompt
+
+The share form needs a document id, and the new list does not show ids. Make Share on each document I own fill the form, with the tests first.
+
+### AI Response
+
+Added a Share button on owned rows and a `documentId` prop on the form; after an independent read it fixed two gaps (choosing the same document again did nothing, and an old success message stayed), each with a test that failed first.
+
+### What Your Team Did With It
+
+- Ran the four web checks (244 tests, lint, format check, build) before pushing to PR #146.
+- Left for later: a browser check, and unique button names for documents with the same title.
+
+## Follow-ups to the rollout check, 22 November 2026
+
+### Prompt
+
+Do the four small follow-ups on my own issue #113 (a comment, two exit-code assertions, a clearer message for a huge maxSurge), tests first, in CI rather than on this laptop where the script tests are slow.
+
+### AI Response
+
+Wrote the tests and pushed them alone so CI showed the out-of-range case failing, then changed the script; an independent read found no error.
+
+### What Your Team Did With It
+
+- Corrected two mistakes of the first test commit (a broken newline escape and a message pattern that did not match the script's wording) before the fix went in.
+- Left for later: item 5 of #113 and the merge of PR #166.

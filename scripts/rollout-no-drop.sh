@@ -86,8 +86,10 @@ else
   api_limit=$(kubectl -n "$NAMESPACE" get deployment api -o 'jsonpath={.spec.template.spec.containers[?(@.name=="api")].resources.limits.memory}' || true)
   surge=$(kubectl -n "$NAMESPACE" get deployment api -o 'jsonpath={.spec.strategy.rollingUpdate.maxSurge}' || true)
   api_mib=$(quantity_mib "$api_limit")
-  [[ -n "$api_mib" && "$surge" =~ ^[0-9]{1,4}$ ]] \
+  [[ -n "$api_mib" && "$surge" =~ ^[0-9]+$ ]] \
     || die "cannot size the surge: api memory limit '$api_limit', maxSurge '$surge' (a whole number of pods is needed); set MIN_NODE_FREE_MIB to the MiB the run may add to a node"
+  [[ "$surge" =~ ^[0-9]{1,4}$ ]] \
+    || die "cannot size the surge: maxSurge '$surge' is out of range (at most 9999 pods are counted); set MIN_NODE_FREE_MIB to the MiB the run may add to a node"
   MIN_NODE_FREE_MIB=$((K6_MEMORY_LIMIT_MI + 10#$surge * api_mib))   # 10#: 08 is 8, not bad octal
   why="k6 $K6_MEMORY_LIMIT_MI MiB + $((10#$surge)) surge api pod(s) of $api_mib MiB"
 fi

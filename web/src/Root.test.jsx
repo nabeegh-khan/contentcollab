@@ -90,6 +90,7 @@ describe("Root", () => {
     expect(await screen.findByText("Signed in as Ann")).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Documents" })).toBeTruthy();
     expect(screen.queryByRole("heading", { name: "Document" })).toBeNull();
+    expect(screen.getByRole("heading", { name: "Share a document" })).toBeTruthy();
     expect(loadToken()).toBe("t0k");
   });
 
@@ -190,6 +191,33 @@ describe("Root", () => {
     await screen.findByText("No comments yet.");
 
     const call = fetchMock.mock.calls.find(([url]) => String(url).includes("/comments?limit=100"));
+    expect(call[1].headers.Authorization).toBe("Bearer mem0ry");
+  });
+
+  it("sends the signed-in token with a share even when storage is blocked", async () => {
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("blocked");
+    });
+    const DOC = "11111111-1111-4111-8111-111111111111";
+    const fetchMock = routeFetch({
+      "/health": health,
+      "/api/v1/auth/login": () => json(200, { token: "mem0ry", user: ANN }),
+      [`/api/v1/documents/${DOC}/shares`]: () => json(201, { id: "s1", role: "viewer" }),
+    });
+    render(<Root />);
+
+    fireEvent.change(screen.getByLabelText("Email"), { target: { value: "a@b.co" } });
+    fireEvent.change(screen.getByLabelText("Password"), { target: { value: "pass1234" } });
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+    await screen.findByText("Signed in as Ann");
+    fireEvent.change(screen.getByLabelText("Id of the document to share"), {
+      target: { value: DOC },
+    });
+    fireEvent.change(screen.getByLabelText("Email of the user"), { target: { value: "bo@x.co" } });
+    fireEvent.click(screen.getByRole("button", { name: "Share" }));
+
+    await screen.findByText("Shared with bo@x.co as viewer.");
+    const call = fetchMock.mock.calls.find(([url]) => String(url).endsWith("/shares"));
     expect(call[1].headers.Authorization).toBe("Bearer mem0ry");
   });
 

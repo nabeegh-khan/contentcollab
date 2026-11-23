@@ -4,6 +4,7 @@ import { ApiError } from "../api/client.js";
 import { createDocument, listDocuments } from "../api/documents.js";
 import { formatClock } from "../comments/time.js";
 import { documentHash } from "../route.js";
+import ShareForm from "../shares/ShareForm.jsx";
 
 // The extensions api/src/lib/parseUpload.ts accepts
 const ACCEPT = ".pdf,.png,.jpg,.jpeg,.docx,.xlsx,.pptx,.txt,.md";
@@ -20,7 +21,7 @@ function uploadReason(error) {
   return "Could not upload. Try again.";
 }
 
-function DocumentRow({ document: doc }) {
+function DocumentRow({ document: doc, onShare }) {
   return (
     <li>
       <span>{doc.title}</span> <small>Role: {doc.role}</small>{" "}
@@ -32,6 +33,14 @@ function DocumentRow({ document: doc }) {
       ) : (
         <small>No version yet</small>
       )}
+      {doc.role === "owner" && (
+        <>
+          {" "}
+          <button type="button" aria-label={`Share ${doc.title}`} onClick={() => onShare(doc.id)}>
+            Share
+          </button>
+        </>
+      )}
     </li>
   );
 }
@@ -39,6 +48,7 @@ function DocumentRow({ document: doc }) {
 export default function DocumentsPage({ token }) {
   const [items, setItems] = useState([]);
   const [nextCursor, setNextCursor] = useState(null);
+  const [share, setShare] = useState({ id: "", count: 0 });
   const [loadState, setLoadState] = useState("loading");
   const [title, setTitle] = useState("");
   const [problem, setProblem] = useState(null);
@@ -105,47 +115,54 @@ export default function DocumentsPage({ token }) {
   }
 
   return (
-    <section className="card wide">
-      <h2>Documents</h2>
-      <form className="upload" onSubmit={upload}>
-        <label className="field">
-          <span>File</span>
-          <input type="file" name="file" accept={ACCEPT} ref={fileInput} />
-        </label>
-        <label className="field">
-          <span>Title</span>
-          <input
-            type="text"
-            name="title"
-            value={title}
-            onChange={(event) => setTitle(event.target.value)}
-          />
-        </label>
-        {problem && <p role="alert">{problem}</p>}
-        {message && <p role="status">{message}</p>}
-        <button type="submit" className="primary" disabled={busy}>
-          Upload
-        </button>
-      </form>
-      {loadState === "loading" && <p>Loading your documents...</p>}
-      {loadState === "error" && (
-        <p role="alert">Could not load your documents. Check your connection and reload.</p>
-      )}
-      {loadState === "ready" && items.length === 0 && (
-        <p>You have no documents yet. Upload one above.</p>
-      )}
-      {items.length > 0 && (
-        <ul className="documents">
-          {items.map((doc) => (
-            <DocumentRow key={doc.id} document={doc} />
-          ))}
-        </ul>
-      )}
-      {nextCursor && (
-        <button type="button" disabled={moreBusy} onClick={loadMore}>
-          Load more
-        </button>
-      )}
-    </section>
+    <>
+      <section className="card wide">
+        <h2>Documents</h2>
+        <form className="upload" onSubmit={upload}>
+          <label className="field">
+            <span>File</span>
+            <input type="file" name="file" accept={ACCEPT} ref={fileInput} />
+          </label>
+          <label className="field">
+            <span>Title</span>
+            <input
+              type="text"
+              name="title"
+              value={title}
+              onChange={(event) => setTitle(event.target.value)}
+            />
+          </label>
+          {problem && <p role="alert">{problem}</p>}
+          {message && <p role="status">{message}</p>}
+          <button type="submit" className="primary" disabled={busy}>
+            Upload
+          </button>
+        </form>
+        {loadState === "loading" && <p>Loading your documents...</p>}
+        {loadState === "error" && (
+          <p role="alert">Could not load your documents. Check your connection and reload.</p>
+        )}
+        {loadState === "ready" && items.length === 0 && (
+          <p>You have no documents yet. Upload one above.</p>
+        )}
+        {items.length > 0 && (
+          <ul className="documents">
+            {items.map((doc) => (
+              <DocumentRow
+                key={doc.id}
+                document={doc}
+                onShare={(id) => setShare((last) => ({ id, count: last.count + 1 }))}
+              />
+            ))}
+          </ul>
+        )}
+        {nextCursor && (
+          <button type="button" disabled={moreBusy} onClick={loadMore}>
+            Load more
+          </button>
+        )}
+      </section>
+      <ShareForm token={token} documentId={share.id} choiceCount={share.count} />
+    </>
   );
 }

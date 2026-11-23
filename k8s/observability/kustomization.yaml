@@ -11,6 +11,7 @@ resources:
   - prometheus/prometheus.yaml
   - kube-state-metrics.yaml
   - grafana/grafana.yaml
+  - grafana/referencegrant.yaml
 
 # Generated with a content hash in the name, so a config change rolls the pod
 configMapGenerator:
