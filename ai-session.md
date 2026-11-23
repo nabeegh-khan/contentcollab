@@ -843,3 +843,19 @@ Wrote the design (D32) first, then the failing tests with a stand-in kubectl on 
 - Checked DigitalOcean's `kubeconfig save` reference for the context it selects (the reason the check goes after the save) and the kubectl reference for `config current-context`.
 - Saw the first test run fail (11 of 14, the writers ran helm and applied) before the wiring went in; the tests that start Node scripts cannot run on this Windows laptop, so CI on Linux is their first run (PR #170: green).
 - Left for later: `cluster-down.sh` and `alerts.sh` have no check; the queue card shows 0 until something enqueues jobs.
+
+## Comparing two versions of a text document, 23 November 2026
+
+### Prompt
+
+Build #23: write the design line first (what is compared, where the diff is computed, who may see it), then the API route that returns the line diff of two versions with the same 403/404 rules as the version routes, then a "Compare versions" view on the document page; tests first, on my own branch.
+
+### AI Response
+
+Wrote D33, then failing tests for the rules and the view, then the route, a copy of the worker's line diff for the API and the component; an independent read of the diff then checked access, route order and the limits.
+
+### What Your Team Did With It
+
+- Chose to compute the diff in the API and not through the worker queue, because nothing enqueues jobs yet and no result is stored; the choice and the option it beat are in D33.
+- Ran the rules and view tests red, then green; the six route tests need a database that this laptop does not have, so CI runs them first.
+- Left for later: PDF and image comparison, and a browser check.
