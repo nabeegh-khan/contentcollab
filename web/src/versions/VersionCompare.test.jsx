@@ -55,6 +55,16 @@ describe("VersionCompare", () => {
     );
   });
 
+  it("still asks for the oldest and newest version when the list arrives after the first render", async () => {
+    const fetchMock = answer(200, diff);
+    vi.stubGlobal("fetch", fetchMock);
+    const { rerender } = render(<VersionCompare token="t" documentId={DOC} versions={[]} />);
+    rerender(<VersionCompare token="t" documentId={DOC} versions={versions} />);
+    fireEvent.click(screen.getByRole("button", { name: "Compare" }));
+    await screen.findByRole("list", { name: "Differences" });
+    expect(fetchMock.mock.calls[0][0]).toContain(`from=${V1}&to=${V2}`);
+  });
+
   it("marks removed and added lines with a sign and a word, not by colour alone", async () => {
     await compare(answer(200, diff));
     const list = await screen.findByRole("list", { name: "Differences" });

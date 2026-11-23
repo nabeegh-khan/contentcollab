@@ -68,8 +68,11 @@ function SideBySide({ versions }) {
 
 export default function VersionCompare({ token, documentId, versions }) {
   const ordered = [...versions].sort((a, b) => a.number - b.number);
-  const [from, setFrom] = useState(ordered[0]?.id ?? "");
-  const [to, setTo] = useState(ordered[ordered.length - 1]?.id ?? "");
+  // A choice the user has not made stays the default (oldest to newest), so a list that arrives late still works
+  const [chosenFrom, setFrom] = useState("");
+  const [chosenTo, setTo] = useState("");
+  const from = chosenFrom || ordered[0]?.id || "";
+  const to = chosenTo || ordered[ordered.length - 1]?.id || "";
   const [result, setResult] = useState(null);
   const [problem, setProblem] = useState(null);
   const [busy, setBusy] = useState(false);
