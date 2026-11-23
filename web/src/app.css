@@ -412,3 +412,30 @@ button.link {
   color: var(--text-h);
   padding: 6px 0;
 }
+
+/* Compare versions (#23, D33): the sign and the word carry the meaning, the colour only helps */
+.diff {
+  list-style: none;
+  padding: 0;
+  font-family: ui-monospace, monospace;
+}
+.diff li {
+  padding: 0.1rem 0.4rem;
+  white-space: pre-wrap;
+}
+.diff-add {
+  background: #e6f4ea;
+  border-left: 4px solid #1e7e34;
+}
+.diff-remove {
+  background: #fdecea;
+  border-left: 4px solid #b3261e;
+}
+.diff-sign {
+  display: inline-block;
+  width: 1.2em;
+  font-weight: 700;
+}
+.diff-word {
+  font-weight: 600;
+}

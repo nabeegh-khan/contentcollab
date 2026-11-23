@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError } from "../api/client.js";
 import { downloadVersion, listVersions, uploadVersion } from "../api/versions.js";
 import { documentHash } from "../route.js";
+import VersionCompare from "./VersionCompare.jsx";
 
 function sizeText(bytes) {
   if (bytes < 1024) return `${bytes} B`;
@@ -113,6 +114,7 @@ export default function VersionsPanel({ token, documentId, versionId }) {
           </li>
         ))}
       </ul>
+      <VersionCompare token={token} documentId={documentId} versions={versions} />
       <label className="field">
         <span>New version (a file)</span>
         <input type="file" ref={fileInput} />

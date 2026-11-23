@@ -13,6 +13,11 @@ export function uploadVersion(token, documentId, file) {
   return request(`/documents/${documentId}/versions`, { method: "POST", body: form, token });
 }
 
+// The line diff of two text versions (D33): { from, to, added, removed, lines }; 415 when a version is not text
+export function compareVersions(token, documentId, from, to) {
+  return request(`/documents/${documentId}/versions/compare?from=${from}&to=${to}`, { token });
+}
+
 // The file's bytes as a Blob; the content route answers with the file itself, not JSON, so request() does not fit
 export async function downloadVersion(token, documentId, versionId) {
   const response = await fetch(
