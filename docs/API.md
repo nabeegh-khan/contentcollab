@@ -77,6 +77,7 @@ Allowed upload types: PDF, PNG, JPEG, plus docx, xlsx, pptx, txt, md (stored and
 | GET | `/documents/:documentId/versions/:versionId` | | `200 Version` |
 | GET | `/documents/:documentId/versions/:versionId/content` | | `200` file stream, `Content-Disposition: attachment` |
 | POST | `/documents/:documentId/versions/:versionId/revert` | | `201 Version` (a new version with the old content)|
+| GET | `/documents/:documentId/versions/compare?from=&to=` | | `200 { from, to, added, removed, lines }` line diff of two text or Markdown versions (`lines`: `keep`, `remove`, `add` with line numbers); `400` same or invalid ids; `404` no share, or a version of another document; `413` too large (2 MiB a version); `415` not text (D33) |
 
 Upload streams to Spaces; the row is written only after the object is stored. The same checksum on the same document is `409`.
 
