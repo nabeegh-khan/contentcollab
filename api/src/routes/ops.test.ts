@@ -172,6 +172,9 @@ describe("GET /api/v1/ops document", () => {
 
   it("gives the worker queue's waiting jobs, and a reason when the queue cannot be read (#30)", async () => {
     const ok = await get(appWith(sources({ queue: async () => 3 })));
+    expect((await get(appWith(sources({ queue: async () => 0 })))).body.queue).toEqual({
+      depth: 0,
+    });
     expect(ok.body.queue).toEqual({ depth: 3 });
     expect(ok.body.errors).toEqual({});
     const failed = await get(

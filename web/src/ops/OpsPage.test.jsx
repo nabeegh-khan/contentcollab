@@ -556,6 +556,26 @@ describe("OpsPage job queue (#30)", () => {
     ).toBeTruthy();
   });
 
+  it("shows 0 jobs waiting as a number, not as missing", async () => {
+    const snap = snapshot();
+    snap.queue = { depth: 0 };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(respond(200, snap)));
+    render(<OpsPage token="t" />);
+    await flush();
+    const card = within(screen.getByRole("region", { name: "Job queue" }));
+    expect(card.getByText("Jobs waiting: 0")).toBeTruthy();
+    expect(card.queryByText(/Not available/)).toBeNull();
+  });
+
+  it("says there is no data when the reply has no queue field", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(respond(200, snapshot())));
+    render(<OpsPage token="t" />);
+    await flush();
+    expect(
+      within(screen.getByRole("region", { name: "Job queue" })).getByText(/Not available: no data/),
+    ).toBeTruthy();
+  });
+
   it("says why the queue cannot be shown when its source failed", async () => {
     const snap = snapshot({ queue: { depth: null }, errors: { queue: "unavailable" } });
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(respond(200, snap)));
