@@ -655,7 +655,7 @@ describe("comment author display name (demo polish, 24 Nov)", () => {
     return { ownerId, reviewerId, documentId, url };
   }
 
-  it("names the author in the created comment, which the live event also carries", async () => {
+  it("names the author in the created comment", async () => {
     const { reviewerId, url } = await setup();
 
     const res = await request(app)

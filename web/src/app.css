@@ -433,6 +433,7 @@ button.link {
   border-radius: 8px;
   background: var(--card);
   color: var(--text-h);
+  min-height: 2.6rem;
   line-height: 1.2;
   text-decoration: none;
 }
@@ -452,10 +453,6 @@ button.link {
 }
 
 /* Per-pod charts and the node tables (D31 follow-up) */
-.ops-wide {
-  grid-column: 1 / -1;
-}
-
 .ops-charts {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
