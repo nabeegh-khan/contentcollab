@@ -77,7 +77,7 @@ describe("VersionCompare", () => {
     expect(items[2].textContent).toMatch(/\+/);
     expect(items[2].textContent).toMatch(/new line/);
     expect(items[0].textContent).toMatch(/same line/);
-    expect(screen.getByText("1 line added, 1 line removed")).toBeTruthy();
+    expect(screen.getByText("Version 1 to version 2: 1 line added, 1 line removed")).toBeTruthy();
   });
 
   it("says when the two versions have the same text", async () => {
@@ -89,7 +89,7 @@ describe("VersionCompare", () => {
         lines: [{ op: "keep", text: "x", before: 1, after: 1 }],
       }),
     );
-    expect(await screen.findByText("The two versions have the same text.")).toBeTruthy();
+    expect(await screen.findByText("Version 1 and version 2 have the same text.")).toBeTruthy();
   });
 
   it("explains a file that is not text and shows both versions side by side", async () => {
@@ -99,6 +99,14 @@ describe("VersionCompare", () => {
     const side = screen.getByRole("group", { name: "Side by side" });
     expect(within(side).getByText(/notes-v1\.md/)).toBeTruthy();
     expect(within(side).getByText(/notes-v2\.md/)).toBeTruthy();
+  });
+
+  it("clears an old result when a version is chosen again, and names the versions compared", async () => {
+    await compare(answer(200, diff));
+    await screen.findByRole("list", { name: "Differences" });
+    expect(screen.getByRole("status").textContent).toMatch(/version 1 to version 2/i);
+    fireEvent.change(screen.getByLabelText("From version"), { target: { value: V2 } });
+    expect(screen.queryByRole("list", { name: "Differences" })).toBeNull();
   });
 
   it("says a version is too large, and that access was refused", async () => {

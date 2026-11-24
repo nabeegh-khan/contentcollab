@@ -60,7 +60,8 @@ async function readText(objectKey: string): Promise<string> {
     }
     chunks.push(buffer);
   }
-  return Buffer.concat(chunks).toString("utf8");
+  // A leading byte order mark is not text: one version with it and one without would differ on line 1
+  return Buffer.concat(chunks).toString("utf8").replace(/^﻿/, "");
 }
 
 const deps: CompareDeps = { loadVersion, readText };

@@ -8,6 +8,7 @@ import request from "supertest";
 import { pool } from "../lib/db.js";
 import { requireDatabase } from "../lib/dbReady.js";
 import { requireServices } from "../lib/reachable.js";
+import { MAX_VERSION_BYTES } from "../lib/versionCompare.js";
 
 const objects = new Map<string, Buffer>();
 const getStream = jest.fn<(key: string) => Promise<Readable>>(async (key) => {
@@ -187,7 +188,26 @@ describe("GET /documents/:documentId/versions/compare", () => {
     const doc = await document(owner);
     const v1 = await version(doc, owner, 1, "a");
     expect((await compare(doc, "x", v1, bearer(owner))).status).toBe(400);
-    expect((await compare(doc, v1, v1, bearer(owner))).status).toBe(400);
+    const same = await compare(doc, v1, v1, bearer(owner));
+    expect(same.status).toBe(400);
+    expect(same.body.code).toBe("VALIDATION");
+  });
+
+  it("is 413 when a stored file is larger than its row says", async () => {
+    const owner = await user();
+    const doc = await document(owner);
+    const v1 = await version(doc, owner, 1, "a");
+    const v2 = await version(doc, owner, 2, "b");
+    const key = (
+      await pool.query<{ object_key: string }>(
+        "SELECT object_key FROM document_versions WHERE id = $1",
+        [v2],
+      )
+    ).rows[0]!.object_key;
+    objects.set(key, Buffer.alloc(MAX_VERSION_BYTES + 1, "x"));
+    const res = await compare(doc, v1, v2, bearer(owner));
+    expect(res.status).toBe(413);
+    expect(res.body.code).toBe("TOO_LARGE");
   });
 
   it("is 415 when a version is not text", async () => {

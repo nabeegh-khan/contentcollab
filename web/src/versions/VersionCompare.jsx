@@ -20,9 +20,9 @@ function reason(error) {
     if (error.status === 415)
       return "Only text and Markdown versions can be compared line by line. Open or download the files to see the difference.";
     if (error.status === 413)
-      return "These versions are too large to compare (2 MiB each at most).";
+      return "These versions are too large to compare line by line (about 2,000 lines or 2 MiB each at most).";
     if (error.status === 404 || error.status === 403)
-      return "These versions cannot be compared with your access.";
+      return "These versions could not be found or are not shared with you.";
   }
   return "Could not compare the versions. Try again.";
 }
@@ -33,8 +33,8 @@ function DiffList({ result }) {
     <>
       <p role="status">
         {same
-          ? "The two versions have the same text."
-          : `${plural(result.added, "line")} added, ${plural(result.removed, "line")} removed`}
+          ? `Version ${result.from.number} and version ${result.to.number} have the same text.`
+          : `Version ${result.from.number} to version ${result.to.number}: ${plural(result.added, "line")} added, ${plural(result.removed, "line")} removed`}
       </p>
       <ul className="diff" aria-label="Differences">
         {result.lines.map((line, index) => {
@@ -57,9 +57,9 @@ function DiffList({ result }) {
 function SideBySide({ versions }) {
   return (
     <div role="group" aria-label="Side by side" className="diff-sides">
-      {versions.map((v) => (
+      {versions.map((v, index) => (
         <p key={v.id}>
-          Version {v.number}: {v.filename}
+          {index === 0 ? "From" : "To"}: version {v.number}, {v.filename}
         </p>
       ))}
     </div>
@@ -79,6 +79,13 @@ export default function VersionCompare({ token, documentId, versions }) {
 
   if (ordered.length < 2) return <p>Compare versions needs at least two versions.</p>;
 
+  // A new choice drops the old answer, so a diff is never shown under versions it does not cover
+  function choose(set, value) {
+    set(value);
+    setResult(null);
+    setProblem(null);
+  }
+
   async function run() {
     setProblem(null);
     setResult(null);
@@ -97,19 +104,19 @@ export default function VersionCompare({ token, documentId, versions }) {
       #{v.number}
     </option>
   ));
-  const chosen = ordered.filter((v) => v.id === from || v.id === to);
+  const chosen = [from, to].map((id) => ordered.find((v) => v.id === id));
   return (
     <section aria-labelledby="compare-heading">
       <h3 id="compare-heading">Compare versions</h3>
       <label className="field">
         <span>From version</span>
-        <select value={from} onChange={(e) => setFrom(e.target.value)}>
+        <select value={from} onChange={(e) => choose(setFrom, e.target.value)}>
           {options}
         </select>
       </label>
       <label className="field">
         <span>To version</span>
-        <select value={to} onChange={(e) => setTo(e.target.value)}>
+        <select value={to} onChange={(e) => choose(setTo, e.target.value)}>
           {options}
         </select>
       </label>
