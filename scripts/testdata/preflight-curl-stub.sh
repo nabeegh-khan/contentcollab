@@ -13,6 +13,15 @@
 #   STUB_NO_DEMO=1, STUB_NO_DRAFT=1   that document does not exist until it is uploaded
 #   STUB_DRAFT_SHARED=1       the draft is shared with the reviewer (share-1)
 #   STUB_CONTENT_CODE=<n>     a version's content answers n (default 200)
+#   STUB_CURL_FAIL=1          curl cannot reach the site (exit 7)
+#   STUB_DOCS_CODE=<n>        GET /documents answers n with an empty object
+#   STUB_LOGIN_HTML=1         sign-in answers 200 with an HTML page
+#   STUB_LOGIN_NO_TOKEN=1     sign-in answers 200 with a body that has no token
+#   STUB_HEALTH_MULTILINE=1   /health bodies are pretty-printed over several lines
+#   STUB_DUP_DEMO=1           the admin has two documents titled "Demo document"
+#   STUB_REVIEWER_OWN_DRAFT=1 the reviewer owns a document titled "Design review draft" (doc-rev-own)
+#   STUB_DELETE_CODE=<n>      deleting a share answers n (default 204)
+#   STUB_REGISTER_CODE=<n>    registering answers n instead of creating the account
 printf '%s\n' "$@" >> "$STUB_DIR/curl.argv"
 
 method=GET url="" hdr="" title="" stdin_body=""
@@ -27,6 +36,7 @@ for ((i = 0; i < ${#args[@]}; i++)); do
   esac
 done
 echo "$method $url" >> "$STUB_DIR/curl.requests"
+[ "${STUB_CURL_FAIL:-0}" = 1 ] && { echo "curl: (7) Failed to connect" >&2; exit 7; }
 
 path=${url#https://*/}; path=/${path#/}
 path=${path#/api/v1}
@@ -55,10 +65,12 @@ docs_json() { # docs_json <admin|reviewer>
   local items=()
   if [ "$1" = admin ]; then
     doc_gone demo || items+=('{"id":"doc-demo","title":"Demo document","currentVersionId":"ver-demo","role":"owner"}')
+    [ "${STUB_DUP_DEMO:-0}" = 1 ] && items+=('{"id":"doc-demo-2","title":"Demo document","currentVersionId":"ver-demo-2","role":"owner"}')
     doc_gone draft || items+=('{"id":"doc-draft","title":"Design review draft","currentVersionId":"ver-draft","role":"owner"}')
   else
     shared && items+=('{"id":"doc-draft","title":"Design review draft","currentVersionId":"ver-draft","role":"viewer"}')
     items+=('{"id":"doc-demo","title":"Demo document","currentVersionId":"ver-demo","role":"commenter"}')
+    [ "${STUB_REVIEWER_OWN_DRAFT:-0}" = 1 ] && items+=('{"id":"doc-rev-own","title":"Design review draft","currentVersionId":"ver-rev","role":"owner"}')
   fi
   local joined; joined=$(IFS=,; echo "${items[*]}")
   printf '{"items":[%s],"nextCursor":null}' "$joined"
@@ -67,16 +79,26 @@ docs_json() { # docs_json <admin|reviewer>
 case "$method $path" in
   "GET /") reply "${STUB_GATEWAY_CODE:-200}" '<html></html>' ;;
   "GET /health")
-    if [ "${STUB_REDIS_DOWN:-0}" = 1 ]; then reply 503 '{"status":"degraded","postgres":"ok","redis":"down"}'; fi
+    if [ "${STUB_REDIS_DOWN:-0}" = 1 ]; then
+      if [ "${STUB_HEALTH_MULTILINE:-0}" = 1 ]; then reply 503 $'{
+  "status": "degraded",
+  "postgres": "ok",
+  "redis": "down"
+}'; fi
+      reply 503 '{"status":"degraded","postgres":"ok","redis":"down"}'
+    fi
     if [ "${STUB_PG_DOWN:-0}" = 1 ]; then reply 503 '{"status":"degraded","postgres":"down","redis":"ok"}'; fi
     reply 200 '{"status":"ok","postgres":"ok","redis":"ok"}' ;;
   "POST /auth/register")
+    [ -z "${STUB_REGISTER_CODE:-}" ] || reply "$STUB_REGISTER_CODE" '{}'
     case "$stdin_body" in
       *admin@contentcollab.app*) if exists admin; then reply 409 '{"error":"Conflict"}'; fi; touch "$state/registered-admin" ;;
       *reviewer@contentcollab.app*) if exists reviewer; then reply 409 '{"error":"Conflict"}'; fi; touch "$state/registered-reviewer" ;;
     esac
     reply 201 '{"id":"user-new","email":"x"}' ;;
   "POST /auth/login")
+    [ "${STUB_LOGIN_HTML:-0}" = 1 ] && reply 200 '<html>proxy</html>'
+    [ "${STUB_LOGIN_NO_TOKEN:-0}" = 1 ] && reply 200 '{"user":{}}'
     case "$stdin_body" in
       *'"email":"admin@contentcollab.app"'*)
         exists admin && [[ "$stdin_body" == *'"password":"pw-admin-1"'* ]] && reply 200 '{"token":"tok-admin","user":{"id":"user-admin","email":"admin@contentcollab.app"}}' ;;
@@ -88,7 +110,7 @@ case "$method $path" in
     if [ "$who" = admin ]; then [ "${STUB_ADMIN_NOT_OPS:-0}" = 1 ] && reply 403 '{"error":"Forbidden"}'; reply 200 '{"namespace":"contentcollab"}'; fi
     if [ "$who" = reviewer ]; then [ "${STUB_REVIEWER_OPS:-0}" = 1 ] && reply 200 '{"namespace":"contentcollab"}'; reply 403 '{"error":"Forbidden"}'; fi
     reply 401 '{"error":"Unauthorized"}' ;;
-  "GET /documents"|"GET /documents?"*) [ -n "$who" ] || reply 401 '{}'; reply 200 "$(docs_json "$who")" ;;
+  "GET /documents"|"GET /documents?"*) [ -n "$who" ] || reply 401 '{}'; [ -z "${STUB_DOCS_CODE:-}" ] || reply "$STUB_DOCS_CODE" '{}'; reply 200 "$(docs_json "$who")" ;;
   "POST /documents")
     [ "$who" = admin ] || reply 403 '{}'
     case "$title" in
@@ -96,10 +118,10 @@ case "$method $path" in
       "Design review draft") touch "$state/uploaded-draft"; reply 201 '{"id":"doc-new-2","title":"Design review draft","currentVersionId":"ver-new-2","role":"owner"}' ;;
     esac
     reply 400 '{}' ;;
-  "GET /documents/doc-draft/shares"|"GET /documents/doc-new-2/shares")
+  "GET /documents/doc-draft/shares"*|"GET /documents/doc-new-2/shares"*)
     if shared; then reply 200 '{"items":[{"id":"share-1","documentId":"doc-draft","userId":"user-reviewer","role":"viewer"},{"id":"share-0","documentId":"doc-draft","userId":"user-admin","role":"owner"}],"nextCursor":null}'; fi
     reply 200 '{"items":[{"id":"share-0","documentId":"doc-draft","userId":"user-admin","role":"owner"}],"nextCursor":null}' ;;
-  "DELETE /documents/doc-draft/shares/share-1") touch "$state/share-deleted"; reply 204 '' ;;
+  "DELETE /documents/doc-draft/shares/share-1") touch "$state/share-deleted"; reply "${STUB_DELETE_CODE:-204}" '' ;;
   "GET /documents/"*"/content") reply "${STUB_CONTENT_CODE:-200}" 'Design review draft, a small text file.' ;;
 esac
 reply 404 '{"error":"stub: no route"}'

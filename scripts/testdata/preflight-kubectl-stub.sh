@@ -5,6 +5,7 @@
 #   STUB_POD_NOT_READY=<pod>   that pod is Running but not Ready
 #   STUB_NO_POD=<component>    no pod for that component (api, web, worker, postgres, redis, gateway)
 #   STUB_NO_HPA=1              the api autoscaler does not exist
+#   STUB_FAILED_POD=1          an evicted api pod (phase Failed) is listed
 echo "$*" >> "$STUB_DIR/kubectl.argv"
 
 pod() { # name phase ready
@@ -21,6 +22,7 @@ case "$*" in
       [ "${STUB_NO_POD:-}" = "$comp" ] && continue
       out="${out:+$out,}$(pod "$n" Running "$(ready_of "$n")")"
     done
+    [ "${STUB_FAILED_POD:-0}" = 1 ] && out="$out,{\"metadata\":{\"name\":\"api-evicted-abc\"},\"status\":{\"phase\":\"Failed\"}}"
     out="$out,$(pod db-migrate-042f43fdaaab1011b2e367bf424b022d80149f67-b4rvw Succeeded false)"
     printf '{"items":[%s]}\n' "$out" ;;
   *"get hpa api -o json"*)

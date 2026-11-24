@@ -169,3 +169,70 @@ test("on failure there is exactly one FAIL line and nothing after it", () => {
   const last = r.stdout.trimEnd().split("\n").pop();
   assert.ok(last.startsWith("FAIL:"), last);
 });
+
+// Verifier findings (E1 to E3, S1 to S3): every failure, wherever it happens, ends in exactly one FAIL line
+const oneFail = (r, pattern) => {
+  assert.equal(r.status, 1, r.out);
+  assert.equal(failLines(r).length, 1, r.out);
+  assert.ok(r.stdout.trimEnd().split("\n").pop().startsWith("FAIL:"), r.out);
+  if (pattern) assert.match(failLines(r)[0], pattern);
+};
+
+test("the document list answering 500 ends in one FAIL line, not a silent exit", () => {
+  oneFail(run({ STUB_DOCS_CODE: "500" }), /listing documents answered 500/);
+});
+
+test("a 200 that is not JSON ends in one FAIL line", () => {
+  oneFail(run({ STUB_LOGIN_HTML: "1" }), /unexpected reply/);
+});
+
+test("a sign-in reply without a token is not taken as signed in", () => {
+  oneFail(run({ STUB_LOGIN_NO_TOKEN: "1" }), /no token/);
+});
+
+test("a multi-line /health body still gives one FAIL line, naming only the part that is down", () => {
+  const r = run({ STUB_REDIS_DOWN: "1", STUB_HEALTH_MULTILINE: "1" });
+  oneFail(r, /redis/i);
+  assert.doesNotMatch(failLines(r)[0], /postgres/i);
+});
+
+test("PostgreSQL down names PostgreSQL and not Redis", () => {
+  const r = run({ STUB_PG_DOWN: "1" });
+  oneFail(r, /postgres/i);
+  assert.doesNotMatch(failLines(r)[0], /redis/i);
+});
+
+test("a Failed pod (an evicted api pod, say) stops it: only finished Jobs are ignored", () => {
+  oneFail(run({ STUB_FAILED_POD: "1" }), /api-evicted.*not Ready/);
+});
+
+test("two documents with the same title stop it rather than picking one", () => {
+  oneFail(run({ STUB_DUP_DEMO: "1" }), /more than one document titled "Demo document"/);
+});
+
+test("lists ask for up to 100 rows, since the default page is 20", () => {
+  run();
+  assert.ok(requests().filter((l) => l.includes("/documents?")).every((l) => l.includes("limit=100")), requests().join("\n"));
+});
+
+test("a reviewer-owned document with the draft's title is not mistaken for the share", () => {
+  const r = run({ STUB_REVIEWER_OWN_DRAFT: "1" });
+  assert.equal(r.status, 0, r.out);
+  assert.ok(!requests().some((l) => l.startsWith("DELETE ")), requests().join("\n"));
+});
+
+test("a failed share removal ends in one FAIL line", () => {
+  oneFail(run({ STUB_DRAFT_SHARED: "1", STUB_DELETE_CODE: "500" }), /removing the reviewer's share answered 500/);
+});
+
+test("a registration that answers something unexpected ends in one FAIL line", () => {
+  oneFail(run({ STUB_NO_REVIEWER: "1", STUB_REGISTER_CODE: "500" }), /registering reviewer@contentcollab.app answered 500/);
+});
+
+test("an unreachable site ends in one FAIL line", () => {
+  oneFail(run({ STUB_CURL_FAIL: "1" }), /could not reach/);
+});
+
+test("a missing admin password is named too", () => {
+  oneFail(run({ DEMO_ADMIN_PASSWORD: "" }), /DEMO_ADMIN_PASSWORD/);
+});

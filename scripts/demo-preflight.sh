@@ -53,12 +53,13 @@ auth_header() { # auth_header <who> <token>: the header file for -H, so the toke
 
 # 1. Pods
 pods=$(k -n "$NAMESPACE" get pods -o json) || fail "could not read pods in $NAMESPACE on $KUBE_CONTEXT"
-finished=$(jq '[.items[] | select(.status.phase == "Succeeded" or .status.phase == "Failed")] | length' <<<"$pods")
-notready=$(jq -r '.items[] | select(.status.phase != "Succeeded" and .status.phase != "Failed")
+# Only a Succeeded pod (a finished Job) is ignored: a Failed pod, an evicted api pod say, stops the check
+finished=$(jq '[.items[] | select(.status.phase == "Succeeded")] | length' <<<"$pods") || fail "unexpected reply from kubectl get pods"
+notready=$(jq -r 'first(.items[] | select(.status.phase != "Succeeded")
   | select(((.status.containerStatuses // []) | length == 0) or ((.status.containerStatuses // []) | any(.ready | not)))
-  | .metadata.name' <<<"$pods" | head -n 1)
+  | .metadata.name) // empty' <<<"$pods") || fail "unexpected reply from kubectl get pods"
 [ -z "$notready" ] || fail "pod $notready is not Ready in $NAMESPACE"
-names=$(jq -r '.items[] | select(.status.phase == "Running") | .metadata.name' <<<"$pods")
+names=$(jq -r '.items[] | select(.status.phase == "Running") | .metadata.name' <<<"$pods") || fail "unexpected reply from kubectl get pods"
 for comp in api web worker postgres redis contentcollab-nginx; do
   grep -q "^$comp-" <<<"$names" || fail "no ${comp/contentcollab-nginx/gateway} pod running in $NAMESPACE"
 done
@@ -66,7 +67,8 @@ ok "all $(grep -c . <<<"$names") pods Ready, all six components present (ignored
 
 # 2. Autoscaler
 hpa=$(k -n "$NAMESPACE" get hpa api -o json) || fail "no autoscaler named api in $NAMESPACE (kubectl get hpa)"
-ok "autoscaler api: $(jq -r '.status.currentReplicas' <<<"$hpa") running, may use $(jq -r '.spec.minReplicas' <<<"$hpa") to $(jq -r '.spec.maxReplicas' <<<"$hpa")"
+hpa_line=$(jq -r '"\(.status.currentReplicas) running, may use \(.spec.minReplicas) to \(.spec.maxReplicas)"' <<<"$hpa") || fail "unexpected reply from kubectl get hpa"
+ok "autoscaler api: $hpa_line"
 
 # 3. Gateway and health
 req GET "$BASE/"
@@ -74,7 +76,8 @@ req GET "$BASE/"
 ok "$BASE/ answers 200 over HTTPS"
 req GET "$BASE/health"
 for part in postgres redis; do
-  [ "$(jq -r --arg p "$part" '.[$p] // "missing"' <<<"$REPLY_BODY" 2>/dev/null)" = ok ] || fail "/health says $part is not ok (HTTP $REPLY_CODE): $(head -c 120 <<<"$REPLY_BODY")"
+  state=$(jq -r --arg p "$part" '.[$p] // "missing"' <<<"$REPLY_BODY" 2>/dev/null) || state="unreadable"
+  [ "$state" = ok ] || fail "/health: $part is \"$state\" (HTTP $REPLY_CODE)"
 done
 ok "/health: postgres and redis ok"
 
@@ -86,7 +89,7 @@ done
 # login <email> <password>: sets REPLY_CODE and REPLY_BODY
 login() {
   local body
-  body=$(E="$1" P="$2" jq -nc '{email: env.E, password: env.P}')
+  body=$(E="$1" P="$2" jq -nc '{email: env.E, password: env.P}') || fail "could not build the sign-in body"
   req POST "$API/auth/login" -H 'Content-Type: application/json' --data-binary @- <<<"$body"
 }
 # account <label> <email> <password> <display name>: signs in, registering the account first if it is new; sets ACCOUNT_TOKEN and ACCOUNT_ID
@@ -95,7 +98,7 @@ account() {
   local label=$1 email=$2 password=$3 display=$4 body
   login "$email" "$password"
   if [ "$REPLY_CODE" = 401 ]; then
-    body=$(E="$email" P="$password" D="$display" jq -nc '{email: env.E, password: env.P, displayName: env.D}')
+    body=$(E="$email" P="$password" D="$display" jq -nc '{email: env.E, password: env.P, displayName: env.D}') || fail "could not build the registration body"
     req POST "$API/auth/register" -H 'Content-Type: application/json' --data-binary @- <<<"$body"
     case "$REPLY_CODE" in
       201) echo "registered $email" ;;
@@ -105,8 +108,8 @@ account() {
     login "$email" "$password"
   fi
   [ "$REPLY_CODE" = 200 ] || fail "signing in as $email answered $REPLY_CODE"
-  ACCOUNT_TOKEN=$(jq -r '.token' <<<"$REPLY_BODY")
-  ACCOUNT_ID=$(jq -r '.user.id' <<<"$REPLY_BODY")
+  ACCOUNT_TOKEN=$(jq -er '.token // empty' <<<"$REPLY_BODY" 2>/dev/null) || fail "unexpected reply from $API/auth/login: no token for $email"
+  ACCOUNT_ID=$(jq -er '.user.id // empty' <<<"$REPLY_BODY" 2>/dev/null) || fail "unexpected reply from $API/auth/login: no user id for $email"
   ok "$email signs in"
 }
 account admin "$ADMIN_EMAIL" "$DEMO_ADMIN_PASSWORD" "Demo admin"
@@ -121,25 +124,37 @@ req GET "$API/ops" -H "$REVIEWER_HDR"
 [ "$REPLY_CODE" = 403 ] || fail "$REVIEWER_EMAIL is allowed into /ops ($REPLY_CODE): the demo shows it being refused"
 ok "/ops lets the admin in and refuses the reviewer"
 
-# 5. Documents: find_doc <header> <title> prints "id versionId" or nothing
+# 5. Documents. These helpers set globals instead of printing, so a failure is never swallowed by a command substitution.
+# find_doc <header> <title>: sets FOUND to "id versionId" of the one document with exactly that title, or "" when there is none
+FOUND=""
 find_doc() {
-  local q
-  q=$(jq -rn --arg t "$2" '$t | @uri')
-  req GET "$API/documents?q=$q" -H "$1"
+  local q n
+  q=$(jq -rn --arg t "$2" '$t | @uri') || fail "could not encode the title"
+  req GET "$API/documents?limit=100&q=$q" -H "$1"
   [ "$REPLY_CODE" = 200 ] || fail "listing documents answered $REPLY_CODE"
-  jq -r --arg t "$2" '[.items[] | select(.title == $t)] | first // empty | "\(.id) \(.currentVersionId)"' <<<"$REPLY_BODY"
+  n=$(jq -er --arg t "$2" '[.items[] | select(.title == $t)] | length' <<<"$REPLY_BODY" 2>/dev/null) || fail "unexpected reply from $API/documents"
+  [ "$n" -le 1 ] || fail "more than one document titled \"$2\" ($n): delete the extra ones"
+  FOUND=$(jq -r --arg t "$2" '[.items[] | select(.title == $t)] | first // empty | "\(.id) \(.currentVersionId)"' <<<"$REPLY_BODY") || fail "unexpected reply from $API/documents"
+}
+# reviewer_sees <document id>: sets SEES to yes or no, from the reviewer's own list
+SEES=""
+reviewer_sees() {
+  req GET "$API/documents?limit=100" -H "$REVIEWER_HDR"
+  [ "$REPLY_CODE" = 200 ] || fail "listing the reviewer's documents answered $REPLY_CODE"
+  SEES=$(jq -er --arg id "$1" 'if any(.items[]; .id == $id) then "yes" else "no" end' <<<"$REPLY_BODY" 2>/dev/null) || fail "unexpected reply from $API/documents"
 }
 # ensure_doc <title>: finds the admin's document or uploads one; sets DOC_ID and DOC_VERSION
 DOC_ID="" DOC_VERSION=""
 ensure_doc() {
   local title=$1 found file
-  found=$(find_doc "$ADMIN_HDR" "$title")
+  find_doc "$ADMIN_HDR" "$title"
+  found=$FOUND
   if [ -z "$found" ]; then
     file="$work/upload.txt"
     printf '%s\nA small text file for the live demo, uploaded by scripts/demo-preflight.sh.\n' "$title" > "$file"
     req POST "$API/documents" -H "$ADMIN_HDR" -F "title=$title" -F "file=@$(winpath "$file");type=text/plain"
     [ "$REPLY_CODE" = 201 ] || fail "uploading \"$title\" answered $REPLY_CODE"
-    found=$(jq -r '"\(.id) \(.currentVersionId)"' <<<"$REPLY_BODY")
+    found=$(jq -er '"\(.id) \(.currentVersionId)"' <<<"$REPLY_BODY" 2>/dev/null) || fail "unexpected reply from the upload of \"$title\""
     echo "uploaded \"$title\""
   fi
   DOC_ID=${found% *}
@@ -151,14 +166,16 @@ ensure_doc "$DRAFT_TITLE"
 DRAFT_ID=$DOC_ID DRAFT_VERSION=$DOC_VERSION
 
 # The share step needs one document the reviewer cannot see yet
-if [ -n "$(find_doc "$REVIEWER_HDR" "$DRAFT_TITLE")" ]; then
-  req GET "$API/documents/$DRAFT_ID/shares" -H "$ADMIN_HDR"
+reviewer_sees "$DRAFT_ID"
+if [ "$SEES" = yes ]; then
+  req GET "$API/documents/$DRAFT_ID/shares?limit=100" -H "$ADMIN_HDR"
   [ "$REPLY_CODE" = 200 ] || fail "listing the shares of \"$DRAFT_TITLE\" answered $REPLY_CODE"
-  share_id=$(jq -r --arg u "$REVIEWER_ID" '[.items[] | select(.userId == $u)] | first | .id // empty' <<<"$REPLY_BODY")
+  share_id=$(jq -r --arg u "$REVIEWER_ID" '[.items[] | select(.userId == $u)] | first | .id // empty' <<<"$REPLY_BODY" 2>/dev/null) || fail "unexpected reply from the share list of \"$DRAFT_TITLE\""
   [ -n "$share_id" ] || fail "the reviewer can see \"$DRAFT_TITLE\" but has no share by user id (a link share?): remove it by hand"
   req DELETE "$API/documents/$DRAFT_ID/shares/$share_id" -H "$ADMIN_HDR"
   [ "$REPLY_CODE" = 204 ] || fail "removing the reviewer's share answered $REPLY_CODE"
-  [ -z "$(find_doc "$REVIEWER_HDR" "$DRAFT_TITLE")" ] || fail "the reviewer still sees \"$DRAFT_TITLE\" after the share was removed"
+  reviewer_sees "$DRAFT_ID"
+  [ "$SEES" = no ] || fail "the reviewer still sees \"$DRAFT_TITLE\" after the share was removed"
   echo "removed the reviewer's share of \"$DRAFT_TITLE\""
 fi
 ok "the reviewer cannot see \"$DRAFT_TITLE\" yet"
