@@ -134,6 +134,8 @@ Drawn from the record; `[TODO: team, in our own words]`:
 - A merge can silently break a test: a missing `});` left one test inside another (BUILD_LOG, 22 November); the format check stopped CI before the test run, which is why each fault now gets a check that fails first.
 - A web client that depends on one teammate's pull request is a schedule risk; the minimal client (D27) let the demo not depend on it.
 - Known gaps at 23 November: no PDF or image rendering in the web client; no search, tags or delete on the documents page; pins stored but not drawn; comments by other users show as "Member xxxxxxxx"; the restart drill was run through the API on the live site but not yet clicked in a browser; email on share and mention not started.
+- Future work: embed the Grafana dashboard in the Operations page.
+- Future work: scrape the kubelet's volume statistics, so the database disk shows a used percent and not "not measured" (D35).
 
 ## Repository layout (for the submitted README)
 
