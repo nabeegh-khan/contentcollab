@@ -259,6 +259,16 @@ describe("alertsFrom", () => {
   });
 
   it("takes the busiest node, over node usage divided by what Kubernetes can allocate", () => {
+    // One series per node on both sides of the join, as the dashboard's own expressions do, so a duplicate
+    // scrape of a node cannot make the match many-to-one
+    expect(ALERT_QUERIES.cpu).toContain("sum by (node) (rate(node_cpu_usage_seconds_total[2m]))");
+    expect(ALERT_QUERIES.cpu).toContain(
+      'sum by (node) (kube_node_status_allocatable{resource="cpu"})',
+    );
+    expect(ALERT_QUERIES.memory).toContain("sum by (node) (node_memory_working_set_bytes)");
+    expect(ALERT_QUERIES.memory).toContain(
+      'sum by (node) (kube_node_status_allocatable{resource="memory"})',
+    );
     expect(ALERT_QUERIES.cpu).toContain("max(");
     expect(ALERT_QUERIES.cpu).toContain("node_cpu_usage_seconds_total");
     expect(ALERT_QUERIES.cpu).toContain('kube_node_status_allocatable{resource="cpu"}');

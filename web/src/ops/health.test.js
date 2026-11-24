@@ -37,6 +37,7 @@ const workloads = [
 const snapshot = (over = {}) => ({
   generatedAt: GENERATED_AT,
   errors: {},
+  alerts: { thresholdPercent: 80 },
   containers,
   workloads,
   traffic: {
@@ -128,6 +129,10 @@ describe("healthLines", () => {
     expect(bad.text).toContain("api 1/2");
   });
 
+  it("is Not measured, not Check with no text, when no workload was found", () => {
+    expect(line(snapshot({ workloads: [] }), "replicas").word).toBe("Not measured");
+  });
+
   it("is Not measured when the workloads could not be read", () => {
     const l = line(snapshot({ workloads: null, errors: { workloads: "unavailable" } }), "replicas");
     expect(l.word).toBe("Not measured");
@@ -161,6 +166,29 @@ describe("healthLines", () => {
     expect(l.text).toBe("no requests in the last minute, no requests to count in the last 5 min");
   });
 
+  it("is Not measured when the request series is missing, which is not the same as no requests", () => {
+    const missing = {
+      ...snapshot().traffic,
+      noTraffic: true,
+      requestsPerSecond: null,
+      p95Seconds: null,
+      errorPercent5m: null,
+    };
+    const l = line(snapshot({ traffic: missing }), "traffic");
+    expect(l.word).toBe("Not measured");
+    expect(l.text).toContain("no request series");
+  });
+
+  it("is Not measured, not OK, when there is traffic but the p95 or the errors are missing", () => {
+    const base = snapshot().traffic;
+    expect(line(snapshot({ traffic: { ...base, p95Seconds: null } }), "traffic").word).toBe(
+      "Not measured",
+    );
+    expect(line(snapshot({ traffic: { ...base, errorPercent5m: null } }), "traffic").word).toBe(
+      "Not measured",
+    );
+  });
+
   it("is Not measured when Prometheus did not answer", () => {
     const l = line(
       snapshot({ traffic: null, errors: { traffic: "no answer within 1000 ms" } }),
@@ -172,7 +200,7 @@ describe("healthLines", () => {
 
   it("shows the claim and its size, and says the used space is not measured when Prometheus has no series", () => {
     const l = line(snapshot(), "disk");
-    expect(l.word).toBe("OK");
+    expect(l.word).toBe("Not measured");
     expect(l.text).toBe("claim data-postgres-0 Bound, 5Gi, used space not measured");
   });
 
@@ -182,6 +210,18 @@ describe("healthLines", () => {
     expect(line(withUsed(12.4), "disk").text).toBe("claim data-postgres-0 Bound, 5Gi, 12% used");
     expect(line(withUsed(12.4), "disk").word).toBe("OK");
     expect(line(withUsed(86), "disk").word).toBe("Check");
+    expect(line(withUsed(80), "disk").word).toBe("OK");
+  });
+
+  it("takes the limit from the API's alert threshold, not from a copy of its own", () => {
+    const base = snapshot().storage;
+    const strict = snapshot({
+      alerts: { thresholdPercent: 50 },
+      storage: { ...base, diskUsedPercent: 60 },
+    });
+    expect(line(strict, "disk").word).toBe("Check");
+    const noAlerts = snapshot({ alerts: null, storage: { ...base, diskUsedPercent: 99 } });
+    expect(line(noAlerts, "disk").word).toBe("OK");
   });
 
   it("is Check when the claim is not Bound", () => {
@@ -246,6 +286,12 @@ describe("backupText", () => {
     expect(backupText(backup, generatedAt)).toBe(
       "FAILED 13 h 45 min ago; last success 37 h 59 min ago",
     );
+  });
+
+  it("uses the CronJob's last success when its Jobs are gone", () => {
+    expect(
+      backupText({ lastSucceededAt: "2026-11-24T08:00:13Z", lastRun: null }, generatedAt),
+    ).toBe("succeeded 13 h 59 min ago");
   });
 
   it("says running, and no run yet", () => {

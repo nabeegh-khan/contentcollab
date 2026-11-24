@@ -7,8 +7,6 @@ const MS_PER_HOUR = 3600 * MS_PER_SECOND;
 const ROUND_TENTHS = 10;
 const ERROR_CHECK_PERCENT = 1;
 const P95_CHECK_SECONDS = 1;
-// The page's own limit for a full disk is the one of the DigitalOcean alert policies (scripts/alerts.sh)
-const DISK_CHECK_PERCENT = 80;
 // Prometheus returns the top bucket's bound when the quantile lies above it (D31)
 const TOP_BUCKET_SECONDS = 5;
 
@@ -18,6 +16,7 @@ export const VIEWS = {
   unknown: { word: "Not measured", shape: "○" },
 };
 
+const isMissing = (value) => value === null || value === undefined;
 const tenths = (value) => Math.round(value * ROUND_TENTHS) / ROUND_TENTHS;
 const plural = (count, one, many) => `${count} ${count === 1 ? one : many}`;
 const line = (key, title, state, text) => ({ key, title, state, ...VIEWS[state], text });
@@ -44,9 +43,11 @@ export function alertStatus(valuePercent, thresholdPercent) {
 /** "succeeded 14 h ago", "FAILED 2 min ago; last success 1 h ago", "running now", "no run yet". */
 export function backupText(backup, nowMs) {
   const run = backup?.lastRun;
-  if (!run) return "no run yet";
   const ago = (iso) =>
     `${ageText(Math.max(0, Math.round((nowMs - Date.parse(iso)) / MS_PER_SECOND)))} ago`;
+  // No Job object is left (old ones are cleaned up), but the CronJob remembers its last success
+  if (!run)
+    return backup?.lastSucceededAt ? `succeeded ${ago(backup.lastSucceededAt)}` : "no run yet";
   if (run.result === "Running") return "running now";
   if (run.result === "Succeeded")
     return run.finishedAt ? `succeeded ${ago(run.finishedAt)}` : "succeeded";
@@ -81,7 +82,8 @@ function containersLine(data) {
 function replicasLine(data) {
   const rows = data.workloads;
   if (!rows) return notAvailable("replicas", "Replicas", data.errors?.workloads);
-  const healthy = rows.length > 0 && rows.every((w) => w.ready >= w.desired);
+  if (rows.length === 0) return notAvailable("replicas", "Replicas", "no workload found");
+  const healthy = rows.every((w) => w.ready >= w.desired);
   return line(
     "replicas",
     "Replicas",
@@ -93,6 +95,10 @@ function replicasLine(data) {
 function trafficLine(data) {
   const t = data.traffic;
   if (!t) return notAvailable("traffic", "Traffic", data.errors?.traffic);
+  // A missing request series is not "no requests": zero is a measured rate, null is not
+  if (t.requestsPerSecond === null || t.requestsPerSecond === undefined) {
+    return line("traffic", "Traffic", "unknown", "not available: Prometheus has no request series");
+  }
   const errors =
     t.errorPercent5m === null || t.errorPercent5m === undefined
       ? "no requests to count in the last 5 min"
@@ -100,10 +106,13 @@ function trafficLine(data) {
   const text = t.noTraffic
     ? `no requests in the last minute, ${errors}`
     : `${tenths(t.requestsPerSecond)} requests/s, ${errors}, p95 ${p95Text(t.p95Seconds)}`;
+  // With live traffic, a missing p95 or error figure means the line cannot say OK
+  const missing = !t.noTraffic && (isMissing(t.p95Seconds) || isMissing(t.errorPercent5m));
   const bad =
     (t.errorPercent5m ?? 0) > ERROR_CHECK_PERCENT ||
     (!t.noTraffic && (t.p95Seconds ?? 0) >= P95_CHECK_SECONDS);
-  return line("traffic", "Traffic", bad ? "check" : "ok", text);
+  const state = bad ? "check" : missing ? "unknown" : "ok";
+  return line("traffic", "Traffic", state, text);
 }
 
 function diskLine(data) {
@@ -112,11 +121,15 @@ function diskLine(data) {
   const used = data.storage.diskUsedPercent;
   const measured = used !== null && used !== undefined;
   const usedText = measured ? `${Math.round(used)}% used` : "used space not measured";
-  const bad = claim.phase !== "Bound" || (measured && used > DISK_CHECK_PERCENT);
+  // The limit is the API's alert threshold (scripts/alerts.sh), not a copy kept here
+  const limit = data.alerts?.thresholdPercent;
+  const bad = claim.phase !== "Bound" || (measured && limit !== undefined && used > limit);
+  // Only the claim is known when the used space is not: that is not "OK" for the disk
+  const state = bad ? "check" : measured ? "ok" : "unknown";
   return line(
     "disk",
     "Database disk",
-    bad ? "check" : "ok",
+    state,
     `claim ${claim.name} ${claim.phase}, ${claim.capacity ?? "size unknown"}, ${usedText}`,
   );
 }

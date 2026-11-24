@@ -9,8 +9,8 @@ const PERCENT = 100;
 
 // The busiest node: any one droplet over its limit is enough for DigitalOcean to send the email
 export const ALERT_QUERIES = {
-  cpu: `${PERCENT} * max(rate(node_cpu_usage_seconds_total[2m]) / on(node) kube_node_status_allocatable{resource="cpu"})`,
-  memory: `${PERCENT} * max(node_memory_working_set_bytes / on(node) kube_node_status_allocatable{resource="memory"})`,
+  cpu: `${PERCENT} * max(sum by (node) (rate(node_cpu_usage_seconds_total[2m])) / on(node) sum by (node) (kube_node_status_allocatable{resource="cpu"}))`,
+  memory: `${PERCENT} * max(sum by (node) (node_memory_working_set_bytes) / on(node) sum by (node) (kube_node_status_allocatable{resource="memory"}))`,
 } as const;
 
 export interface AlertRow {
