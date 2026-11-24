@@ -42,9 +42,10 @@ describe("type and layout for a lecture room", () => {
   });
 
   it("makes inputs and buttons 52px tall (2.6rem)", () => {
-    expect(remOf(appCss, ".field input,\n.field textarea", "min-height")).toBeGreaterThanOrEqual(
-      2.6,
-    );
+    // The select shares the inputs' rule (demo polish, 24 Nov), so a select is as tall as a text field
+    expect(
+      remOf(appCss, ".field input,\n.field select,\n.field textarea", "min-height"),
+    ).toBeGreaterThanOrEqual(2.6);
     expect(remOf(appCss, "button", "min-height")).toBeGreaterThanOrEqual(2.6);
   });
 
@@ -143,7 +144,7 @@ describe("the dashboard palette", () => {
   });
 
   it("keeps field edges visible: the input border against the card is at least 3:1", () => {
-    expect(rule(appCss, ".field input,\n.field textarea")).toMatch(
+    expect(rule(appCss, ".field input,\n.field select,\n.field textarea")).toMatch(
       /border:\s*2px solid var\(--text-2\)/,
     );
     expect(contrast(variable("text-2"), variable("card"))).toBeGreaterThanOrEqual(3);

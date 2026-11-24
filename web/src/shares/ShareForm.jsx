@@ -90,7 +90,11 @@ export default function ShareForm({ token, documentId: chosen = "", choiceCount 
           </select>
         </label>
         {problem && <p role="alert">{problem}</p>}
-        {done && <p role="status">{done}</p>}
+        {done && (
+          <p role="status" className="success">
+            {done}
+          </p>
+        )}
         <button type="submit" disabled={busy}>
           Share
         </button>

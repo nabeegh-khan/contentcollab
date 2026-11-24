@@ -4,7 +4,11 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
-const css = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "app.css"), "utf8");
+// Comments are dropped, so a rule's selector is only its selector
+const css = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "app.css"), "utf8").replace(
+  /\/\*[\s\S]*?\*\//g,
+  "",
+);
 
 // The declarations of the last rule whose selector list contains `selector`
 function declarationsOf(selector) {

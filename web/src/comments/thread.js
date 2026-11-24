@@ -69,8 +69,11 @@ export function splitMentions(body) {
   return parts;
 }
 
-// The API sends an author id and no name (D28), so only "You" and a short id can be shown
-export function authorLabel(authorId, currentUserId) {
+// "You" for the signed-in user, else the author's display name when the API sends it (authorDisplayName),
+// else a short id. A blank name counts as no name.
+export function authorLabel(authorId, currentUserId, displayName) {
   if (authorId && authorId === currentUserId) return "You";
+  const name = typeof displayName === "string" ? displayName.trim() : "";
+  if (name) return name;
   return authorId ? `Member ${authorId.slice(0, 8)}` : "Member";
 }

@@ -18,3 +18,8 @@ export function createDocument(token, file, title) {
   if (trimmed) form.append("title", trimmed);
   return request("/documents", { method: "POST", body: form, token });
 }
+
+// One document's own fields (title, role, current version); the page heading shows its title
+export function getDocument(token, documentId) {
+  return request(`/documents/${documentId}`, { token });
+}

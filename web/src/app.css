@@ -123,6 +123,7 @@ main {
 }
 
 .field input,
+.field select,
 .field textarea {
   box-sizing: border-box;
   width: 100%;
@@ -215,6 +216,19 @@ button.link {
   font-weight: 600;
 }
 
+/* A success message is a visible status line: a green edge and a bold word, never small grey text */
+.success {
+  margin: 0 0 1rem;
+  padding: 0.6rem 0.9rem;
+  border: 2px solid #1b6b2a;
+  border-left-width: 8px;
+  border-radius: 8px;
+  background: #e8f5ec;
+  color: var(--text-h);
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
 .pending {
   font-style: italic;
   color: var(--text-2);
@@ -290,9 +304,36 @@ button.link {
 
 .ops-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 16px;
   margin-top: 12px;
+}
+
+/* Column spans: Containers beside Recent events on the first row, the rest in pairs, the charts across */
+.ops-card {
+  grid-column: span 3;
+}
+
+.ops-span-4 {
+  grid-column: span 4;
+  overflow-x: auto;
+}
+
+.ops-span-2 {
+  grid-column: span 2;
+}
+
+.ops-span-6 {
+  grid-column: span 6;
+}
+
+@media (max-width: 900px) {
+  .ops-card,
+  .ops-span-4,
+  .ops-span-2,
+  .ops-span-6 {
+    grid-column: 1 / -1;
+  }
 }
 
 .ops-card {
@@ -321,7 +362,9 @@ button.link {
 }
 
 .ops-big {
+  margin: 0 0 8px;
   font-size: 28px;
+  line-height: 1.2;
   color: var(--text-h);
 }
 
@@ -351,33 +394,47 @@ button.link {
   padding-left: 20px;
 }
 
-/* Fixes after review: key numbers at 48 px (D31), the containers card across the whole row, long lists capped */
-.ops-big {
-  font-size: 48px;
-  line-height: 1.1;
-}
-
-.ops-card:first-child {
-  grid-column: 1 / -1;
-  overflow-x: auto;
-}
-
-.ops-card ul {
+/* The request log is the one list with a height cap: it can hold many lines. Other lists are short by design
+   (the events strip shows 8, the pod legend is a grid), so no list of a card traps the mouse wheel. */
+.ops-capped {
   max-height: 9em;
   overflow-y: auto;
 }
 
 /* Restart drill (D31): large buttons and a plain dialog, readable from the back of a lecture room */
+/* One action bar under the heading: the restart buttons and the Grafana link in a row, the question and the
+   result directly below it */
+.ops-actionbar {
+  margin-top: 12px;
+}
+
+.ops-actionrow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
 .ops-action,
 .ops-dialog button {
-  display: block;
-  margin: 8px 0;
+  display: inline-block;
+  margin: 0;
   padding: 12px 20px;
   font-size: 22px;
 }
 
 .ops-dialog button {
-  display: inline-block;
+  margin-right: 12px;
+}
+
+.ops-link {
+  box-sizing: border-box;
+  border: 2px solid var(--text-h);
+  border-radius: 8px;
+  background: var(--card);
+  color: var(--text-h);
+  line-height: 1.2;
+  text-decoration: none;
 }
 
 .ops-dialog {
@@ -399,11 +456,43 @@ button.link {
   grid-column: 1 / -1;
 }
 
+.ops-charts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+  gap: 16px;
+}
+
+.ops-figure {
+  margin: 0;
+}
+
+.ops-figcaption {
+  margin-bottom: 4px;
+  font-weight: 700;
+  color: var(--text-h);
+}
+
 .ops-chart {
-  max-height: 220px;
+  max-height: 260px;
   color: var(--text-h);
   border: 1px solid var(--border);
   border-radius: 6px;
+}
+
+/* The pod legend: a swatch with the same dash as the line, then the pod and its value. A grid, not a scroll box. */
+.ops .ops-legend {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(15em, 1fr));
+  gap: 2px 12px;
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 20px;
+}
+
+.ops-swatch {
+  vertical-align: middle;
+  color: var(--text-h);
 }
 
 .ops-card caption {

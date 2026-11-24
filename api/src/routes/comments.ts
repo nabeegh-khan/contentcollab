@@ -132,17 +132,19 @@ router.patch(
 
       const updatedResult = await client.query(
         `SELECT
-           id,
-           version_id AS "versionId",
-           author_id AS "authorId",
-           parent_id AS "parentId",
-           body,
-           anchor,
-           resolved,
-           created_at AS "createdAt",
-           updated_at AS "updatedAt"
-         FROM comments
-         WHERE id = $1`,
+           c.id,
+           c.version_id AS "versionId",
+           c.author_id AS "authorId",
+           u.display_name AS "authorDisplayName",
+           c.parent_id AS "parentId",
+           c.body,
+           c.anchor,
+           c.resolved,
+           c.created_at AS "createdAt",
+           c.updated_at AS "updatedAt"
+         FROM comments c
+         LEFT JOIN users u ON u.id = c.author_id
+         WHERE c.id = $1`,
         [responseId],
       );
       const updatedComment = updatedResult.rows[0];
@@ -202,20 +204,26 @@ router.post(
       }
 
       const commentResult = await client.query(
-        `INSERT INTO comments (
-           version_id, author_id, parent_id, body, anchor
+        `WITH inserted AS (
+           INSERT INTO comments (
+             version_id, author_id, parent_id, body, anchor
+           )
+           VALUES ($1, $2, $3, $4, $5::jsonb)
+           RETURNING *
          )
-         VALUES ($1, $2, $3, $4, $5::jsonb)
-         RETURNING
-           id,
-           version_id AS "versionId",
-           author_id AS "authorId",
-           parent_id AS "parentId",
-           body,
-           anchor,
-           resolved,
-           created_at AS "createdAt",
-           updated_at AS "updatedAt"`,
+         SELECT
+           i.id,
+           i.version_id AS "versionId",
+           i.author_id AS "authorId",
+           u.display_name AS "authorDisplayName",
+           i.parent_id AS "parentId",
+           i.body,
+           i.anchor,
+           i.resolved,
+           i.created_at AS "createdAt",
+           i.updated_at AS "updatedAt"
+         FROM inserted i
+         LEFT JOIN users u ON u.id = i.author_id`,
         [versionId, authorId, parentId ?? null, body, JSON.stringify(anchor ?? null)],
       );
 
@@ -366,6 +374,7 @@ router.get(
         c.id,
         c.version_id AS "versionId",
         c.author_id AS "authorId",
+        author.display_name AS "authorDisplayName",
         c.parent_id AS "parentId",
         c.body,
         c.anchor,
@@ -376,6 +385,7 @@ router.get(
       FROM comments c
       JOIN comment_roots roots ON roots.id = c.id
       JOIN comments root ON root.id = roots.root_id
+      LEFT JOIN users author ON author.id = c.author_id
       WHERE c.version_id = $1
         AND ($2::boolean IS NULL OR root.resolved = $2)
         AND ($3::bigint IS NULL OR c.sequence_number > $3::bigint)

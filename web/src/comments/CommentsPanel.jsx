@@ -127,7 +127,7 @@ export default function CommentsPanel({
     return (
       <div className="comment">
         <p className="comment-meta">
-          <span>{authorLabel(comment.authorId, user.id)}</span>{" "}
+          <span>{authorLabel(comment.authorId, user.id, comment.authorDisplayName)}</span>{" "}
           <time dateTime={comment.createdAt}>
             {formatClock(comment.createdAt)} ({relativeTime(comment.createdAt, now)})
           </time>

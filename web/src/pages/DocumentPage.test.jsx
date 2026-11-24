@@ -16,7 +16,9 @@ function renderPage({ document: doc = { id: DOC, title: "Design review draft" } 
     });
   const fetchMock = vi.fn().mockImplementation(async (url) => {
     if (url === `/api/v1/documents/${DOC}`) {
-      return doc === null ? json(404, { error: "Document Not Found", code: "NOT_FOUND" }) : json(200, doc);
+      return doc === null
+        ? json(404, { error: "Document Not Found", code: "NOT_FOUND" })
+        : json(200, doc);
     }
     return json(200, { items: [], nextCursor: null });
   });

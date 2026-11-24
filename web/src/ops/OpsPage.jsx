@@ -118,11 +118,6 @@ export default function OpsPage({ token }) {
       <header className="ops-head">
         <h1>Operations</h1>
         <p>{age === null ? "Loading..." : `Updated ${agoText(age)}`}</p>
-        {isWebAddress(data?.links?.grafana) && (
-          <a href={data.links.grafana} target="_blank" rel="noreferrer">
-            Open Grafana for the details
-          </a>
-        )}
       </header>
       {(stale || (failed && !data)) && (
         <p role="alert" className="ops-banner">
@@ -132,18 +127,32 @@ export default function OpsPage({ token }) {
         </p>
       )}
       {data && (
-        <div className="ops-grid">
-          <ContainersCard data={data} />
-          <HpaCard data={data} />
-          <SeriesCard token={token} />
-          <NodesCard data={data} />
-          <StorageCard data={data} />
-          <QueueCard data={data} />
-          <TrafficCard data={data} />
-          <DrillCard token={token} nextAllowedAt={data.drills?.nextAllowedAt ?? null} />
-          <EventsCard data={data} />
-          <LogsCard data={data} />
-        </div>
+        <>
+          {/* One bar under the heading holds every action of the demo; its question and result stay beside it */}
+          <DrillCard token={token} nextAllowedAt={data.drills?.nextAllowedAt ?? null}>
+            {isWebAddress(data.links?.grafana) && (
+              <a
+                className="ops-action ops-link"
+                href={data.links.grafana}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Open Grafana for the details
+              </a>
+            )}
+          </DrillCard>
+          <div className="ops-grid">
+            <ContainersCard data={data} />
+            <EventsCard data={data} />
+            <HpaCard data={data} />
+            <TrafficCard data={data} />
+            <SeriesCard token={token} />
+            <NodesCard data={data} />
+            <StorageCard data={data} />
+            <QueueCard data={data} />
+            <LogsCard data={data} />
+          </div>
+        </>
       )}
     </section>
   );

@@ -1,4 +1,5 @@
-// The restart drill card (D31): ask first, then evict one pod, and watch Kubernetes replace it.
+// The restart drill as one action bar (D31, demo polish 24 Nov): ask first, then evict one pod, and watch
+// Kubernetes replace it. `children` (the Grafana link) sit in the same bar, so one row holds every demo action.
 import { useEffect, useRef, useState } from "react";
 import { ApiError } from "../api/client.js";
 import { startDrill } from "./api.js";
@@ -8,15 +9,15 @@ const MS_PER_SECOND = 1000;
 const UNAUTHORIZED = 401;
 
 const CHOICES = {
-  api: {
-    button: "Restart an API pod",
-    question: "Restart an API pod?",
-    text: "One API pod will stop. Kubernetes will start a new one. Users are not affected: the other pod keeps serving.",
-  },
   postgres: {
     button: "Restart the database pod",
     question: "Restart the database pod?",
     text: "The database pod will stop and Kubernetes will start it again. The app pauses for about 30 seconds. Data stays on its volume.",
+  },
+  api: {
+    button: "Restart an API pod",
+    question: "Restart an API pod?",
+    text: "One API pod will stop. Kubernetes will start a new one. Users are not affected: the other pod keeps serving.",
   },
 };
 
@@ -36,7 +37,7 @@ const toMs = (iso) => {
   return Number.isFinite(ms) ? ms : null;
 };
 
-export default function DrillCard({ token, nextAllowedAt, onStarted }) {
+export default function DrillCard({ token, nextAllowedAt, onStarted, children }) {
   const [asking, setAsking] = useState(null);
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(null);
@@ -148,23 +149,24 @@ export default function DrillCard({ token, nextAllowedAt, onStarted }) {
   }
 
   return (
-    <section className="ops-card" aria-labelledby="ops-restart-a-pod">
-      <h2 id="ops-restart-a-pod">Restart a pod</h2>
-      <p>Stop one pod on purpose and watch Kubernetes replace it while the data stays.</p>
-      {Object.entries(CHOICES).map(([target, choice]) => (
-        <button
-          key={target}
-          type="button"
-          className="ops-action"
-          disabled={waitSeconds > 0 || busy}
-          onClick={(event) => {
-            opener.current = event.currentTarget;
-            setAsking(target);
-          }}
-        >
-          {choice.button}
-        </button>
-      ))}
+    <div className="ops-actionbar" role="group" aria-label="Operations actions">
+      <div className="ops-actionrow">
+        {Object.entries(CHOICES).map(([target, choice]) => (
+          <button
+            key={target}
+            type="button"
+            className="ops-action"
+            disabled={waitSeconds > 0 || busy}
+            onClick={(event) => {
+              opener.current = event.currentTarget;
+              setAsking(target);
+            }}
+          >
+            {choice.button}
+          </button>
+        ))}
+        {children}
+      </div>
       {waitSeconds > 0 && <p>Next drill allowed in {waitSeconds} s</p>}
       {done && (
         <p role="status" tabIndex={-1} ref={status}>
@@ -196,6 +198,6 @@ export default function DrillCard({ token, nextAllowedAt, onStarted }) {
           </button>
         </div>
       )}
-    </section>
+    </div>
   );
 }

@@ -170,7 +170,9 @@ describe("SeriesCard", () => {
     items.forEach((item, index) => {
       const swatch = item.querySelector("svg line");
       expect(swatch).not.toBeNull();
-      expect(swatch.getAttribute("stroke-dasharray")).toBe(lines[index].getAttribute("stroke-dasharray"));
+      expect(swatch.getAttribute("stroke-dasharray")).toBe(
+        lines[index].getAttribute("stroke-dasharray"),
+      );
     });
     expect(items[0].textContent).toContain("api-a");
     expect(items[1].textContent).toContain("api-b");

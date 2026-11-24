@@ -679,7 +679,9 @@ describe("comment author display name (demo polish, 24 Nov)", () => {
       .set("Authorization", `Bearer ${token(reviewerId)}`)
       .send({ body: "From the reviewer" });
 
-    const res = await request(app).get(url).set("Authorization", `Bearer ${token(ownerId)}`);
+    const res = await request(app)
+      .get(url)
+      .set("Authorization", `Bearer ${token(ownerId)}`);
 
     expect(res.status).toBe(200);
     expect(

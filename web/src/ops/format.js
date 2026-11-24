@@ -52,6 +52,27 @@ export function cpuLine({ cpuPercent, cpuTargetPercent }) {
   return `CPU ${cpuPercent}% (scales out above ${cpuTargetPercent}%)`;
 }
 
+/** "autoscaler range 2 to 5, scales out above 70% CPU": the sub-line under the copies headline. */
+export function rangeLine({ minReplicas, maxReplicas, cpuTargetPercent }) {
+  const range = `autoscaler range ${minReplicas} to ${maxReplicas}`;
+  if (cpuTargetPercent === null || cpuTargetPercent === undefined) return range;
+  return `${range}, scales out above ${cpuTargetPercent}% CPU`;
+}
+
+/** The CPU now; the trigger itself is in rangeLine, so it is not repeated unless CPU is already above it. */
+export function cpuNowLine(hpa) {
+  const { cpuPercent, cpuTargetPercent } = hpa;
+  if (cpuPercent === null || cpuPercent === undefined) return "CPU not read yet";
+  if (
+    cpuTargetPercent !== null &&
+    cpuTargetPercent !== undefined &&
+    cpuPercent > cpuTargetPercent
+  ) {
+    return cpuLine(hpa);
+  }
+  return `CPU now: ${cpuPercent}%`;
+}
+
 export function latencyText(p95Seconds) {
   if (p95Seconds === null || p95Seconds === undefined) return "no requests in the last minute";
   if (p95Seconds >= TOP_BUCKET_SECONDS) return "Slowest 5% took over 5 s";
