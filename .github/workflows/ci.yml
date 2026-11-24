@@ -130,9 +130,9 @@ jobs:
         run: |
           for overlay in minikube doks infra migrate-job; do
             [ -f /tmp/$overlay.yaml ] || continue # infra and migrate-job exist once #37 lands
-            # contentcollab-api-nodes is the ClusterRole and ClusterRoleBinding for node metrics (D31, k8s/base/api-rbac.yaml): cluster-scoped, so it has no namespace
+            # contentcollab-api-nodes and contentcollab-api-volumes are ClusterRoles and ClusterRoleBindings for node metrics (D31) and the database volume (D35), k8s/base/api-rbac.yaml: cluster-scoped, so they have no namespace
             # yq writes to a file so a yq failure stops the step; in a pipe with `|| true` it read as no strays
-            yq 'select(.kind != "Namespace" and ((.kind == "ClusterRole" or .kind == "ClusterRoleBinding") and .metadata.name == "contentcollab-api-nodes" | not) and .metadata.namespace != "contentcollab") | .kind + "/" + .metadata.name' /tmp/$overlay.yaml > /tmp/$overlay.stray
+            yq 'select(.kind != "Namespace" and ((.kind == "ClusterRole" or .kind == "ClusterRoleBinding") and (.metadata.name == "contentcollab-api-nodes" or .metadata.name == "contentcollab-api-volumes") | not) and .metadata.namespace != "contentcollab") | .kind + "/" + .metadata.name' /tmp/$overlay.yaml > /tmp/$overlay.stray
             stray=$(grep -v '^---$' /tmp/$overlay.stray || true)
             [ -z "$stray" ] || { echo "::error::$overlay renders objects outside contentcollab: $stray"; exit 1; }
           done

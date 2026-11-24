@@ -1,5 +1,5 @@
 # The API's own ServiceAccount and what it may read in the cluster. api-status: its own Deployment's
-# ready replicas for GET /api/v1/status (#30, ARCHITECTURE D23). api-ops and contentcollab-api-nodes:
+# ready replicas for GET /api/v1/status (#30, ARCHITECTURE D23). api-ops, contentcollab-api-nodes and contentcollab-api-volumes:
 # the read-only operations panel (D31). The one write, evicting a pod for the restart drill, is its own
 # file, api-drill-rbac.yaml. Least privilege (SEC-6, lecture 8 on RBAC).
 apiVersion: v1
@@ -32,7 +32,10 @@ subjects:
 ---
 # The operations panel (D31, GET /api/v1/ops): read-only. Pods and their logs cannot be narrowed by name
 # (their names change on every rollout, and RBAC has no label selector), so the API's code decides which
-# pods it reads; the HPA and the one claim are named. No verb but get and list, no Secrets, no exec.
+# pods it reads; the HPA, the one claim and the backup CronJob are named. No verb but get and list, no
+# Secrets, no exec. D35 adds the Deployments and StatefulSets (desired copies per part) and the Jobs (the
+# newest backup run): a list cannot be narrowed to a name without a field selector (Kubernetes RBAC docs,
+# checked 24 Nov 2026) and a Job's name carries a timestamp, so those two are namespace-wide lists.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
@@ -55,6 +58,16 @@ rules:
     resources: ["persistentvolumeclaims"]
     resourceNames: ["data-postgres-0"]
     verbs: ["get"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "statefulsets"]
+    verbs: ["list"]
+  - apiGroups: ["batch"]
+    resources: ["cronjobs"]
+    resourceNames: ["db-backup"]
+    verbs: ["get"]
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["list"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -90,6 +103,31 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
   name: contentcollab-api-nodes
+subjects:
+  - kind: ServiceAccount
+    name: api
+    namespace: contentcollab
+---
+# PersistentVolumes are cluster-scoped, so a Role cannot grant them (D35). `get` only, with no list: the API
+# reads the one volume its own claim names, for the reclaim policy shown on the Storage card. A role of its
+# own, so removing it switches only that line off.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: contentcollab-api-volumes
+rules:
+  - apiGroups: [""]
+    resources: ["persistentvolumes"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: contentcollab-api-volumes
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: contentcollab-api-volumes
 subjects:
   - kind: ServiceAccount
     name: api

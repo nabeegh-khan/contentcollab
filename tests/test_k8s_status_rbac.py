@@ -47,8 +47,9 @@ class StatusReadAccess(unittest.TestCase):
         self.assertEqual(binding["roleRef"], {"apiGroup": "rbac.authorization.k8s.io", "kind": "Role", "name": "api-status"})
         self.assertEqual(binding["subjects"], [{"kind": "ServiceAccount", "name": "api", "namespace": "contentcollab"}])
 
-    def test_the_only_cluster_wide_objects_are_the_namespace_and_the_node_reader(self):
-        # D31: nodes are cluster-scoped, so the operations panel needs one ClusterRole, and nothing more
+    def test_the_only_cluster_wide_objects_are_the_node_reader_and_the_volume_reader(self):
+        # D31: nodes are cluster-scoped, so the operations panel needs a ClusterRole; D35: so are
+        # PersistentVolumes, which get a second, separate one, and nothing more
         cluster = {
             (d["kind"], d["metadata"]["name"])
             for d in self.docs
@@ -56,7 +57,26 @@ class StatusReadAccess(unittest.TestCase):
         }
         self.assertEqual(
             cluster,
-            {("ClusterRole", "contentcollab-api-nodes"), ("ClusterRoleBinding", "contentcollab-api-nodes")},
+            {
+                ("ClusterRole", "contentcollab-api-nodes"),
+                ("ClusterRoleBinding", "contentcollab-api-nodes"),
+                ("ClusterRole", "contentcollab-api-volumes"),
+                ("ClusterRoleBinding", "contentcollab-api-volumes"),
+            },
+        )
+
+    def test_the_volume_reader_can_only_get_persistent_volumes(self):
+        # D35: the reclaim policy of the volume behind the database claim. `get` only: the API reads
+        # the one volume its claim names, it cannot list the cluster's volumes
+        role = one(self.docs, "ClusterRole", "contentcollab-api-volumes")
+        self.assertEqual(role["rules"], [{"apiGroups": [""], "resources": ["persistentvolumes"], "verbs": ["get"]}])
+        binding = one(self.docs, "ClusterRoleBinding", "contentcollab-api-volumes")
+        self.assertEqual(
+            binding["roleRef"],
+            {"apiGroup": "rbac.authorization.k8s.io", "kind": "ClusterRole", "name": "contentcollab-api-volumes"},
+        )
+        self.assertEqual(
+            binding["subjects"], [{"kind": "ServiceAccount", "name": "api", "namespace": "contentcollab"}]
         )
 
     def test_the_node_reader_can_only_get_and_list_nodes_and_their_metrics(self):
@@ -77,7 +97,7 @@ class StatusReadAccess(unittest.TestCase):
             binding["subjects"], [{"kind": "ServiceAccount", "name": "api", "namespace": "contentcollab"}]
         )
 
-    def test_the_ops_role_reads_pods_logs_events_one_hpa_and_one_claim(self):
+    def test_the_ops_role_reads_pods_logs_events_one_hpa_one_claim_workloads_and_the_backup(self):
         role = one(self.docs, "Role", "api-ops")
         self.assertEqual(
             role["rules"],
@@ -97,6 +117,11 @@ class StatusReadAccess(unittest.TestCase):
                     "resourceNames": ["data-postgres-0"],
                     "verbs": ["get"],
                 },
+                # D35: desired copies per part; a list cannot be narrowed to a name without a field selector
+                {"apiGroups": ["apps"], "resources": ["deployments", "statefulsets"], "verbs": ["list"]},
+                # D35: the nightly backup, by name; its Jobs carry a timestamp in their names, so they are listed
+                {"apiGroups": ["batch"], "resources": ["cronjobs"], "resourceNames": ["db-backup"], "verbs": ["get"]},
+                {"apiGroups": ["batch"], "resources": ["jobs"], "verbs": ["list"]},
             ],
         )
         binding = one(self.docs, "RoleBinding", "api-ops")
@@ -109,9 +134,9 @@ class StatusReadAccess(unittest.TestCase):
 
     def test_the_panels_roles_only_read(self):
         # D31 PR 1 is read-only: no verb but get and list, and nothing on credentials or exec
-        names = ("api-ops", "contentcollab-api-nodes")
+        names = ("api-ops", "contentcollab-api-nodes", "contentcollab-api-volumes")
         roles = [d for d in self.docs if d["kind"] in ("Role", "ClusterRole") and d["metadata"]["name"] in names]
-        self.assertEqual(len(roles), 2)
+        self.assertEqual(len(roles), 3)
         for role in roles:
             for rule in role["rules"]:
                 self.assertTrue(set(rule["verbs"]) <= {"get", "list"}, role["metadata"]["name"])
