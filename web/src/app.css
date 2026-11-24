@@ -361,6 +361,50 @@ button.link {
   border-bottom: 1px solid var(--border);
 }
 
+/* The health summary (D35): four lines readable from the back of a room. The word and the shape carry the
+   state; the left edge only repeats it. */
+.ops-health {
+  margin-top: 12px;
+  padding: 12px 16px;
+  border: 2px solid var(--border);
+  border-radius: 8px;
+  font-size: 22px;
+}
+
+.ops-health h2 {
+  margin: 0 0 8px;
+  font-size: 22px;
+  color: var(--text-h);
+}
+
+.ops .ops-health ul {
+  padding-left: 0;
+  list-style: none;
+}
+
+.ops-health li {
+  display: grid;
+  grid-template-columns: 11em 9em 1fr;
+  gap: 4px 16px;
+  padding: 6px 0 6px 12px;
+  border-left: 6px solid var(--border);
+}
+
+.ops-health li.ops-health-check {
+  border-left-color: #c62828;
+}
+
+.ops-health-word {
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+@media (max-width: 900px) {
+  .ops-health li {
+    grid-template-columns: 1fr;
+  }
+}
+
 .ops-big {
   margin: 0 0 8px;
   font-size: 28px;

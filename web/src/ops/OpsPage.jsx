@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { ApiError } from "../api/client.js";
 import { getOps } from "./api.js";
 import {
+  AlertsCard,
   ContainersCard,
   EventsCard,
   HpaCard,
@@ -13,6 +14,7 @@ import {
   TrafficCard,
 } from "./cards.jsx";
 import DrillCard from "./DrillCard.jsx";
+import HealthSummary from "./HealthSummary.jsx";
 import SeriesCard from "./SeriesCard.jsx";
 import { agoText } from "./format.js";
 
@@ -128,6 +130,8 @@ export default function OpsPage({ token }) {
       )}
       {data && (
         <>
+          {/* What is said first on this page: is the system healthy (D35) */}
+          <HealthSummary data={data} />
           {/* One bar under the heading holds every action of the demo; its question and result stay beside it */}
           <DrillCard token={token} nextAllowedAt={data.drills?.nextAllowedAt ?? null}>
             {isWebAddress(data.links?.grafana) && (
@@ -150,6 +154,7 @@ export default function OpsPage({ token }) {
             <NodesCard data={data} />
             <StorageCard data={data} />
             <QueueCard data={data} />
+            <AlertsCard data={data} />
             <LogsCard data={data} />
           </div>
         </>

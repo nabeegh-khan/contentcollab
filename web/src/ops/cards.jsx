@@ -7,8 +7,11 @@ import {
   rangeLine,
   statusView,
 } from "./format.js";
+import { alertStatus, backupText } from "./health.js";
 
 const MS_ROUND = 10;
+// Newest request lines shown on the Latest requests card (the API sends up to 20)
+const REQUESTS_SHOWN = 10;
 // Newest events shown: the list is a short strip beside Containers, not a scroll box that traps the wheel
 const EVENTS_SHOWN = 8;
 
@@ -123,15 +126,35 @@ export function NodesCard({ data }) {
   );
 }
 
+// "not available" and, when the API named one, why
+const unavailable = (data, key) => {
+  const reason = problemOf(data, key);
+  return reason ? `not available (${reason})` : "not available";
+};
+
 export function StorageCard({ data }) {
-  const { claim, documents, versions, comments } = data.storage ?? {};
+  const { claim, volume, backup, diskUsedPercent, documents, versions, comments } =
+    data.storage ?? {};
   const failed = problemOf(data, "claim") && problemOf(data, "counts");
+  const measured = diskUsedPercent !== null && diskUsedPercent !== undefined;
   return (
     <Card title="Storage" problem={failed ? (problemOf(data, "claim") ?? "unavailable") : null}>
       <p>
         {claim
           ? `Database disk: ${claim.capacity ?? "size unknown"}, ${claim.phase}${claim.phase === "Bound" ? " (attached)" : ""}`
           : "Database disk: not available"}
+      </p>
+      {claim && <p>{`Claim: ${claim.name}, storage class ${claim.storageClass ?? "unknown"}`}</p>}
+      <p>
+        {volume
+          ? `Reclaim policy: ${volume.reclaimPolicy}${volume.reclaimPolicy === "Retain" ? " (the data is kept if the claim is deleted)" : ""}`
+          : `Reclaim policy: ${unavailable(data, "volume")}`}
+      </p>
+      <p>{`Disk used: ${measured ? `${Math.round(diskUsedPercent)}%` : "not measured"}`}</p>
+      <p>
+        {backup
+          ? `Last nightly backup: ${backupText(backup, Date.parse(data.generatedAt))}`
+          : `Last nightly backup: ${unavailable(data, "backup")}`}
       </p>
       <p>
         {documents === null || documents === undefined
@@ -207,6 +230,59 @@ export function EventsCard({ data }) {
   );
 }
 
+// The thresholds are the ones of the DigitalOcean alert policies (scripts/alerts.sh); the values are Prometheus's,
+// and so is the status: DigitalOcean only sends the email (D35)
+export function AlertsCard({ data }) {
+  const alerts = data.alerts;
+  return (
+    <Card
+      title="Alerts"
+      span={3}
+      problem={alerts ? null : (problemOf(data, "alerts") ?? "no data")}
+    >
+      {alerts && (
+        <>
+          <table aria-label="Alert thresholds and current values">
+            <thead>
+              <tr>
+                <th>Metric</th>
+                <th>Alert above</th>
+                <th>Now</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {alerts.rows.map((row) => {
+                const status = alertStatus(row.valuePercent, row.thresholdPercent);
+                const measured = row.valuePercent !== null && row.valuePercent !== undefined;
+                return (
+                  <tr key={row.metric}>
+                    <td>{row.metric}</td>
+                    <td>{row.thresholdPercent}%</td>
+                    <td>{measured ? `${Math.round(row.valuePercent)}%` : "not measured"}</td>
+                    <td>
+                      <span aria-hidden="true">{status.shape}</span> {status.word}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          <p>
+            Thresholds match our DigitalOcean alert policies; DigitalOcean sends the alert email.
+          </p>
+          <p>
+            <small>
+              Current values: Prometheus, the busiest node; DigitalOcean reads the droplet, so its
+              figures differ a little. Disk is not measured by Prometheus here.
+            </small>
+          </p>
+        </>
+      )}
+    </Card>
+  );
+}
+
 // No rows and no failure: nothing to show, so no empty card on the demo page
 export function LogsCard({ data }) {
   const logs = data.logs ?? { lines: [], hidden: 0 };
@@ -215,11 +291,16 @@ export function LogsCard({ data }) {
   return (
     <Card title="Latest requests" span={6} problem={problem}>
       <ul className="ops-capped">
-        {logs.lines.map((l, i) => (
-          <li key={`${i}-${l.at}`}>
-            {`${l.method ?? "?"} ${l.route ?? "?"} ${l.status ?? "?"} ${Math.round(l.durationMs ?? 0)} ms (${l.pod})`}
-          </li>
-        ))}
+        {/* The API sends the oldest first; the newest ten, newest on top, are what a room can read */}
+        {logs.lines
+          .slice(-REQUESTS_SHOWN)
+          .reverse()
+          .map((l, i) => (
+            <li key={`${i}-${l.at}`}>
+              <time dateTime={l.at}>{new Date(l.at).toLocaleTimeString()}</time>
+              {` ${l.method ?? "?"} ${l.route ?? "?"} ${l.status ?? "?"} ${Math.round(l.durationMs ?? 0)} ms (${l.pod})`}
+            </li>
+          ))}
       </ul>
       {logs.hidden > 0 && <p>{logs.hidden} other log lines are not shown</p>}
     </Card>
