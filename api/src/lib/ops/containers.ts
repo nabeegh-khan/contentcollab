@@ -2,9 +2,9 @@
 const MS_PER_SECOND = 1000;
 const GATEWAY_LABEL = "gateway.networking.k8s.io/gateway-name";
 const APPS = ["api", "web", "worker", "postgres", "redis"] as const;
-const ORDER = [...APPS, "gateway"] as const;
+export const COMPONENT_ORDER = [...APPS, "gateway"] as const;
 
-export type Component = (typeof ORDER)[number];
+export type Component = (typeof COMPONENT_ORDER)[number];
 export type Status = "Running" | "Starting" | "Stopping" | "Restarting" | "Failed" | "Unknown";
 
 export interface Container {
@@ -16,12 +16,15 @@ export interface Container {
   restarts: number;
   startedAt: string | null;
   ageSeconds: number | null;
+  /** When a container of the pod last stopped to be restarted (the newest of its containers), or null. */
+  lastRestartAt: string | null;
   servingThisRequest: boolean;
 }
 
 interface ContainerStatus {
   ready?: boolean;
   restartCount?: number;
+  lastState?: { terminated?: { finishedAt?: string } };
   state?: { waiting?: { reason?: string } };
 }
 interface Pod {
@@ -30,9 +33,16 @@ interface Pod {
   status?: { phase?: string; startTime?: string; containerStatuses?: ContainerStatus[] };
 }
 
-function componentOf(labels: Record<string, string> = {}): Component | null {
+/** The part a pod (or a workload's pod template) belongs to, from its labels, or null for anything else. */
+export function componentOf(labels: Record<string, string> = {}): Component | null {
   if (labels[GATEWAY_LABEL]) return "gateway";
   return APPS.find((app) => labels.app === app) ?? null;
+}
+
+/** The latest of some ISO times, ignoring the missing ones, or null. */
+function newest(times: (string | undefined)[]): string | null {
+  const known = times.filter((t): t is string => typeof t === "string");
+  return known.sort((a, b) => Date.parse(b) - Date.parse(a))[0] ?? null;
 }
 
 function statusOf(pod: Pod, ready: boolean): Status {
@@ -65,11 +75,14 @@ export function containersFrom(list: unknown, servingPod: string, nowMs: number)
         restarts: statuses.reduce((sum, c) => sum + (c.restartCount ?? 0), 0),
         startedAt,
         ageSeconds: startedAt ? Math.round((nowMs - Date.parse(startedAt)) / MS_PER_SECOND) : null,
+        lastRestartAt: newest(statuses.map((c) => c.lastState?.terminated?.finishedAt)),
         servingThisRequest: pod.metadata.name === servingPod,
       },
     ];
   });
   return rows.sort(
-    (a, b) => ORDER.indexOf(a.component) - ORDER.indexOf(b.component) || a.pod.localeCompare(b.pod),
+    (a, b) =>
+      COMPONENT_ORDER.indexOf(a.component) - COMPONENT_ORDER.indexOf(b.component) ||
+      a.pod.localeCompare(b.pod),
   );
 }

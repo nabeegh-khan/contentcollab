@@ -30,6 +30,7 @@ const sources = (over: Partial<OpsSources> = {}): OpsSources => ({
       restarts: 0,
       startedAt: "2026-11-21T19:23:20Z",
       ageSeconds: 1000,
+      lastRestartAt: null,
       servingThisRequest: true,
     },
   ],
@@ -51,6 +52,7 @@ const sources = (over: Partial<OpsSources> = {}): OpsSources => ({
     p50Seconds: 0.006,
     p95Seconds: 0.012,
     errorPercent: 0,
+    errorPercent5m: 0,
     noTraffic: false,
   }),
   claim: async () => ({
@@ -58,6 +60,7 @@ const sources = (over: Partial<OpsSources> = {}): OpsSources => ({
     phase: "Bound",
     capacity: "5Gi",
     storageClass: "do-block-storage",
+    volumeName: "pvc-6a857bd4",
   }),
   counts: async () => ({ documents: 12, versions: 19, comments: 7 }),
   events: async () => [],
@@ -208,6 +211,9 @@ describe("GET /api/v1/ops document", () => {
       ),
     );
     expect(res.body.storage).toEqual({
+      volume: null,
+      backup: null,
+      diskUsedPercent: null,
       claim: expect.objectContaining({ phase: "Bound" }),
       documents: null,
       versions: null,
@@ -402,5 +408,94 @@ describe("GET /api/v1/ops/series", () => {
     });
     await Promise.all([getSeries(app), getSeries(app), getSeries(app)]);
     expect(reads).toBe(1);
+  });
+});
+
+describe("GET /api/v1/ops core health (D35)", () => {
+  const get = (app: express.Express) =>
+    request(app)
+      .get("/api/v1/ops")
+      .set("Authorization", `Bearer ${token(ADMIN)}`);
+  const PAIR = 2;
+  const DISK_PERCENT = 12.5;
+  const POLICY_THRESHOLD = 80;
+  const POLICY_WINDOW = 5;
+  const given: Partial<OpsSources> = {
+    workloads: async () => [{ component: "api", desired: PAIR, ready: PAIR }],
+    volume: async () => ({
+      name: "pvc-6a857bd4",
+      reclaimPolicy: "Retain",
+      storageClass: "do-block-storage",
+      capacity: "5Gi",
+    }),
+    backup: async () => ({
+      schedule: "0 3 * * *",
+      lastScheduledAt: "2026-11-24T08:00:00Z",
+      lastSucceededAt: "2026-11-24T08:00:13Z",
+      lastRun: { name: "db-backup-1", result: "Succeeded", finishedAt: "2026-11-24T08:00:13Z" },
+    }),
+    diskUsed: async () => DISK_PERCENT,
+    alerts: async () => ({
+      thresholdPercent: POLICY_THRESHOLD,
+      windowMinutes: POLICY_WINDOW,
+      rows: [{ metric: "CPU", thresholdPercent: POLICY_THRESHOLD, valuePercent: 31 }],
+    }),
+  };
+
+  it("carries the workloads, the volume, the last backup, the disk figure and the alerts table", async () => {
+    const res = await get(appWith(sources(given)));
+    expect(res.body.errors).toEqual({});
+    expect(res.body.workloads).toEqual([{ component: "api", desired: PAIR, ready: PAIR }]);
+    expect(res.body.storage.volume).toMatchObject({ reclaimPolicy: "Retain" });
+    expect(res.body.storage.backup).toMatchObject({
+      lastRun: { result: "Succeeded" },
+      lastSucceededAt: "2026-11-24T08:00:13Z",
+    });
+    expect(res.body.storage.diskUsedPercent).toBe(DISK_PERCENT);
+    expect(res.body.alerts).toMatchObject({ thresholdPercent: POLICY_THRESHOLD });
+  });
+
+  it("leaves them null, with no error, where a source is not given (no cluster)", async () => {
+    const res = await get(appWith(sources()));
+    expect(res.body.workloads).toBeNull();
+    expect(res.body.alerts).toBeNull();
+    expect(res.body.storage).toMatchObject({ volume: null, backup: null, diskUsedPercent: null });
+    expect(res.body.errors).toEqual({});
+  });
+
+  it("each of them fails alone, with a reason and nothing from the failure text", async () => {
+    const boom = async () => {
+      throw new Error("forbidden: internal detail 10.0.0.9");
+    };
+    const res = await get(
+      appWith(
+        sources({
+          ...given,
+          workloads: boom,
+          volume: boom,
+          backup: boom,
+          diskUsed: boom,
+          alerts: boom,
+        }),
+      ),
+    );
+    expect(res.status).toBe(OK);
+    expect(res.body.errors).toEqual({
+      workloads: "unavailable",
+      volume: "unavailable",
+      backup: "unavailable",
+      diskUsed: "unavailable",
+      alerts: "unavailable",
+    });
+    expect(res.body.workloads).toBeNull();
+    expect(res.body.storage.diskUsedPercent).toBeNull();
+    expect(JSON.stringify(res.body)).not.toContain("internal detail");
+    expect(res.body.containers).not.toBeNull();
+  });
+
+  it("a disk figure of null (no such series) is not an error: it is not measured", async () => {
+    const res = await get(appWith(sources({ ...given, diskUsed: async () => null })));
+    expect(res.body.storage.diskUsedPercent).toBeNull();
+    expect(res.body.errors).toEqual({});
   });
 });

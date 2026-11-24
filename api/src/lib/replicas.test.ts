@@ -99,7 +99,9 @@ describe("inClusterGet", () => {
     expect(await get("/api/v1/namespaces/contentcollab/pods/api-a/log", { text: true })).toBe(
       lines,
     );
-    expect(https.calls[0]?.headers?.Accept).toBe("text/plain");
+    // The Kubernetes API answers 406 to `Accept: text/plain` on pods/log (replayed from an api pod on
+    // 24 Nov 2026: 406 with text/plain, 200 with */*), so the logs card was empty in production (D35)
+    expect(https.calls[0]?.headers?.Accept).toBe("*/*");
   });
 
   it("sends a POST with a JSON body and content type, for the eviction call", async () => {

@@ -1,10 +1,14 @@
 // One operations snapshot (D31): every source read on its own with a time limit, a failure is null plus a reason.
+import type { AlertsCard } from "./alerts.js";
+import type { BackupCard } from "./backup.js";
 import type { Container } from "./containers.js";
 import type { TimelineEvent } from "./events.js";
 import type { HpaCard } from "./hpa.js";
 import type { LogLine } from "./logs.js";
 import type { NodeCard } from "./nodes.js";
 import type { TrafficCard } from "./traffic.js";
+import type { VolumeCard } from "./volume.js";
+import type { Workload } from "./workloads.js";
 import { log } from "../log.js";
 
 export interface ClaimCard {
@@ -12,6 +16,8 @@ export interface ClaimCard {
   phase: string;
   capacity: string | null;
   storageClass: string | null;
+  /** The PersistentVolume the claim is bound to, the name the volume source reads (D35). */
+  volumeName: string | null;
 }
 
 /** A source is a function that reads one card, or null when it cannot run here ("not configured"). */
@@ -30,7 +36,20 @@ export interface OpsSources {
   queue?: Source<number> | undefined;
   /** When the next drill may start (ISO time), or null; left out where there are no drills. */
   nextDrill?: Source<string | null> | undefined;
+  /** The core-health sources (D35); left out where there is no cluster or no Prometheus. */
+  workloads?: Source<Workload[]> | undefined;
+  volume?: Source<VolumeCard> | undefined;
+  backup?: Source<BackupCard> | undefined;
+  /** Used percent of the database disk, or null when Prometheus does not hold the series. */
+  diskUsed?: Source<number | null> | undefined;
+  alerts?: Source<AlertsCard> | undefined;
 }
+
+// A source that is left out is neither a value nor an error: its field is null and the page says so
+const optional = <T>(name: string, source: Source<T> | undefined, limit: number) =>
+  source
+    ? attempt(name, source, limit)
+    : Promise.resolve({ ok: true, value: null } as Outcome<T | null>);
 
 export const SOURCE_TIMEOUT_MS = 1000;
 export const CACHE_SECONDS = 5;
@@ -70,24 +89,60 @@ export async function buildSnapshot(
   options: { grafanaUrl: string | null; timeoutMs?: number },
 ) {
   const limit = options.timeoutMs ?? SOURCE_TIMEOUT_MS;
-  const [containers, hpa, nodes, traffic, claim, counts, events, logs, nextDrill, queue] =
-    await Promise.all([
-      attempt("containers", sources.containers, limit),
-      attempt("hpa", sources.hpa, limit),
-      attempt("nodes", sources.nodes, limit),
-      attempt("traffic", sources.traffic, limit),
-      attempt("claim", sources.claim, limit),
-      attempt("counts", sources.counts, limit),
-      attempt("events", sources.events, limit),
-      attempt("logs", sources.logs, limit),
-      sources.nextDrill
-        ? attempt("nextDrill", sources.nextDrill, limit)
-        : { ok: true as const, value: null },
-      sources.queue
-        ? attempt("queue", sources.queue, limit)
-        : ({ ok: true, value: null } as Outcome<number | null>),
-    ]);
-  const named = { containers, hpa, nodes, traffic, claim, counts, events, logs, nextDrill, queue };
+  const [
+    containers,
+    hpa,
+    nodes,
+    traffic,
+    claim,
+    counts,
+    events,
+    logs,
+    nextDrill,
+    queue,
+    workloads,
+    volume,
+    backup,
+    diskUsed,
+    alerts,
+  ] = await Promise.all([
+    attempt("containers", sources.containers, limit),
+    attempt("hpa", sources.hpa, limit),
+    attempt("nodes", sources.nodes, limit),
+    attempt("traffic", sources.traffic, limit),
+    attempt("claim", sources.claim, limit),
+    attempt("counts", sources.counts, limit),
+    attempt("events", sources.events, limit),
+    attempt("logs", sources.logs, limit),
+    sources.nextDrill
+      ? attempt("nextDrill", sources.nextDrill, limit)
+      : { ok: true as const, value: null },
+    sources.queue
+      ? attempt("queue", sources.queue, limit)
+      : ({ ok: true, value: null } as Outcome<number | null>),
+    optional("workloads", sources.workloads, limit),
+    optional("volume", sources.volume, limit),
+    optional("backup", sources.backup, limit),
+    optional("diskUsed", sources.diskUsed, limit),
+    optional("alerts", sources.alerts, limit),
+  ]);
+  const named = {
+    containers,
+    hpa,
+    nodes,
+    traffic,
+    claim,
+    counts,
+    events,
+    logs,
+    nextDrill,
+    queue,
+    workloads,
+    volume,
+    backup,
+    diskUsed,
+    alerts,
+  };
   const errors = Object.fromEntries(
     Object.entries(named).flatMap(([name, outcome]) => (outcome.ok ? [] : [[name, outcome.error]])),
   );
@@ -101,8 +156,13 @@ export async function buildSnapshot(
     hpa: valueOr(hpa),
     nodes: valueOr(nodes),
     traffic: valueOr(traffic),
+    workloads: valueOr(workloads),
+    alerts: valueOr(alerts),
     storage: {
       claim: valueOr(claim),
+      volume: valueOr(volume),
+      backup: valueOr(backup),
+      diskUsedPercent: valueOr(diskUsed),
       documents: counted?.documents ?? null,
       versions: counted?.versions ?? null,
       comments: counted?.comments ?? null,

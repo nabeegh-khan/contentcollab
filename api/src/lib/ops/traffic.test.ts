@@ -42,6 +42,7 @@ describe("trafficFrom", () => {
       [TRAFFIC_QUERIES.p50, 0.006],
       [TRAFFIC_QUERIES.p95, 0.012],
       [TRAFFIC_QUERIES.errorPercent, 0],
+      [TRAFFIC_QUERIES.errorPercent5m, 0.5],
     ]);
     const out = await trafficFrom(async (q) => {
       asked.push(q);
@@ -53,9 +54,10 @@ describe("trafficFrom", () => {
       p50Seconds: 0.006,
       p95Seconds: 0.012,
       errorPercent: 0,
+      errorPercent5m: 0.5,
       noTraffic: false,
     });
-    expect(asked).toHaveLength(4);
+    expect(asked).toHaveLength(5);
   });
 
   it("says noTraffic and leaves the latencies null when nothing was requested", async () => {
@@ -65,11 +67,19 @@ describe("trafficFrom", () => {
       p50Seconds: null,
       p95Seconds: null,
       errorPercent: null,
+      errorPercent5m: null,
     });
   });
 
   it("leaves the panel's own polling and the scrape out of the numbers", () => {
     expect(TRAFFIC_QUERIES.rate).toContain('route!~"/metrics|/api/v1/ops(/.*)?"');
     expect(TRAFFIC_QUERIES.errorPercent).toContain("or vector(0)");
+  });
+
+  it("reads the error percent of the last 5 minutes over the same requests (D35)", () => {
+    expect(TRAFFIC_QUERIES.errorPercent5m).toContain("[5m]");
+    expect(TRAFFIC_QUERIES.errorPercent5m).not.toContain("[1m]");
+    expect(TRAFFIC_QUERIES.errorPercent5m).toContain('route!~"/metrics|/api/v1/ops(/.*)?"');
+    expect(TRAFFIC_QUERIES.errorPercent5m).toContain("or vector(0)");
   });
 });

@@ -14,6 +14,8 @@ export const TRAFFIC_QUERIES = {
   p50: `histogram_quantile(0.5, ${bucket})`,
   p95: `histogram_quantile(0.95, ${bucket})`,
   errorPercent: `${PERCENT} * (sum(rate(http_requests_total{${S},status_class="5xx"}[1m])) or vector(0)) / ${RATE}`,
+  // The health summary's "errors in the last 5 minutes" (D35)
+  errorPercent5m: `${PERCENT} * (sum(rate(http_requests_total{${S},status_class="5xx"}[5m])) or vector(0)) / sum(rate(http_requests_total{${S}}[5m]))`,
 } as const;
 
 /** Runs one PromQL expression; resolves to a number, or null for an empty vector or NaN. */
@@ -48,15 +50,17 @@ export interface TrafficCard {
   p50Seconds: number | null;
   p95Seconds: number | null;
   errorPercent: number | null;
+  errorPercent5m: number | null;
   noTraffic: boolean;
 }
 
 export async function trafficFrom(query: Query): Promise<TrafficCard> {
-  const [rate, p50, p95, errors] = await Promise.all([
+  const [rate, p50, p95, errors, errors5m] = await Promise.all([
     query(TRAFFIC_QUERIES.rate),
     query(TRAFFIC_QUERIES.p50),
     query(TRAFFIC_QUERIES.p95),
     query(TRAFFIC_QUERIES.errorPercent),
+    query(TRAFFIC_QUERIES.errorPercent5m),
   ]);
   const noTraffic = rate === null || rate === 0;
   return {
@@ -65,6 +69,8 @@ export async function trafficFrom(query: Query): Promise<TrafficCard> {
     p50Seconds: noTraffic ? null : p50,
     p95Seconds: noTraffic ? null : p95,
     errorPercent: noTraffic ? null : errors,
+    // Its own window: the last minute can be quiet while the last five were not
+    errorPercent5m: errors5m,
     noTraffic,
   };
 }

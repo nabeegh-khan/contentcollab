@@ -1,16 +1,24 @@
 // The real reads behind the operations panel (D31): Kubernetes, Prometheus and PostgreSQL, behind small functions.
 import { cachedFor, type KubeGet } from "../replicas.js";
+import { alertsFrom } from "./alerts.js";
+import { backupFrom } from "./backup.js";
 import { containersFrom } from "./containers.js";
+import { diskUsedFrom } from "./disk.js";
 import { eventsFrom, type TimelineEvent } from "./events.js";
 import { hpaFrom } from "./hpa.js";
 import { logLinesFrom } from "./logs.js";
 import { nodesFrom } from "./nodes.js";
 import type { ClaimCard, OpsSources } from "./snapshot.js";
 import { trafficFrom, type Query } from "./traffic.js";
+import { volumeFrom } from "./volume.js";
+import { workloadsFrom } from "./workloads.js";
 
 const NS = "/api/v1/namespaces/contentcollab";
-// A longer tail than the 20 lines shown: the panel's own polling is filtered out afterwards
-const LOG_QUERY = "container=api&tailLines=100&limitBytes=65536";
+const APPS = "/apis/apps/v1/namespaces/contentcollab";
+const BATCH = "/apis/batch/v1/namespaces/contentcollab";
+// A longer tail than the lines shown: the panel's own polling, filtered out afterwards, filled a
+// 100-line tail within minutes (D35)
+const LOG_QUERY = "container=api&tailLines=300&limitBytes=131072";
 const POD_LIST_SHARED_MS = 1000;
 const CLAIM = "data-postgres-0";
 
@@ -49,7 +57,7 @@ const toEvent = (row: DrillRow): TimelineEvent => ({
 function claimFrom(reply: unknown): ClaimCard {
   const claim = reply as {
     status?: { phase?: string; capacity?: { storage?: string } };
-    spec?: { storageClassName?: string };
+    spec?: { storageClassName?: string; volumeName?: string };
   } | null;
   if (!claim || typeof claim.status !== "object" || !claim.status.phase) {
     throw new Error("claim: the reply was not the PersistentVolumeClaim");
@@ -59,6 +67,7 @@ function claimFrom(reply: unknown): ClaimCard {
     phase: claim.status.phase,
     capacity: claim.status.capacity?.storage ?? null,
     storageClass: claim.spec?.storageClassName ?? null,
+    volumeName: claim.spec?.volumeName ?? null,
   };
 }
 
@@ -100,6 +109,34 @@ export function liveSources(deps: LiveDeps): OpsSources {
     claim: kubeGet
       ? async () => claimFrom(await kubeGet(`${NS}/persistentvolumeclaims/${CLAIM}`))
       : null,
+    workloads: kubeGet
+      ? async () => {
+          const [deployments, statefulSets] = await Promise.all([
+            kubeGet(`${APPS}/deployments`),
+            kubeGet(`${APPS}/statefulsets`),
+          ]);
+          return workloadsFrom(deployments, statefulSets);
+        }
+      : null,
+    volume: kubeGet
+      ? async () => {
+          // The volume is the one the claim names: the code never picks a PersistentVolume by itself
+          const { volumeName } = claimFrom(await kubeGet(`${NS}/persistentvolumeclaims/${CLAIM}`));
+          if (!volumeName) throw new Error("volume: the claim is bound to no volume");
+          return volumeFrom(await kubeGet(`/api/v1/persistentvolumes/${volumeName}`));
+        }
+      : null,
+    backup: kubeGet
+      ? async () => {
+          const [cronJob, jobs] = await Promise.all([
+            kubeGet(`${BATCH}/cronjobs/db-backup`),
+            kubeGet(`${BATCH}/jobs`),
+          ]);
+          return backupFrom(cronJob, jobs);
+        }
+      : null,
+    diskUsed: query ? () => diskUsedFrom(query) : null,
+    alerts: query ? () => alertsFrom(query) : null,
     counts: deps.sql,
     nextDrill: deps.nextDrill,
     queue: deps.queueDepth,
@@ -135,6 +172,10 @@ export function liveSources(deps: LiveDeps): OpsSources {
               })),
             );
             const entries = settled.flatMap((r) => (r.status === "fulfilled" ? [r.value] : []));
+            // Every read failing is a fault of the source, not a quiet log (the 406 of 24 Nov hid for days)
+            if (pods.length > 0 && entries.length === 0) {
+              throw new Error("logs: no pod's log could be read");
+            }
             return logLinesFrom(entries);
           }
         : null,

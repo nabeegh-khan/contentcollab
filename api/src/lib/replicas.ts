@@ -86,7 +86,8 @@ export function inClusterGet(
           ca: deps.readFile(`${SERVICE_ACCOUNT_DIR}/ca.crt`),
           headers: {
             Authorization: `Bearer ${token}`,
-            Accept: options?.text ? "text/plain" : "application/json",
+            // pods/log answers 406 to "text/plain" (replayed from an api pod, 24 Nov 2026), so text reads accept anything
+            Accept: options?.text ? "*/*" : "application/json",
             ...(options?.body === undefined ? {} : { "Content-Type": "application/json" }),
           },
           timeout: REQUEST_TIMEOUT_MS,
