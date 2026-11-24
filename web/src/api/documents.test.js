@@ -1,7 +1,7 @@
 // Tests for the document calls on main (docs/API.md, Documents): list a page and create a document with its first version.
 import { describe, expect, it, vi } from "vitest";
 import { ApiError } from "./client.js";
-import { createDocument, listDocuments } from "./documents.js";
+import { createDocument, getDocument, listDocuments } from "./documents.js";
 
 function json(status, body) {
   return new Response(JSON.stringify(body), {
@@ -66,5 +66,23 @@ describe("createDocument", () => {
     await createDocument("t0k", new File(["x"], "a.pdf"), "   ");
 
     expect(fetchMock.mock.calls[0][1].body.has("title")).toBe(false);
+  });
+});
+
+describe("getDocument", () => {
+  it("asks GET /documents/:id with the token and returns the document", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ id: "d1", title: "Design review draft" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const doc = await getDocument("t0k", "d1");
+
+    expect(doc.title).toBe("Design review draft");
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/v1/documents/d1");
+    expect(fetchMock.mock.calls[0][1].headers.Authorization).toBe("Bearer t0k");
   });
 });

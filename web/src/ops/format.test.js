@@ -1,6 +1,15 @@
 // Tests for the words and shapes of the operations page (D31): every state is a word plus a shape.
 import { describe, expect, it } from "vitest";
-import { agoText, ageText, cpuLine, eventSentence, latencyText, statusView } from "./format.js";
+import {
+  agoText,
+  ageText,
+  cpuLine,
+  cpuNowLine,
+  eventSentence,
+  latencyText,
+  rangeLine,
+  statusView,
+} from "./format.js";
 
 describe("statusView", () => {
   it("pairs each state with a word and a different shape, so colour is never the only signal", () => {
@@ -84,5 +93,32 @@ describe("eventSentence", () => {
     expect(eventSentence(event("BackOff", { text: "Back-off restarting" }))).toBe(
       "Pod/api-a: Back-off restarting",
     );
+  });
+});
+
+describe("rangeLine", () => {
+  it("gives the autoscaler's range and its CPU trigger as one sub-line", () => {
+    expect(rangeLine({ minReplicas: 2, maxReplicas: 5, cpuTargetPercent: 70 })).toBe(
+      "autoscaler range 2 to 5, scales out above 70% CPU",
+    );
+  });
+  it("leaves the trigger out when the HPA gives none, never printing null", () => {
+    expect(rangeLine({ minReplicas: 2, maxReplicas: 5, cpuTargetPercent: null })).toBe(
+      "autoscaler range 2 to 5",
+    );
+  });
+});
+
+describe("cpuNowLine", () => {
+  it("states the CPU now", () => {
+    expect(cpuNowLine({ cpuPercent: 12, cpuTargetPercent: 70 })).toBe("CPU now: 12%");
+  });
+  it("warns in words when CPU is above the target", () => {
+    expect(cpuNowLine({ cpuPercent: 79, cpuTargetPercent: 70 })).toBe(
+      "CPU 79%: above the 70% target, the autoscaler is adding copies",
+    );
+  });
+  it("says the reading is not there yet instead of a number", () => {
+    expect(cpuNowLine({ cpuPercent: null, cpuTargetPercent: 70 })).toBe("CPU not read yet");
   });
 });

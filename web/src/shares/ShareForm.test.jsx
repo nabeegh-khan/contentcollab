@@ -182,4 +182,21 @@ describe("ShareForm when another document is chosen", () => {
 
     expect(screen.queryByText("Shared with bo@x.co as viewer.")).toBeNull();
   });
+
+  it("shows the success as a visible status line, above the Share button", async () => {
+    answer(201, { id: "s1", role: "viewer" });
+    render(<ShareForm token="t0k" />);
+
+    fill();
+
+    const status = await screen.findByRole("status");
+    expect(status.className).toContain("success");
+    const button = screen.getByRole("button", { name: "Share" });
+    expect(status.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("puts the role select in a labelled field, so the shared field styling applies to it", () => {
+    render(<ShareForm token="t0k" />);
+    expect(screen.getByLabelText("Role").closest(".field")).not.toBeNull();
+  });
 });

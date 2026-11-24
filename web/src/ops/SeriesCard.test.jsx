@@ -134,4 +134,53 @@ describe("SeriesCard", () => {
     });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
+
+  it("gives each chart a title line with its unit, and the x axis a label", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(respond(200, { series })));
+    render(<SeriesCard token="t" />);
+    await flush();
+
+    const cpu = screen.getByRole("figure", { name: "CPU, millicores" });
+    const memory = screen.getByRole("figure", { name: "Memory, MiB" });
+    expect(within(cpu).getByText("last 15 minutes", { selector: "text" })).toBeTruthy();
+    expect(within(memory).getByText("last 15 minutes", { selector: "text" })).toBeTruthy();
+  });
+
+  it("labels the y axis with its minimum (0) and its maximum, in the chart's unit", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(respond(200, { series })));
+    render(<SeriesCard token="t" />);
+    await flush();
+
+    const cpu = screen.getByRole("figure", { name: "CPU, millicores" });
+    expect(within(cpu).getByText("250", { selector: "text" })).toBeTruthy();
+    expect(within(cpu).getByText("0", { selector: "text" })).toBeTruthy();
+    const memory = screen.getByRole("figure", { name: "Memory, MiB" });
+    expect(within(memory).getByText("120", { selector: "text" })).toBeTruthy();
+  });
+
+  it("ties each line style to its pod in the legend with a swatch that uses the same dash", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(respond(200, { series })));
+    render(<SeriesCard token="t" />);
+    await flush();
+
+    const cpu = screen.getByRole("figure", { name: "CPU, millicores" });
+    const lines = [...cpu.querySelectorAll("svg[role='img'] polyline")];
+    const items = within(cpu).getAllByRole("listitem");
+    expect(items).toHaveLength(2);
+    items.forEach((item, index) => {
+      const swatch = item.querySelector("svg line");
+      expect(swatch).not.toBeNull();
+      expect(swatch.getAttribute("stroke-dasharray")).toBe(lines[index].getAttribute("stroke-dasharray"));
+    });
+    expect(items[0].textContent).toContain("api-a");
+    expect(items[1].textContent).toContain("api-b");
+  });
+
+  it("keeps the pod legend out of an inner scroll box, so the wheel scrolls the page", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(respond(200, { series })));
+    render(<SeriesCard token="t" />);
+    await flush();
+    const legend = screen.getByRole("list", { name: "CPU per pod now" });
+    expect(legend.className).toContain("ops-legend");
+  });
 });

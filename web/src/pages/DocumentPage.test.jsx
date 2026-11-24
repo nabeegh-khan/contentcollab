@@ -7,15 +7,19 @@ const USER = { id: "u1", displayName: "Ann" };
 const DOC = "11111111-1111-4111-8111-111111111111";
 const VER = "22222222-2222-4222-8222-222222222222";
 
-function renderPage() {
-  // A new Response for every call: a body can be read only once
-  const fetchMock = vi.fn().mockImplementation(
-    async () =>
-      new Response(JSON.stringify({ items: [], nextCursor: null }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      }),
-  );
+function renderPage({ document: doc = { id: DOC, title: "Design review draft" } } = {}) {
+  // A new Response for every call: a body can be read only once. The document itself has its own route.
+  const json = (status, body) =>
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { "Content-Type": "application/json" },
+    });
+  const fetchMock = vi.fn().mockImplementation(async (url) => {
+    if (url === `/api/v1/documents/${DOC}`) {
+      return doc === null ? json(404, { error: "Document Not Found", code: "NOT_FOUND" }) : json(200, doc);
+    }
+    return json(200, { items: [], nextCursor: null });
+  });
   vi.stubGlobal("fetch", fetchMock);
   const connect = vi.fn().mockReturnValue({ close: vi.fn() });
   render(
@@ -38,7 +42,7 @@ describe("DocumentPage", () => {
   it("shows the document heading, a way back to the documents page, and the comment form", async () => {
     renderPage();
 
-    expect(screen.getByRole("heading", { name: "Document" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Design review draft" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "Back to documents" }).getAttribute("href")).toBe("#/");
     expect(await screen.findByLabelText("Comment")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Add comment" })).toBeTruthy();
@@ -56,5 +60,22 @@ describe("DocumentPage", () => {
       ([u]) => u === `/api/v1/documents/${DOC}/versions`,
     );
     expect(versionsCall[1].headers.Authorization).toBe("Bearer t0k");
+  });
+
+  it("reads the document's title with the token, and shows it as text, never as HTML", async () => {
+    const { fetchMock } = renderPage({ document: { id: DOC, title: "<b>Plan</b> v2" } });
+
+    expect(await screen.findByRole("heading", { name: "<b>Plan</b> v2" })).toBeTruthy();
+    const call = fetchMock.mock.calls.find(([u]) => u === `/api/v1/documents/${DOC}`);
+    expect(call[1].headers.Authorization).toBe("Bearer t0k");
+    expect(document.querySelector("h2 b")).toBeNull();
+  });
+
+  it("falls back to the plain heading Document while the title loads or when it cannot be read", async () => {
+    renderPage({ document: null });
+
+    expect(screen.getByRole("heading", { name: "Document" })).toBeTruthy();
+    await screen.findByText("No comments yet.");
+    expect(screen.getByRole("heading", { name: "Document" })).toBeTruthy();
   });
 });

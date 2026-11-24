@@ -126,6 +126,11 @@ describe("authorLabel", () => {
   it("says You for the signed-in user and Member plus 8 characters for anyone else", () => {
     expect(authorLabel("abcdef12-0000", "abcdef12-0000")).toBe("You");
     expect(authorLabel("abcdef12-3456-7890", "someone-else")).toBe("Member abcdef12");
+    // The API's name for the author wins over the short id, and "You" wins over both
+    expect(authorLabel("abcdef12-3456-7890", "someone-else", "Reviewer")).toBe("Reviewer");
+    expect(authorLabel("me", "me", "Admin")).toBe("You");
+    // A blank name is no name
+    expect(authorLabel("abcdef12-3456-7890", "someone-else", "  ")).toBe("Member abcdef12");
   });
 
   it("copes with a missing id", () => {

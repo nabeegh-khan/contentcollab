@@ -643,3 +643,69 @@ describe("comments API", () => {
     ]);
   });
 });
+
+describe("comment author display name (demo polish, 24 Nov)", () => {
+  async function setup() {
+    const ownerId = await createUser("Admin Owner");
+    const reviewerId = await createUser("Reviewer Rita");
+    const documentId = await createDocument(ownerId);
+    const versionId = await createVersion(documentId, ownerId);
+    await addShare(documentId, reviewerId, "commenter");
+    const url = `${base}/${documentId}/versions/${versionId}/comments`;
+    return { ownerId, reviewerId, documentId, url };
+  }
+
+  it("names the author in the created comment, which the live event also carries", async () => {
+    const { reviewerId, url } = await setup();
+
+    const res = await request(app)
+      .post(url)
+      .set("Authorization", `Bearer ${token(reviewerId)}`)
+      .send({ body: "Approved" });
+
+    expect(res.status).toBe(201);
+    expect(res.body.authorDisplayName).toBe("Reviewer Rita");
+    expect(res.body.authorId).toBe(reviewerId);
+  });
+
+  it("names every author in the list, for comments by two different people", async () => {
+    const { ownerId, reviewerId, url } = await setup();
+    await request(app)
+      .post(url)
+      .set("Authorization", `Bearer ${token(ownerId)}`)
+      .send({ body: "From the owner" });
+    await request(app)
+      .post(url)
+      .set("Authorization", `Bearer ${token(reviewerId)}`)
+      .send({ body: "From the reviewer" });
+
+    const res = await request(app).get(url).set("Authorization", `Bearer ${token(ownerId)}`);
+
+    expect(res.status).toBe(200);
+    expect(
+      res.body.items.map((c: { body: string; authorDisplayName: string }) => [
+        c.body,
+        c.authorDisplayName,
+      ]),
+    ).toEqual([
+      ["From the owner", "Admin Owner"],
+      ["From the reviewer", "Reviewer Rita"],
+    ]);
+  });
+
+  it("names the author in an updated comment too, so a live update does not lose the name", async () => {
+    const { reviewerId, documentId, url } = await setup();
+    const created = await request(app)
+      .post(url)
+      .set("Authorization", `Bearer ${token(reviewerId)}`)
+      .send({ body: "Draft" });
+
+    const res = await request(app)
+      .patch(`${base}/${documentId}/comments/${created.body.id}`)
+      .set("Authorization", `Bearer ${token(reviewerId)}`)
+      .send({ body: "Final" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.authorDisplayName).toBe("Reviewer Rita");
+  });
+});

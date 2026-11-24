@@ -1,5 +1,5 @@
 // Render tests for the operations page (D31): cards, plain words, polling, and each way the API can say no.
-import { act, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import OpsPage from "./OpsPage.jsx";
 
@@ -182,10 +182,11 @@ describe("OpsPage cards", () => {
     await flush();
 
     const card = screen.getByRole("region", { name: "Autoscaler" });
+    expect(within(card).getByText("API copies: 2 of 2")).toBeTruthy();
     expect(
-      within(card).getByText("API copies running: 2 of 2 (autoscaler may use 2 to 5)"),
+      within(card).getByText("autoscaler range 2 to 5, scales out above 70% CPU"),
     ).toBeTruthy();
-    expect(within(card).getByText("CPU 12% (scales out above 70%)")).toBeTruthy();
+    expect(within(card).getByText("CPU now: 12%")).toBeTruthy();
   });
 
   it("shows node CPU and memory as labelled meters with their numbers", async () => {
@@ -606,5 +607,123 @@ describe("OpsPage drill and comment count", () => {
     render(<OpsPage token="t" />);
     await flush();
     expect(screen.getByText("Comments stored: not available")).toBeTruthy();
+  });
+});
+
+describe("OpsPage demo layout (24 Nov)", () => {
+  const withGrafana = () =>
+    snapshot({
+      links: { grafana: "https://g.example" },
+      logs: { lines: [], hidden: 0 },
+    });
+
+  it("puts the restart buttons and the Grafana link in one bar directly under the heading", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(respond(200, withGrafana())));
+    render(<OpsPage token="t" />);
+    await flush();
+
+    const heading = screen.getByRole("heading", { name: "Operations" });
+    const bar = screen.getByRole("group", { name: "Operations actions" });
+    expect(within(bar).getByRole("button", { name: "Restart the database pod" })).toBeTruthy();
+    expect(within(bar).getByRole("button", { name: "Restart an API pod" })).toBeTruthy();
+    expect(within(bar).getByRole("link", { name: "Open Grafana for the details" })).toBeTruthy();
+    // The bar follows the heading, and comes before every card
+    expect(heading.compareDocumentPosition(bar) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const firstCard = screen.getByRole("region", { name: "Containers" });
+    expect(bar.compareDocumentPosition(firstCard) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("has no separate Restart card and no duplicate buttons or Grafana link", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(respond(200, withGrafana())));
+    render(<OpsPage token="t" />);
+    await flush();
+
+    expect(screen.queryByRole("heading", { name: "Restart a pod" })).toBeNull();
+    expect(screen.getAllByRole("button", { name: "Restart the database pod" })).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: "Restart an API pod" })).toHaveLength(1);
+    expect(screen.getAllByRole("link", { name: /Grafana/ })).toHaveLength(1);
+  });
+
+  it("keeps the confirm question inside the bar's group, next to the buttons", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(respond(200, withGrafana())));
+    render(<OpsPage token="t" />);
+    await flush();
+
+    fireEvent.click(screen.getByRole("button", { name: "Restart the database pod" }));
+    const bar = screen.getByRole("group", { name: "Operations actions" });
+    expect(within(bar).getByRole("dialog")).toBeTruthy();
+    expect(within(bar).getByText("Restart the database pod?")).toBeTruthy();
+  });
+
+  it("shows Recent events straight after Containers, before the autoscaler, so the restart shows without scrolling", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(respond(200, withGrafana())));
+    render(<OpsPage token="t" />);
+    await flush();
+
+    const regions = screen.getAllByRole("region").map((r) => r.getAttribute("aria-labelledby"));
+    const order = (id) => regions.indexOf(id);
+    expect(order("ops-containers")).toBeGreaterThanOrEqual(0);
+    expect(order("ops-recent-events")).toBe(order("ops-containers") + 1);
+    expect(order("ops-recent-events")).toBeLessThan(order("ops-autoscaler"));
+  });
+
+  it("shows the newest 8 events and says how many older ones are not shown", async () => {
+    const events = Array.from({ length: 11 }, (_, i) => ({
+      at: `2026-11-21T19:${String(59 - i).padStart(2, "0")}:00Z`,
+      type: "Normal",
+      reason: "Started",
+      object: `Pod/api-${i}`,
+      text: "Started container api",
+      source: "kubernetes",
+    }));
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(respond(200, snapshot({ events }))));
+    render(<OpsPage token="t" />);
+    await flush();
+
+    const list = screen.getByRole("list", { name: "Recent events" });
+    expect(within(list).getAllByRole("listitem")).toHaveLength(8);
+    expect(screen.getByText("3 older events are not shown")).toBeTruthy();
+  });
+
+  it("hides the Latest requests card when it has no rows, and shows it when it has", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(respond(200, withGrafana())));
+    const { unmount } = render(<OpsPage token="t" />);
+    await flush();
+    expect(screen.queryByRole("region", { name: "Latest requests" })).toBeNull();
+    unmount();
+
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(respond(200, snapshot())));
+    render(<OpsPage token="t" />);
+    await flush();
+    expect(screen.getByRole("region", { name: "Latest requests" })).toBeTruthy();
+  });
+
+  it("still shows the Latest requests card, with its reason, when the log source failed", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        respond(
+          200,
+          snapshot({
+            logs: { lines: [], hidden: 0 },
+            errors: { logs: "no answer within 1000 ms" },
+          }),
+        ),
+      ),
+    );
+    render(<OpsPage token="t" />);
+    await flush();
+    const card = screen.getByRole("region", { name: "Latest requests" });
+    expect(within(card).getByText(/no answer within 1000 ms/)).toBeTruthy();
+  });
+
+  it("writes the traffic headline on one line, in the same size class as the autoscaler's", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(respond(200, snapshot())));
+    render(<OpsPage token="t" />);
+    await flush();
+    const traffic = screen.getByText("Requests per second: 0.4");
+    const hpa = screen.getByText("API copies: 2 of 2");
+    expect(traffic.className).toContain("ops-big");
+    expect(hpa.className).toBe(traffic.className);
   });
 });

@@ -96,6 +96,20 @@ describe("CommentsPanel", () => {
     expect(screen.getByText("You")).toBeTruthy();
   });
 
+  it("shows the author's display name when the API sends it, and the short id when it does not", async () => {
+    const state = {
+      comments: [
+        comment("c1", { authorDisplayName: "Reviewer" }),
+        comment("c2", { authorId: "cccccccc-3333-4333-8333-333333333333" }),
+      ],
+    };
+    mount(state);
+
+    expect(await screen.findByText("Reviewer")).toBeTruthy();
+    expect(screen.queryByText("Member bbbbbbbb")).toBeNull();
+    expect(screen.getByText("Member cccccccc")).toBeTruthy();
+  });
+
   it("opens the live connection for this version with the token", async () => {
     const { connect } = mount({ comments: [] });
     await screen.findByText("No comments yet.");

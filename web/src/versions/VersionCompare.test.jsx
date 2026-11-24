@@ -126,3 +126,12 @@ describe("VersionCompare", () => {
     expect(list.textContent).toContain("<img src=x onerror=alert(1)>");
   });
 });
+
+describe("VersionCompare selects", () => {
+  it("puts both version selects in a labelled field, so the shared field styling applies", () => {
+    vi.stubGlobal("fetch", vi.fn());
+    render(<VersionCompare token="t" documentId={DOC} versions={versions} />);
+    expect(screen.getByLabelText("From version").closest(".field")).not.toBeNull();
+    expect(screen.getByLabelText("To version").closest(".field")).not.toBeNull();
+  });
+});

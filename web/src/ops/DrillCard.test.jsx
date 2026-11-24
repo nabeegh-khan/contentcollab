@@ -22,7 +22,9 @@ function open(name) {
 describe("DrillCard", () => {
   it("offers a restart of an API pod and of the database pod", () => {
     render(<DrillCard token="t" nextAllowedAt={null} onStarted={() => {}} />);
-    expect(screen.getByRole("heading", { name: "Restart a pod" })).toBeTruthy();
+    // One action bar, not a card of its own: no heading, and its children sit beside the buttons
+    expect(screen.queryByRole("heading", { name: "Restart a pod" })).toBeNull();
+    expect(screen.getByRole("group", { name: "Operations actions" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Restart an API pod" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Restart the database pod" })).toBeTruthy();
   });
