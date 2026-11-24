@@ -11,34 +11,28 @@ A stateful, cloud-native content review platform. A user uploads a document, PDF
 ```mermaid
 flowchart TB
   U["Browser · React web app"]
-  subgraph DOKS["DigitalOcean Kubernetes · 2 nodes · Toronto"]
-    GW["Gateway API · HTTPS · sticky sessions"]
-    W["web · static build"]
+  subgraph DOKS["DigitalOcean Kubernetes · currently 2 nodes (pool 1 to 2) · New York (nyc3)"]
+    GW["Gateway API (NGINX Gateway Fabric) · HTTPS"]
+    W["web ×2 · static build · uid 101"]
     A["api ×2–5 · stateless · autoscaled (HPA)<br/>readiness and liveness probes"]
-    K["worker · imports, conversion, diffs, AI jobs<br/>idempotent, retried"]
+    K["worker · version diff jobs, summary jobs<br/>(stub provider, no model API called)"]
     R[("Redis · Socket.IO adapter, job queue")]
     P[("PostgreSQL StatefulSet · volume<br/>transactions, row versions")]
     J["Jobs · migrations before rollout,<br/>nightly pg_dump backup"]
     SEC["Secrets · JWT key, database, API keys"]
   end
   S[("Spaces · files, backups")]
-  LLM["Language-model API"]
-  MAIL["Email service"]
   CI["GitHub Actions · tests, image build · GHCR"]
-  M["DO alerts and Insights · /metrics, JSON logs"]
+  M["Prometheus, Grafana, kube-state-metrics<br/>DO alerts · /metrics, JSON logs"]
   U -- "HTTPS, WebSocket" --> GW
   GW --> W
   GW --> A
   A --> R
   R --> K
   A --> P
-  K --> P
   A --> S
-  K --> S
   J --> P
   J --> S
-  K --> LLM
-  K --> MAIL
   SEC -.-> A
   CI -. "rolling update" .-> A
   M -. watch .-> A
@@ -52,7 +46,7 @@ ingress-nginx was retired in March 2026 and gets no security fixes, so we do not
 
 ### D12. Socket.IO across replicas (decided 24 October, #17)
 
-Sticky sessions at the Gateway keep each client on one API pod, so Socket.IO keeps its HTTP long-polling fallback when a WebSocket connection fails; the Redis adapter carries broadcasts between pods. WebSocket-only transport is the fallback if the Gateway controller cannot provide session affinity. Affinity comes from NGINX Gateway Fabric 2.8's cookie session persistence (open source since 2.8, an experimental Gateway API field, per the [NGF 2.8 release blog](https://blog.nginx.org/blog/nginx-gateway-fabric-2-8-ip-allow-and-deny-lists-passive-health-checks-and-cookie-based-session-persistence), checked 6 November 2026) or from `ip_hash` in an UpstreamSettingsPolicy, which needs the DigitalOcean load balancer to pass the client IP: the default network load balancer (DOKS 1.33.1 and later) preserves it, while an HTTP load balancer needs PROXY protocol ([DigitalOcean load balancer docs](https://docs.digitalocean.com/products/kubernetes/how-to/configure-load-balancers/), checked 6 November 2026); if neither works, WebSocket-only. The Gateway's idle timeout is set above Socket.IO's 45 seconds.
+Status 23 November: no session affinity is configured in `k8s/`, and the client and server both use WebSocket only (`web/src/realtime.js`, `api/src/lib/socket.ts`), so requests are balanced round-robin and the Redis adapter carries every event. The text below is the 24 October design. Sticky sessions at the Gateway keep each client on one API pod, so Socket.IO keeps its HTTP long-polling fallback when a WebSocket connection fails; the Redis adapter carries broadcasts between pods. WebSocket-only transport is the fallback if the Gateway controller cannot provide session affinity. Affinity comes from NGINX Gateway Fabric 2.8's cookie session persistence (open source since 2.8, an experimental Gateway API field, per the [NGF 2.8 release blog](https://blog.nginx.org/blog/nginx-gateway-fabric-2-8-ip-allow-and-deny-lists-passive-health-checks-and-cookie-based-session-persistence), checked 6 November 2026) or from `ip_hash` in an UpstreamSettingsPolicy, which needs the DigitalOcean load balancer to pass the client IP: the default network load balancer (DOKS 1.33.1 and later) preserves it, while an HTTP load balancer needs PROXY protocol ([DigitalOcean load balancer docs](https://docs.digitalocean.com/products/kubernetes/how-to/configure-load-balancers/), checked 6 November 2026); if neither works, WebSocket-only. The Gateway's idle timeout is set above Socket.IO's 45 seconds.
 
 ### D13. Cluster bring-up and the CI credential (decided 11 November, #54)
 
@@ -128,7 +122,7 @@ The StatefulSet with a `volumeClaimTemplates` claim on `do-block-storage` stays 
 
 What the documentation says, checked 11 November 2026: deleting or scaling down a StatefulSet does not delete its volumes, and the `persistentVolumeClaimRetentionPolicy` fields `whenDeleted` and `whenScaled` default to Retain ([StatefulSets](https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/)); a dynamically provisioned volume inherits its StorageClass's reclaim policy, which defaults to Delete, and deleting the claim then deletes the PersistentVolume and the storage behind it ([Persistent Volumes](https://kubernetes.io/docs/concepts/storage/persistent-volumes/)); DigitalOcean's `do-block-storage` is `ReadWriteOnce`, 1 to 10,000 GB, can grow but never shrink, and billing stops only when the volume itself is deleted ([add volumes](https://docs.digitalocean.com/products/kubernetes/how-to/add-volumes/), last verified 12 August 2026); snapshots are `VolumeSnapshot` objects ([create snapshots](https://docs.digitalocean.com/products/kubernetes/how-to/create-snapshots/), last verified 12 August 2026). Read-only on the running cluster (Kubernetes v1.37.0): the storage classes are `do-block-storage` and `do-block-storage-xfs` (reclaim Delete) and `do-block-storage-retain` and `do-block-storage-xfs-retain` (reclaim Retain); there is a `VolumeSnapshotClass` named `do-block-storage`; the claim `data-postgres-0` is 5 GiB on `do-block-storage`; its volume's reclaim policy is Delete; the StatefulSet's retention policy is Retain and Retain.
 
-Consequence: the data survives the pod, the node, the StatefulSet and the API, and does not survive deleting the claim, the namespace or the cluster, because the volume is then deleted with it. This is the gap the test cannot close. Options: (a) put the claim on `do-block-storage-retain` in the `doks` overlay (a claim's class cannot be changed in place, so it applies at the next rebuild); (b) patch the existing volume to Retain, which needs no rebuild and can be undone ([change the reclaim policy](https://kubernetes.io/docs/tasks/administer-cluster/change-pv-reclaim-policy/)); (c) a backup. Recommended: (b) now, a one-line change made by the cluster owner (it writes to the live cluster, so it is not done here), and (a) at the next rebuild. Neither is a backup: a volume is not a backup (DB-3), and a deleted database, a bad migration or a dropped table is on the volume too. The backup is the nightly `pg_dump` to Spaces (D5, Milton, a stretch goal) or a `VolumeSnapshot` of the claim; neither exists yet and the demo says so.
+Consequence: the data survives the pod, the node, the StatefulSet and the API, and does not survive deleting the claim or the namespace while the volume's reclaim policy is Delete (set to Retain on the live volume on 23 November, D30). It does not survive deleting the cluster either, but for another reason: `scripts/cluster-down.sh` passes `doctl ... --dangerous`, which deletes the cluster's volumes whatever their policy (doctl reference, checked 11 November). This is the gap the test cannot close. Options: (a) put the claim on `do-block-storage-retain` in the `doks` overlay (a claim's class cannot be changed in place, so it applies at the next rebuild); (b) patch the existing volume to Retain, which needs no rebuild and can be undone ([change the reclaim policy](https://kubernetes.io/docs/tasks/administer-cluster/change-pv-reclaim-policy/)); (c) a backup. Recommended: (b) now, a one-line change made by the cluster owner (it writes to the live cluster, so it is not done here), and (a) at the next rebuild. Neither is a backup: a volume is not a backup (DB-3), and a deleted database, a bad migration or a dropped table is on the volume too. The backup is the nightly `pg_dump` to Spaces (D5, Milton, a stretch goal) or a `VolumeSnapshot` of the claim; neither exists yet and the demo says so.
 
 Not claimed: that a drain brings the pod back on the other node with its data (that is what the DOKS run shows), that a snapshot is consistent while PostgreSQL is writing, or anything about zone or region failure.
 

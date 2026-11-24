@@ -1,6 +1,6 @@
 # CI/CD evidence (#70, advanced feature 2)
 
-Written Wednesday 11 November 2026 for issue [#70](https://github.com/nabeegh-khan/contentcollab/issues/70). **Status: the baseline and the failure path are shown here; the first live rollout is not, because it needs #83 merged and a cluster to roll out to (section 5).** Everything below is from `.github/workflows/deploy.yml` as it is on `main` (f8191b7).
+Written Wednesday 11 November 2026 for issue [#70](https://github.com/nabeegh-khan/contentcollab/issues/70). **Status (updated 23 November: the first live rollback is in section 6; the smoke-check rollback is still not shown). Original status of 11 November: the baseline and the failure path are shown here; the first live rollout is not, because it needs #83 merged and a cluster to roll out to (section 5).** Everything below is from `.github/workflows/deploy.yml` as it is on `main` (f8191b7).
 
 ## 1. What the pipeline does
 
@@ -8,7 +8,7 @@ On a push to `main` that touches `api/**`, `worker/**`, `k8s/**` or `deploy.yml`
 
 1. **checks** runs the same jobs as a pull request (`ci.yml`, called as a reusable workflow). The build waits for it (`needs: checks`).
 2. **build** builds the api and worker images in parallel and pushes them to ghcr.io tagged with the commit SHA and `latest`, reusing layers from the last build (`cache-from: type=gha`).
-3. **rollout** (one at a time, `concurrency: rollout`) saves a kubeconfig that expires after 600 seconds, pins both Deployments to the SHA in `k8s/doks`, applies once, checks each Deployment runs this commit's image, waits for `rollout status` (180 s) and runs `rollout undo` on any that never turns ready, failing the run.
+3. **rollout** (one at a time, `concurrency: rollout`) saves a kubeconfig that expires after 600 seconds, pins both Deployments to the SHA in `k8s/doks`, applies once, checks each Deployment runs this commit's image, waits for `rollout status` (180 s on 11 November; 120 s per Deployment now, `deploy.yml`) and runs `rollout undo` on any that never turns ready, failing the run.
 4. **smoke check**, only when the repository variable `SMOKE_URL` is set: up to 12 tries, 5 seconds apart, for `"status":"ok"` from `/health`; otherwise it refreshes the kubeconfig, undoes both Deployments and fails the run.
 
 Until the `DIGITALOCEAN_ACCESS_TOKEN` secret exists, step 3 stops green with a warning ("images pushed, cluster not changed"). The secret was set on 11 November at 16:34 UTC.
@@ -71,5 +71,26 @@ How to repeat it: cut a step's `run: |` body out of `deploy.yml` with `awk` (`in
 1. **Merge #83, then #99** (`gh pr merge <n> -R nabeegh-khan/contentcollab --squash --admin --delete-branch`, #83 first). Both are updated with `main` and green on 11 November (runs [43079785532](https://github.com/nabeegh-khan/contentcollab/actions/runs/43079785532) and [43079788625](https://github.com/nabeegh-khan/contentcollab/actions/runs/43079788625)). Merging #83 changes `k8s/**`, so it starts the first deploy that acts on a cluster, to the cluster named `contentcollab`: do it when that cluster is the one to keep. The cluster is still the original one (created 4 November, high-availability control plane); a rebuild is pending (COST_PLAN.md), and a deploy to the old cluster would be replaced by the rebuild's own pin.
 2. **Set `SMOKE_URL`** (`gh variable set SMOKE_URL --body https://contentcollab.app -R nabeegh-khan/contentcollab`) only when `https://contentcollab.app/health` answers ok on the cluster that is meant to stay up: the variable makes every later deploy roll back if it does not. It answered `{"status":"ok","postgres":"ok","redis":"ok"}` on 11 November.
 3. **Record from the first live run:** the run URL; the build, rollout and smoke step times; the image tag `kubectl -n contentcollab get deployment -o wide` then shows; the smoke step's `smoke ok:` line. **Recorded 18 November:** eight deploys ran on the cluster that day, all green, with `SMOKE_URL` set (runs 44378773519 to 44400512360, one per merge of #111, #95, #103, #124, #102, #126, #123, #125). The last, [44400512360](https://github.com/nabeegh-khan/contentcollab/actions/runs/44400512360) for d53644f, took about 4 minutes from start to end (21:20:50 to 21:24:48 UTC): checks 66 s, image builds 45 s (api) and 109 s (worker) in parallel, rollout job 52 s (migration Job 10 s, rolling both Deployments 30 s, smoke check under 1 s, which printed `smoke ok: {"status":"ok","postgres":"ok","redis":"ok"}`). Afterwards `kubectl -n contentcollab get deployment` showed `contentcollab-api:d53644f1a125...` (2 ready) and `contentcollab-worker:d53644f1a125...` (1 ready). Times from the Actions API (`gh run view --json jobs`), read the same evening.
-4. **The rollback on a real cluster** needs a release that starts and does not serve `/health`. It cannot be on `main` without being a real regression; the options are a dry run of the pinned manifests against a throwaway cluster, or accepting section 4 as the evidence.
+4. **(Rollout rollback: done 23 November, section 6; smoke-check rollback: still to do, plan on issue #70.) The rollback on a real cluster** needs a release that starts and does not serve `/health`. It cannot be on `main` without being a real regression; the options are a dry run of the pinned manifests against a throwaway cluster, or accepting section 4 as the evidence.
 5. **Section 3's gap:** add `"!**/*.md"` to the `paths` filter, with a test, after #83 merges. Done in #108 (18 November); the first README-only push after it merges should start no deploy run.
+
+## 6. After: build and deploy times, and the first live rollbacks (23 November)
+
+From the Actions API on 23 November: the eight most recent successful deploy runs, which now include the migration Job, the apply and the rollout wait on the live cluster (the section 2 runs stopped at "cluster not changed" in 4 to 7 seconds).
+
+| Run | Commit | Longest check job | Builds (api / worker / web) | Rollout job (migrate, apply, wait, smoke) | Total | Started (UTC) |
+|---|---|---|---|---|---|---|
+| [45288563346](https://github.com/nabeegh-khan/contentcollab/actions/runs/45288563346) | 2dc59ae | 74 s | 43 s / 22 s / 34 s | 56 s | 184 s | 2026-11-23T23:24:40Z |
+| [45287599402](https://github.com/nabeegh-khan/contentcollab/actions/runs/45287599402) | b02d287 | 100 s | 15 s / 19 s / 18 s | 58 s | 188 s | 2026-11-23T23:18:07Z |
+| [45282071382](https://github.com/nabeegh-khan/contentcollab/actions/runs/45282071382) | 042f43f | 96 s | 37 s / 21 s / 26 s | 53 s | 196 s | 2026-11-23T22:41:32Z |
+| [45089361490](https://github.com/nabeegh-khan/contentcollab/actions/runs/45089361490) | a3aa4fc | 62 s | 24 s / 16 s / 21 s | 56 s | 151 s | 2026-11-23T00:32:20Z |
+| [45088934819](https://github.com/nabeegh-khan/contentcollab/actions/runs/45088934819) | 8829fda | 75 s | 18 s / 18 s / 17 s | 59 s | 163 s | 2026-11-23T00:28:00Z |
+| [45086663960](https://github.com/nabeegh-khan/contentcollab/actions/runs/45086663960) | dd084fd | 56 s | 21 s / 19 s / 17 s | 51 s | 138 s | 2026-11-23T00:04:58Z |
+| [45080446496](https://github.com/nabeegh-khan/contentcollab/actions/runs/45080446496) | ae04b08 | 61 s | 16 s / 15 s / 16 s | 57 s | 142 s | 2026-11-22T22:56:06Z |
+| [44956163407](https://github.com/nabeegh-khan/contentcollab/actions/runs/44956163407) | 29956b3 | 61 s | 52 s / 21 s / 13 s | 45 s | 167 s | 2026-11-21T22:19:41Z |
+
+What it shows: a gated deploy takes 138 to 196 seconds in total (section 2: 117 to 159 seconds without a cluster to roll out to). The longest check job is 56 to 100 seconds, each image build 13 to 52 seconds, and the rollout job 45 to 59 seconds. The difference to the "before" runs is the rollout job, which now does real work (a migration Job, an apply, and a wait for three Deployments). Markdown-only pushes start no deploy (section 3; checked again on 23 November: the documentation commits of that day started no run).
+
+**A failed rollout, live.** Run 45286454462 (a deliberately broken web config, PRs #168 and #169): the web rollout never turned ready, `rollout status` timed out after 120 seconds, the gate undid web, api and worker, and the run failed, while the two old web pods kept serving; the full timeline is in `docs/evidence/2026-11-23-rollback.txt`.
+
+**Not shown live:** the smoke-check rollback (step 4 of section 1). In run 45286454462 the smoke step was skipped, because the rollout step had already failed. Showing it needs a release whose pods turn ready but whose `/health` is not `"status":"ok"`; the plan is on issue #70.

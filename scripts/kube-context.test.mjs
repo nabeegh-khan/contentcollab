@@ -98,6 +98,20 @@ test("cluster-up.sh goes on when the context is do-<region>-<cluster>", () => {
   assert.ok(otherKubectl().some((l) => l.startsWith("get nodes")), calls("kubectl").join("\n"));
 });
 
+test("cluster-up.sh creates a missing cluster in nyc3 by default, where the live cluster is", () => {
+  setup();
+  sb.run("cluster-up.sh", { env: { ...up, STUB_NO_CLUSTER: "1", STUB_CONTEXT: WANT } });
+  const create = calls("doctl").find((l) => l.startsWith("kubernetes cluster create"));
+  assert.ok(create, calls("doctl").join("\n"));
+  assert.match(create, /--region nyc3\b/);
+});
+
+test("cluster-up.sh takes REGION from the environment when it is set", () => {
+  setup();
+  sb.run("cluster-up.sh", { env: { ...up, REGION: "tor1", STUB_NO_CLUSTER: "1", STUB_CONTEXT: WANT } });
+  assert.match(calls("doctl").find((l) => l.startsWith("kubernetes cluster create")) ?? "", /--region tor1\b/);
+});
+
 test("cluster-up.sh accepts a KUBE_CONTEXT that is the current context", () => {
   setup();
   const r = sb.run("cluster-up.sh", { env: { ...up, KUBE_CONTEXT: "my-alias", STUB_CONTEXT: "my-alias" } });

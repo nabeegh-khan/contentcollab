@@ -50,7 +50,7 @@ Deploy run of the broken commit: 45286454462, https://github.com/nabeegh-khan/co
 
 Image tags: 0149f67 is the previous release (old pods), 9f0b08f the broken commit's pods.
 
-## After the run (rollout history of web before the run could not be read: the first kubectl call timed out on TLS; revisions 12 to 23 existed afterwards)
+## After the run (rollout history of web before the run could not be read: the first kubectl call timed out on TLS; revisions 12 to 20, 22 and 23 existed afterwards)
 ## end
 run 45286454462: completed failure
 $ rollout history deployment/web

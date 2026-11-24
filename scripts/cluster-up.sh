@@ -12,7 +12,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."   # paths below are relative to the repository root
 
 : "${CLUSTER_NAME:=contentcollab}"
-: "${REGION:=tor1}"
+: "${REGION:=nyc3}"   # the live cluster is in nyc3: tor1 returned 422 "insufficient capacity" for the three sizes tried (D13); Spaces stays in tor1
 : "${NODE_SIZE:=s-2vcpu-2gb}"   # smallest size that runs two api pods plus postgres comfortably
 : "${NODE_COUNT:=2}"
 : "${LETSENCRYPT_EMAIL:?set LETSENCRYPT_EMAIL to the address Lets Encrypt notifies about expiry}"

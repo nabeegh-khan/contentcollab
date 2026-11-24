@@ -859,3 +859,19 @@ Wrote D33, then failing tests for the rules and the view, then the route, a copy
 - Chose to compute the diff in the API and not through the worker queue, because nothing enqueues jobs yet and no result is stored; the choice and the option it beat are in D33.
 - Ran the rules and view tests red, then green; the six route tests need a database that this laptop does not have, so CI runs them first.
 - Left for later: PDF and image comparison, and a browser check.
+
+## The deploy gate's live rollback and the cluster-up region default, 23 November 2026
+
+### Prompt
+
+Prove the deploy gate's rollback on the live site with one deliberately broken web config that CI cannot see, record the run, revert it, then fix the region default in cluster-up.sh to the cluster's real region with a test that fails first, and bring the diagram and evidence docs in line.
+
+### AI Response
+
+Prepared the broken-config and revert branches, recorded the web pods and `/health` every 10 seconds through the failed run, wrote the evidence file from the run log, and made the region change test first with a stand-in `doctl`; a separate read of the docs then found a worker edge in the diagram that the code does not support and a stale comment.
+
+### What Your Team Did With It
+
+- Merged the two pull requests themselves, one after the other, and kept the site's recording off the rollout window; the gate undid web, api and worker and `/health` answered 200 at every sample.
+- Corrected the diagram (no worker edges to PostgreSQL or Spaces, no sticky sessions) after the independent read, and kept the claim that only a rollout failure was shown, not a smoke-check failure.
+- Left for later: the smoke-check rollback on the cluster (plan on #70), and the other `cluster-up.sh` defaults that the closed #94 carried.
