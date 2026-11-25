@@ -32,17 +32,14 @@ async function document(ownerId: string, title: string): Promise<string> {
   );
   const id = result.rows[0]!.id;
   documentIds.push(id);
-  await pool.query(
-    "INSERT INTO shares (document_id, user_id, role) VALUES ($1, $2, 'owner')",
-    [id, ownerId],
-  );
+  await pool.query("INSERT INTO shares (document_id, user_id, role) VALUES ($1, $2, 'owner')", [
+    id,
+    ownerId,
+  ]);
   return id;
 }
 
-async function version(
-  documentId: string,
-  uploaderId: string,
-): Promise<string> {
+async function version(documentId: string, uploaderId: string): Promise<string> {
   const id = randomUUID();
   const contents = Buffer.from(`version-${id}`);
   await pool.query(
@@ -59,10 +56,7 @@ async function version(
       uploaderId,
     ],
   );
-  await pool.query(
-    "UPDATE documents SET current_version_id = $2 WHERE id = $1",
-    [documentId, id],
-  );
+  await pool.query("UPDATE documents SET current_version_id = $2 WHERE id = $1", [documentId, id]);
   return id;
 }
 
@@ -73,10 +67,10 @@ async function addTag(documentId: string, name: string): Promise<void> {
   );
   const id = result.rows[0]!.id;
   tagIds.push(id);
-  await pool.query(
-    "INSERT INTO document_tags (document_id, tag_id) VALUES ($1, $2)",
-    [documentId, id],
-  );
+  await pool.query("INSERT INTO document_tags (document_id, tag_id) VALUES ($1, $2)", [
+    documentId,
+    id,
+  ]);
 }
 
 function bearer(userId: string): string {
@@ -101,17 +95,13 @@ beforeAll(async () => {
 afterAll(async () => {
   try {
     if (documentIds.length) {
-      await pool.query("DELETE FROM documents WHERE id = ANY($1::uuid[])", [
-        documentIds,
-      ]);
+      await pool.query("DELETE FROM documents WHERE id = ANY($1::uuid[])", [documentIds]);
     }
     if (tagIds.length) {
       await pool.query("DELETE FROM tags WHERE id = ANY($1::uuid[])", [tagIds]);
     }
     if (userIds.length) {
-      await pool.query("DELETE FROM users WHERE id = ANY($1::uuid[])", [
-        userIds,
-      ]);
+      await pool.query("DELETE FROM users WHERE id = ANY($1::uuid[])", [userIds]);
     }
   } finally {
     await pool.end();
@@ -128,10 +118,10 @@ describe("GET /api/v1/export", () => {
     const versionId = await version(ownedId, caller);
     const sharedId = await document(otherOwner, "Shared document");
     await version(sharedId, otherOwner);
-    await pool.query(
-      "INSERT INTO shares (document_id, user_id, role) VALUES ($1, $2, 'viewer')",
-      [sharedId, caller],
-    );
+    await pool.query("INSERT INTO shares (document_id, user_id, role) VALUES ($1, $2, 'viewer')", [
+      sharedId,
+      caller,
+    ]);
     const tagName = `project-${randomUUID()}`;
     await addTag(ownedId, tagName);
 
@@ -142,9 +132,7 @@ describe("GET /api/v1/export", () => {
 
     expect(res.status).toBe(200);
     expect(res.headers["content-disposition"]).toMatch(/^attachment;/);
-    expect(res.headers["content-disposition"]).toContain(
-      "contentcollab-export.json",
-    );
+    expect(res.headers["content-disposition"]).toContain("contentcollab-export.json");
     expect(res.headers["content-type"]).toMatch(/application\/json/);
     expect(res.body.documents).toEqual(
       expect.arrayContaining([
@@ -168,9 +156,7 @@ describe("GET /api/v1/export", () => {
       expect.arrayContaining([expect.objectContaining({ id: sharedId })]),
     );
     expect(res.body.versions).not.toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ documentId: sharedId }),
-      ]),
+      expect.arrayContaining([expect.objectContaining({ documentId: sharedId })]),
     );
   });
 
@@ -187,9 +173,7 @@ describe("GET /api/v1/export", () => {
 
     expect(res.status).toBe(200);
     expect(res.headers["content-disposition"]).toMatch(/^attachment;/);
-    expect(res.headers["content-disposition"]).toContain(
-      "contentcollab-export.csv",
-    );
+    expect(res.headers["content-disposition"]).toContain("contentcollab-export.csv");
     expect(res.headers["content-type"]).toMatch(/text\/csv/);
     expect(res.text).toContain('"documentId","title","ownerId"');
     expect(res.text).toContain(`"${documentId}","Budget, ""draft"""`);
@@ -200,9 +184,7 @@ describe("GET /api/v1/export", () => {
     const caller = await user();
 
     for (const path of [base, `${base}?format=xml`]) {
-      const res = await request(app)
-        .get(path)
-        .set("Authorization", bearer(caller));
+      const res = await request(app).get(path).set("Authorization", bearer(caller));
       expect(res.status).toBe(400);
       expect(res.body.code).toBe("VALIDATION");
       expect(res.body.details).toEqual(

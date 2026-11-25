@@ -93,20 +93,22 @@ router.get("/", requireAuth, async (req, res) => {
   const rows = result.rows;
 
   if (rawFormat === "json") {
-    const documents = [...new Map(
-      rows.map((row) => [
-        row.document_id,
-        {
-          id: row.document_id,
-          title: row.title,
-          ownerId: row.owner_id,
-          currentVersionId: row.current_version_id,
-          tags: row.tags,
-          createdAt: row.document_created_at,
-          updatedAt: row.document_updated_at,
-        },
-      ]),
-    ).values()];
+    const documents = [
+      ...new Map(
+        rows.map((row) => [
+          row.document_id,
+          {
+            id: row.document_id,
+            title: row.title,
+            ownerId: row.owner_id,
+            currentVersionId: row.current_version_id,
+            tags: row.tags,
+            createdAt: row.document_created_at,
+            updatedAt: row.document_updated_at,
+          },
+        ]),
+      ).values(),
+    ];
 
     const versions = rows
       .filter((row) => row.version_id !== null)
@@ -145,10 +147,10 @@ router.get("/", requireAuth, async (req, res) => {
     row.version_created_at?.toISOString(),
   ]);
 
-  const csv = [
-    columns.map(csvCell).join(","),
-    ...csvRows.map((row) => row.map(csvCell).join(",")),
-  ].join("\r\n") + "\r\n";
+  const csv =
+    [columns.map(csvCell).join(","), ...csvRows.map((row) => row.map(csvCell).join(","))].join(
+      "\r\n",
+    ) + "\r\n";
 
   res.attachment("contentcollab-export.csv");
   res.status(200).type("text/csv").send(csv);

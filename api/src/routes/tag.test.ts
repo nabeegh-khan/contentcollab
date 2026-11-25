@@ -63,7 +63,13 @@ function bearer(userId: string): string {
 beforeAll(async () => {
   process.env.JWT_SECRET = secret;
   await requireServices(
-    [{ name: "PostgreSQL", host: process.env.DB_HOST ?? "localhost", port: Number(process.env.DB_PORT ?? 5432) }],
+    [
+      {
+        name: "PostgreSQL",
+        host: process.env.DB_HOST ?? "localhost",
+        port: Number(process.env.DB_PORT ?? 5432),
+      },
+    ],
     1000,
   );
   await requireDatabase(pool, 1000);
@@ -96,10 +102,10 @@ describe("GET /api/v1/tags", () => {
     const privateDocument = await document(otherOwner);
     const expired = await document(otherOwner);
 
-    await pool.query(
-      "INSERT INTO shares (document_id, user_id, role) VALUES ($1, $2, 'viewer')",
-      [shared, caller],
-    );
+    await pool.query("INSERT INTO shares (document_id, user_id, role) VALUES ($1, $2, 'viewer')", [
+      shared,
+      caller,
+    ]);
     await pool.query(
       `INSERT INTO shares (document_id, user_id, role, expires_at)
        VALUES ($1, $2, 'viewer', NOW() - INTERVAL '1 minute')`,
