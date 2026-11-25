@@ -953,7 +953,7 @@ describe("OpsPage Grafana embed (D37)", () => {
     expect(screen.getByRole("link", { name: "Open Grafana for the details" })).toBeTruthy();
   });
 
-  it("has no iframe when the API gives no link, or one that is not http or https", async () => {
+  it("has no iframe when the API gives no link", async () => {
     await show({ grafana: null });
     expect(screen.queryByTitle(FRAME_TITLE)).toBeNull();
     expect(screen.queryByRole("region", { name: "Grafana dashboard" })).toBeNull();

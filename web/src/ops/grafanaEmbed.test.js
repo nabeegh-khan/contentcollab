@@ -15,6 +15,12 @@ describe("grafanaEmbedUrl", () => {
     );
   });
 
+  it("drops userinfo, query and hash from the configured link", () => {
+    expect(grafanaEmbedUrl("https://u:p@contentcollab.app:8443/grafana?orgId=1#x")).toBe(
+      "https://contentcollab.app:8443/grafana/d/contentcollab/contentcollab?kiosk&theme=light&refresh=15s",
+    );
+  });
+
   it("uses the dashboard uid of k8s/observability/grafana/dashboards/contentcollab.json", () => {
     expect(DASHBOARD_PATH).toBe("d/contentcollab/contentcollab");
   });
