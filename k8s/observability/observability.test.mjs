@@ -152,6 +152,17 @@ test("Grafana takes its admin password from a Secret and phones nowhere", () => 
   assert.equal(find("Secret", "grafana-admin"), undefined, "the password Secret is created by the install script, not committed");
 });
 
+// D37: the Operations page shows the dashboard in an iframe on the same origin. Grafana answers
+// X-Frame-Options: deny unless allow_embedding is on; the login stays the gate and the cookie stays lax.
+test("Grafana may be framed by the app, keeps its login and keeps its lax cookie", () => {
+  const c = find("Deployment", "grafana").spec.template.spec.containers.find((x) => x.name === "grafana");
+  const env = Object.fromEntries(c.env.map((e) => [e.name, e]));
+  assert.equal(env.GF_SECURITY_ALLOW_EMBEDDING?.value, "true");
+  assert.equal(env.GF_AUTH_ANONYMOUS_ENABLED?.value, "false", "no anonymous viewer");
+  assert.equal(env.GF_SECURITY_COOKIE_SAMESITE, undefined, "SameSite stays at Grafana's default, lax");
+  assert.equal(env.GF_AUTH_DISABLE_LOGIN_FORM, undefined, "the login form stays");
+});
+
 test("Grafana has room to start: 512 MiB limit, a startup probe that outlasts its first start", () => {
   const c = find("Deployment", "grafana").spec.template.spec.containers.find((x) => x.name === "grafana");
   assert.ok(mebibytes(c.resources.limits.memory) >= 512, `limit ${c.resources.limits.memory}`);

@@ -927,3 +927,40 @@ describe("OpsPage core health (D35)", () => {
     );
   });
 });
+
+describe("OpsPage Grafana embed (D37)", () => {
+  const FRAME_TITLE = "ContentCollab Grafana dashboard: request rate, errors, latency and replicas";
+  const show = async (links) => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(respond(200, snapshot({ links }))));
+    render(<OpsPage token="t" />);
+    await flush();
+  };
+
+  it("shows the dashboard in an iframe under the charts when the API gives the Grafana link", async () => {
+    await show({ grafana: "https://contentcollab.app/grafana/" });
+    const frame = screen.getByTitle(FRAME_TITLE);
+    expect(frame.tagName).toBe("IFRAME");
+    expect(frame.getAttribute("src")).toBe(
+      "https://contentcollab.app/grafana/d/contentcollab/contentcollab?kiosk&theme=light&refresh=15s",
+    );
+    const charts = screen.getByRole("region", { name: "Pod CPU and memory, last 15 minutes" });
+    expect(charts.compareDocumentPosition(frame) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("keeps the Open Grafana link beside the buttons as the fallback", async () => {
+    await show({ grafana: "https://contentcollab.app/grafana/" });
+    expect(screen.getAllByRole("link", { name: /Grafana/ })).toHaveLength(1);
+    expect(screen.getByRole("link", { name: "Open Grafana for the details" })).toBeTruthy();
+  });
+
+  it("has no iframe when the API gives no link, or one that is not http or https", async () => {
+    await show({ grafana: null });
+    expect(screen.queryByTitle(FRAME_TITLE)).toBeNull();
+    expect(screen.queryByRole("region", { name: "Grafana dashboard" })).toBeNull();
+  });
+
+  it("has no iframe for a javascript: link", async () => {
+    await show({ grafana: "javascript:alert(1)" });
+    expect(screen.queryByTitle(FRAME_TITLE)).toBeNull();
+  });
+});
