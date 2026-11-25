@@ -5,6 +5,7 @@ import { backupFrom } from "./backup.js";
 import { containersFrom } from "./containers.js";
 import { diskUsedFrom } from "./disk.js";
 import { eventsFrom, type TimelineEvent } from "./events.js";
+import type { FunctionsCard } from "./functions.js";
 import { hpaFrom } from "./hpa.js";
 import { logLinesFrom } from "./logs.js";
 import { nodesFrom } from "./nodes.js";
@@ -35,6 +36,8 @@ export interface LiveDeps {
   queueDepth?: (() => Promise<number>) | undefined;
   /** When the next drill may start, from the Redis lock. */
   nextDrill?: (() => Promise<string | null>) | undefined;
+  /** The serverless function's configuration and last invocations (D39). */
+  functionCard?: (() => Promise<FunctionsCard>) | undefined;
 }
 
 export interface DrillRow {
@@ -140,6 +143,7 @@ export function liveSources(deps: LiveDeps): OpsSources {
     counts: deps.sql,
     nextDrill: deps.nextDrill,
     queue: deps.queueDepth,
+    functions: deps.functionCard,
     events:
       kubeGet || deps.drillRows
         ? async () => {

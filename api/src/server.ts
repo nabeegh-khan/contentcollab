@@ -11,6 +11,7 @@ import healthRoutes from "./routes/health.js";
 import metricsRoutes from "./routes/metrics.js";
 import { validateStorageConfig } from "./lib/storage.js";
 import { statusRoutes } from "./routes/status.js";
+import { functionConfigFromEnv, redisInvocationStore } from "./lib/functionDiff.js";
 import { latencyFrom, queueDepth } from "./lib/status.js";
 import { cachedFor, inClusterGet, readyReplicas } from "./lib/replicas.js";
 import { httpDuration } from "./lib/metrics.js";
@@ -58,6 +59,7 @@ app.use(
 // Operations panel (D31): cluster internals, so sign-in and an admin check sit on the whole router
 const prometheusUrl = process.env.PROMETHEUS_URL;
 const store = drillStore(pool);
+const invocations = redisInvocationStore(redis);
 let countsRunning = false;
 app.use(
   "/api/v1/ops",
@@ -73,6 +75,10 @@ app.use(
       nextDrill: () => nextDrillAt(redis),
       queueDepth: () =>
         redis.isReady ? queueDepth(redis) : Promise.reject(new Error("redis not ready")),
+      functionCard: async () => ({
+        configured: functionConfigFromEnv(process.env) !== null,
+        invocations: await invocations.recent(),
+      }),
       sql: async () => {
         if (countsRunning) throw new Error("the previous count is still running");
         countsRunning = true;

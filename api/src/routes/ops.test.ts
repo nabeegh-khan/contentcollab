@@ -194,6 +194,42 @@ describe("GET /api/v1/ops document", () => {
     expect(JSON.stringify(failed.body)).not.toContain("redis down");
   });
 
+  it("gives the serverless function card, and a reason when the list cannot be read (D39)", async () => {
+    const [CALL_MS, COMPUTE_MS, INPUT_BYTES] = [120, 4.2, 900];
+    const invocation = {
+      at: "2026-11-25T15:00:00.000Z",
+      outcome: "function" as const,
+      ms: CALL_MS,
+      computeMs: COMPUTE_MS,
+      inputBytes: INPUT_BYTES,
+      reason: null,
+    };
+    const ok = await get(
+      appWith(
+        sources({ functions: async () => ({ configured: true, invocations: [invocation] }) }),
+      ),
+    );
+    expect(ok.body.functions).toEqual({ configured: true, invocations: [invocation] });
+    const failed = await get(
+      appWith(
+        sources({
+          functions: async () => {
+            throw new Error("redis down");
+          },
+        }),
+      ),
+    );
+    expect(failed.body.functions).toBeNull();
+    expect(failed.body.errors).toEqual({ functions: "unavailable" });
+    expect(JSON.stringify(failed.body)).not.toContain("redis down");
+  });
+
+  it("has no function card where no source is given", async () => {
+    const res = await get(appWith(sources()));
+    expect(res.body.functions).toBeNull();
+    expect(res.body.errors).toEqual({});
+  });
+
   it("has no queue figure where no queue source is given", async () => {
     const res = await get(appWith(sources()));
     expect(res.body.queue).toEqual({ depth: null });

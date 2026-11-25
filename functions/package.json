@@ -1,0 +1,10 @@
+{
+  "name": "contentcollab-functions",
+  "private": true,
+  "version": "1.0.0",
+  "description": "DigitalOcean Functions for ContentCollab (D39)",
+  "scripts": {
+    "test": "node --test \"test/*.test.js\""
+  },
+  "license": "ISC"
+}

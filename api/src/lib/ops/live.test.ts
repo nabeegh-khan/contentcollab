@@ -227,6 +227,13 @@ describe("liveSources", () => {
     expect(s.counts).not.toBeNull();
   });
 
+  it("reads the function card with the function it is given, and has none without one (D39)", async () => {
+    const card = { configured: false, invocations: [] };
+    const { deps: d } = deps({ functionCard: async () => card });
+    expect(await liveSources(d).functions?.()).toEqual(card);
+    expect(liveSources(deps().deps).functions).toBeUndefined();
+  });
+
   it("reads the queue depth with the function it is given, and has none without one (#30)", async () => {
     const { deps: d } = deps({ queueDepth: async () => 4 });
     expect(await liveSources(d).queue?.()).toBe(4);

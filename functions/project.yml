@@ -1,0 +1,14 @@
+# DigitalOcean Functions project (#180, ARCHITECTURE D39). Deployed by deploy.yml with
+# `doctl serverless deploy functions --env <file>`; the shared value for webSecure comes from the
+# environment file CI writes from a GitHub secret, never from this repository.
+packages:
+  - name: compare
+    functions:
+      - name: diff
+        runtime: "nodejs:22"
+        web: true
+        webSecure: "${FUNCTION_AUTH_TOKEN}"
+        limits:
+          timeout: 10000 # ms; the API gives up after 2 s and computes the diff itself
+          memory: 256 # MB, the platform default (Limits page, read 25 November 2026)
+          logs: 16 # KB
