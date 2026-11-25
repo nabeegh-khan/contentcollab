@@ -17,6 +17,8 @@ import { cachedFor, inClusterGet, readyReplicas } from "./lib/replicas.js";
 import { httpDuration } from "./lib/metrics.js";
 import authRoutes from "./routes/auth.js";
 import commentsRoutes from "./routes/comments.js";
+import tagsRoutes from "./routes/tags.js";
+import exportRoutes from "./routes/export.js";
 import { jwtSecret } from "./middleware/requireAuth.js";
 import compareRoutes from "./routes/compare.js";
 import { createServer } from "node:http";
@@ -143,6 +145,8 @@ app.use("/api/v1/links", linksRoutes);
 
 app.use("/api/v1/documents", documentRoutes);
 app.use("/api/v1/documents/:documentId/versions", versionsRoutes);
+app.use("/api/v1/tags", tagsRoutes);
+app.use("/api/v1/export", exportRoutes);
 app.use((req, res) => res.status(HTTP_NOT_FOUND).json(errorBody(HTTP_NOT_FOUND)));
 app.use(errorHandler);
 
