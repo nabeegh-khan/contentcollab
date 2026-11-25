@@ -31,6 +31,9 @@ export default function SessionsCard({ token }) {
   useEffect(() => {
     let alive = true;
     let timer = null;
+    // A new token starts clean: an earlier refusal or failure no longer applies
+    setRefused(false);
+    setStale(false);
     async function load() {
       try {
         const answer = await getSessions(token);

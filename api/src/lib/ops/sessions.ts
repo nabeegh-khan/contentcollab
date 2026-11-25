@@ -56,8 +56,8 @@ async function askOthers(
   const gaveUp = new Promise<{ answers: unknown[]; failed: boolean }>((resolve) => {
     timer = setTimeout(() => resolve({ answers: [], failed: true }), giveUpMs);
   });
-  const asked = io
-    .serverSideEmitWithAck(SESSIONS_EVENT)
+  const asked = Promise.resolve()
+    .then(() => io.serverSideEmitWithAck(SESSIONS_EVENT))
     .then((answers) => ({ answers, failed: false }))
     .catch((error: unknown) => {
       const responses = (error as { responses?: unknown }).responses;
