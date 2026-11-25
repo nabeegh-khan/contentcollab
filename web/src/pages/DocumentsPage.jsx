@@ -16,6 +16,7 @@ const ACCEPT = ".pdf,.png,.jpg,.jpeg,.docx,.xlsx,.pptx,.txt,.md";
 
 // New documents upload three at a time; the order of the list does not matter for them (D40)
 const DOCUMENT_UPLOADS_AT_ONCE = 3;
+const BUSY_TEXT = "Wait for the current upload to finish, then drop the files again.";
 
 // A readable reason for a refused upload; a validation refusal (a long title) says what the API says
 function uploadReason(error) {
@@ -102,20 +103,21 @@ export default function DocumentsPage({ token }) {
   // One request per file; the title applies only when a single file is uploaded, several use their file names
   async function uploadFiles(files) {
     const single = files.length === 1;
-    const done = await uploads.start(files, {
+    await uploads.start(files, {
       concurrency: DOCUMENT_UPLOADS_AT_ONCE,
       send: async (file) => {
         const created = await createDocument(token, file, single ? title : "");
         return `Uploaded "${created.title}".`;
       },
       reasonOf: uploadReason,
+      after: async (items) => {
+        notify(summarizeBatch(items));
+        if (items.some((item) => item.status === "done")) {
+          if (single) setTitle("");
+          await loadFirstPage();
+        }
+      },
     });
-    if (!done) return;
-    notify(summarizeBatch(done));
-    if (done.some((item) => item.status === "done")) {
-      if (single) setTitle("");
-      await loadFirstPage();
-    }
   }
 
   async function upload(event) {
@@ -130,6 +132,8 @@ export default function DocumentsPage({ token }) {
     await uploadFiles(files);
   }
 
+  const tellBusy = () => notify({ kind: "info", text: BUSY_TEXT });
+
   function drop(files) {
     setProblem(null);
     return uploadFiles(files);
@@ -140,7 +144,7 @@ export default function DocumentsPage({ token }) {
       <section className="card wide">
         <h2>Documents</h2>
         <form className="upload" onSubmit={upload}>
-          <DropZone onFiles={drop} disabled={uploads.busy}>
+          <DropZone onFiles={drop} onBusyDrop={tellBusy} disabled={uploads.busy}>
             <label className="field">
               <span>File</span>
               <input type="file" name="file" accept={ACCEPT} multiple ref={fileInput} />

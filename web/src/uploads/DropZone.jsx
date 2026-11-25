@@ -4,7 +4,7 @@ import { useState } from "react";
 
 const carriesFiles = (event) => Array.from(event.dataTransfer?.types ?? []).includes("Files");
 
-export default function DropZone({ onFiles, disabled = false, children }) {
+export default function DropZone({ onFiles, onBusyDrop, disabled = false, children }) {
   const [dragging, setDragging] = useState(false);
 
   function over(event) {
@@ -27,7 +27,9 @@ export default function DropZone({ onFiles, disabled = false, children }) {
     event.preventDefault();
     setDragging(false);
     const files = Array.from(event.dataTransfer?.files ?? []);
-    if (!disabled && files.length > 0) onFiles(files);
+    if (files.length === 0) return;
+    if (disabled) onBusyDrop?.();
+    else onFiles(files);
   }
 
   return (

@@ -13,7 +13,10 @@ export function useUploads() {
     running.current = true;
     setBusy(true);
     try {
-      return await runUploads({ ...options, files, onUpdate: setItems });
+      const done = await runUploads({ ...options, files, onUpdate: setItems });
+      // busy lasts until the page has refreshed its list, so a second batch cannot race that reload
+      await options.after?.(done);
+      return done;
     } finally {
       running.current = false;
       setBusy(false);

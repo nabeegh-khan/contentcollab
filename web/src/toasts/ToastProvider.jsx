@@ -28,11 +28,7 @@ function Toast({ toast, onDone }) {
   return (
     <li data-kind={toast.kind}>
       <span>{toast.text}</span>
-      <button
-        type="button"
-        aria-label={`Dismiss notification: ${toast.text}`}
-        onClick={() => onDone(toast.id)}
-      >
+      <button type="button" onClick={() => onDone(toast.id)}>
         Dismiss
       </button>
     </li>

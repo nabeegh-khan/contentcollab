@@ -90,6 +90,9 @@ export default function CommentsPanel({
       } else if ((state === "reconnecting" || state === "offline") && wasLive.current) {
         if (!lost.current) notify({ kind: "error", text: "Live updates lost." });
         lost.current = true;
+      } else if ((state === "error" || state === "offline") && !wasLive.current) {
+        // never came up: the page no longer announces the status line, so say it once
+        notify({ kind: "error", text: "Live updates are not available." });
       }
     },
     [notify],

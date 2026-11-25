@@ -53,15 +53,23 @@ export default function VersionsPanel({ token, documentId, versionId }) {
 
   // One at a time, in the order of the list: a version's number is set when its request arrives (D40)
   async function uploadFiles(files) {
-    const done = await uploads.start(files, {
+    await uploads.start(files, {
       concurrency: 1,
       send: async (file) =>
         `Uploaded as version ${(await uploadVersion(token, documentId, file)).number}.`,
       reasonOf: (error) => reason(error, "upload"),
+      after: async (items) => {
+        notify(summarizeBatch(items));
+        if (items.some((item) => item.status === "done")) await reload();
+      },
     });
-    if (done) notify(summarizeBatch(done));
-    if (done?.some((item) => item.status === "done")) await reload();
   }
+
+  const tellBusy = () =>
+    notify({
+      kind: "info",
+      text: "Wait for the current upload to finish, then drop the files again.",
+    });
 
   async function upload() {
     const files = Array.from(fileInput.current?.files ?? []);
@@ -127,7 +135,7 @@ export default function VersionsPanel({ token, documentId, versionId }) {
         ))}
       </ul>
       <VersionCompare token={token} documentId={documentId} versions={versions} />
-      <DropZone onFiles={drop} disabled={uploads.busy}>
+      <DropZone onFiles={drop} onBusyDrop={tellBusy} disabled={uploads.busy}>
         <label className="field">
           <span>New version (a file)</span>
           <input type="file" multiple ref={fileInput} />

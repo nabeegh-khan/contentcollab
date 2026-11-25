@@ -137,4 +137,26 @@ describe("DocumentsPage: drop several files", () => {
     expect(posts()).toBe(1);
     release();
   });
+
+  it("stays busy until the list reload after the batch has finished", async () => {
+    const { fetchMock, zone } = await mount();
+    let releaseList;
+    fetchMock.mockImplementation(async (url, init = {}) => {
+      if ((init.method ?? "GET") === "POST")
+        return reply(201, { id: "d", title: "t", role: "owner" });
+      await new Promise((resolve) => {
+        releaseList = resolve;
+      });
+      return reply(200, { items: [], nextCursor: null });
+    });
+    fireEvent.drop(zone, carrying([pdf("a.pdf")]));
+    await waitFor(() => expect(releaseList).toBeTypeOf("function"));
+
+    expect(screen.getByRole("button", { name: "Upload" }).disabled).toBe(true);
+    expect(zone.getAttribute("aria-disabled")).toBe("true");
+    releaseList();
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Upload" }).disabled).toBe(false),
+    );
+  });
 });

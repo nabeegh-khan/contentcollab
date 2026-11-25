@@ -82,6 +82,12 @@ describe("ToastProvider", () => {
     expect(texts().length).toBe(0);
   });
 
+  it("gives the Dismiss button a short name, so the text is not read twice in the live region", () => {
+    mount();
+    notify({ kind: "info", text: "long text of the toast" });
+    expect(within(region()).getByRole("button").getAttribute("aria-label")).toBeNull();
+  });
+
   it("removes a toast when Dismiss is pressed, and only that one", () => {
     mount();
     notify({ kind: "info", text: "first" });

@@ -210,15 +210,18 @@ describe("toasts for comments and the live connection", () => {
     expect(toasts().length).toBe(1);
   });
 
-  it("shows no toast when live updates were never available (the join was refused)", async () => {
+  it("says once that live updates are not available when they never came up, and nothing for reconnecting", async () => {
     const live = mount();
     await screen.findByText("No comments yet.");
 
     act(() => live.handlers.onState("connecting"));
-    act(() => live.handlers.onState("error"));
     act(() => live.handlers.onState("reconnecting"));
-
     expect(toasts()).toEqual([]);
+    act(() => live.handlers.onState("error"));
+    act(() => live.handlers.onState("error"));
+
+    expect(toasts().length).toBe(1);
+    expect(toasts()[0].textContent).toMatch(/not available/i);
   });
 });
 
@@ -253,5 +256,32 @@ describe("toasts for shares", () => {
     fill();
     expect((await screen.findByRole("alert")).textContent).toMatch(/already has a share/);
     expect(toasts()).toEqual([]);
+  });
+});
+
+describe("a drop while a batch is running", () => {
+  it("says so in a toast instead of ignoring it in silence", async () => {
+    let release;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        (url, init = {}) =>
+          new Promise((resolve) => {
+            if ((init.method ?? "GET") !== "POST")
+              return resolve(reply(200, { items: [], nextCursor: null }));
+            release = () => resolve(reply(201, { id: "d", title: "t", role: "owner" }));
+          }),
+      ),
+    );
+    withToasts(<DocumentsPage token="t0k" />);
+    await screen.findByText(/no documents yet/i);
+    const zone = screen.getByRole("group", { name: /drop files/i });
+    fireEvent.drop(zone, carrying([pdf("a.pdf")]));
+    await waitFor(() => expect(release).toBeTypeOf("function"));
+
+    fireEvent.drop(zone, carrying([pdf("b.pdf")]));
+
+    expect(toasts()[0].textContent).toMatch(/wait for the current upload/i);
+    release();
   });
 });
