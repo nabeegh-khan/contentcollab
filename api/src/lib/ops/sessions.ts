@@ -41,19 +41,41 @@ function toReplicaSessions(answer: unknown): ReplicaSessions | null {
   return { replica, sessions };
 }
 
+// Longer than the adapter's own 2 s wait for answers (REPLICA_REQUEST_TIMEOUT_MS in socket.ts)
+const GIVE_UP_MS = 3000;
+
 // The other replicas' answers. When one does not answer in time the adapter rejects and hands over the
-// answers it did get (`responses`), which are kept
-async function askOthers(io: Server): Promise<{ answers: unknown[]; failed: boolean }> {
+// answers it did get (`responses`), which are kept. The adapter swallows its own errors on this path (its
+// first step, counting the subscribers, can fail while Redis is down and then nothing ever settles), so the
+// wait has its own limit
+async function askOthers(
+  io: Server,
+  giveUpMs: number,
+): Promise<{ answers: unknown[]; failed: boolean }> {
+  let timer: NodeJS.Timeout | undefined;
+  const gaveUp = new Promise<{ answers: unknown[]; failed: boolean }>((resolve) => {
+    timer = setTimeout(() => resolve({ answers: [], failed: true }), giveUpMs);
+  });
+  const asked = io
+    .serverSideEmitWithAck(SESSIONS_EVENT)
+    .then((answers) => ({ answers, failed: false }))
+    .catch((error: unknown) => {
+      const responses = (error as { responses?: unknown }).responses;
+      return { answers: Array.isArray(responses) ? responses : [], failed: true };
+    });
   try {
-    return { answers: await io.serverSideEmitWithAck(SESSIONS_EVENT), failed: false };
-  } catch (error) {
-    const responses = (error as { responses?: unknown }).responses;
-    return { answers: Array.isArray(responses) ? responses : [], failed: true };
+    return await Promise.race([asked, gaveUp]);
+  } finally {
+    clearTimeout(timer);
   }
 }
 
-export async function countSessions(io: Server, replica: string): Promise<SessionCounts> {
-  const { answers, failed } = await askOthers(io);
+export async function countSessions(
+  io: Server,
+  replica: string,
+  giveUpMs = GIVE_UP_MS,
+): Promise<SessionCounts> {
+  const { answers, failed } = await askOthers(io, giveUpMs);
   const valid = answers.flatMap((answer) => toReplicaSessions(answer) ?? []);
   const replicas = [{ replica, sessions: localSessions(io) }, ...valid].sort((a, b) =>
     a.replica.localeCompare(b.replica),
