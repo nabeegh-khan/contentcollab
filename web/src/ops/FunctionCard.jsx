@@ -34,8 +34,8 @@ function Rows({ invocations }) {
         </tr>
       </thead>
       <tbody>
-        {invocations.map((i) => (
-          <tr key={`${i.at}-${i.ms}-${i.inputBytes}-${i.outcome}`}>
+        {invocations.map((i, index) => (
+          <tr key={`${index}-${i.at}`}>
             <td>{timeText(i.at)}</td>
             <td>{i.outcome}</td>
             <td>{msText(i.ms)}</td>

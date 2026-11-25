@@ -3,7 +3,7 @@ skips with a clear message when its inputs are missing, and never lets the share
 or a command line.
 
 Run from the repository root:  python3 -m unittest tests.test_functions_deploy -v
-Needs PyYAML and bash. CI runs it in the `scripts` job.
+Needs PyYAML and bash. CI runs it in the `k8s` job, with the other workflow and manifest tests.
 """
 
 import os

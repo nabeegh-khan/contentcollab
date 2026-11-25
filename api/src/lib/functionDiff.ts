@@ -80,6 +80,8 @@ async function callFunction(
       headers: { "Content-Type": "application/json", [AUTH_HEADER]: config.token },
       body: JSON.stringify({ before, after }),
       signal: AbortSignal.timeout(timeoutMs),
+      // A redirect would carry the auth header to wherever it points
+      redirect: "error",
     });
   } catch (error) {
     // A DOMException is not always an Error in every realm, so the name is read, not the class
@@ -87,7 +89,14 @@ async function callFunction(
     throw new FunctionFailed(timedOut ? "timeout" : "network error");
   }
   if (response.status !== HTTP_OK) throw new FunctionFailed(`status ${response.status}`);
-  const body: unknown = await response.json().catch(() => null);
+  let body: unknown;
+  try {
+    body = await response.json();
+  } catch (error) {
+    // The time limit also covers reading the reply, so a stalled body is a timeout, not a bad reply
+    const timedOut = (error as { name?: unknown } | null)?.name === "TimeoutError";
+    throw new FunctionFailed(timedOut ? "timeout" : "bad reply");
+  }
   if (!isDiffReply(body)) throw new FunctionFailed("bad reply");
   const computeMs = typeof body.computeMs === "number" ? body.computeMs : null;
   return { diff: { lines: body.lines, added: body.added, removed: body.removed }, computeMs };
@@ -114,7 +123,11 @@ export function diffWith(options: DifferOptions) {
   const timeoutMs = options.timeoutMs ?? FUNCTION_TIMEOUT_MS;
   const at = options.at ?? (() => new Date().toISOString());
 
-  const record = async (invocation: Invocation): Promise<void> => {
+  // Not awaited by the caller: a list that hangs (Redis down, commands queued) must not hold up an answer
+  const record = (invocation: Invocation): void => {
+    void save(invocation);
+  };
+  const save = async (invocation: Invocation): Promise<void> => {
     try {
       await store.push(invocation);
     } catch (error) {
@@ -137,7 +150,7 @@ export function diffWith(options: DifferOptions) {
         reason,
       });
       const diff = local(before, after);
-      await record({
+      record({
         at: stamp,
         outcome: "fallback",
         ms: Math.round(now() - started),
@@ -150,7 +163,7 @@ export function diffWith(options: DifferOptions) {
     if (inputBytes > MAX_INLINE_BYTES) return fallBack("input over the inline limit");
     try {
       const { diff, computeMs } = await callFunction(config, fetchFn, timeoutMs, before, after);
-      await record({
+      record({
         at: stamp,
         outcome: "function",
         ms: Math.round(now() - started),

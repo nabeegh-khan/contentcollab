@@ -28,7 +28,7 @@ doctl serverless deploy functions --env C:\path\outside\the\repo\fn.vars
 doctl serverless functions get compare/diff --url
 ```
 
-`fn.vars` holds one line, `FUNCTION_AUTH_TOKEN=<value>`. `project.yml` sets `webSecure` to that value, so callers must send it as the `X-Require-Whisk-Auth` header. The API reads the function's address and the same value from `FUNCTION_DIFF_URL` and `FUNCTION_AUTH_TOKEN` in `app-secrets`; with either missing it computes every diff itself.
+`fn.vars` holds one line, `FUNCTION_AUTH_TOKEN=<value>`; use a hex or base64url value (the file is read as a dotenv, so no spaces, quotes, `#` or `$`). `project.yml` sets `webSecure` to that value, so callers must send it as the `X-Require-Whisk-Auth` header. The API reads the function's address and the same value from `FUNCTION_DIFF_URL` and `FUNCTION_AUTH_TOKEN` in `app-secrets`; with either missing it computes every diff itself.
 
 ## Measure
 

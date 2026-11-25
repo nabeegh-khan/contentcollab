@@ -4,8 +4,8 @@
 import { Router } from "express";
 import { z } from "zod";
 import { pool } from "../lib/db.js";
-import { lineDiff } from "../lib/diff.js";
-import { diffWith, functionConfigFromEnv, redisInvocationStore } from "../lib/functionDiff.js";
+import { compareDiff } from "../lib/compareDiff.js";
+import { redisInvocationStore } from "../lib/functionDiff.js";
 import { HttpError } from "../lib/httpError.js";
 import { HTTP_BAD_REQUEST, HTTP_PAYLOAD_TOO_LARGE } from "../lib/httpStatus.js";
 import { redis } from "../lib/redis.js";
@@ -69,11 +69,7 @@ async function readText(objectKey: string): Promise<string> {
 
 // The line diff goes to the DigitalOcean Function when FUNCTION_DIFF_URL and FUNCTION_AUTH_TOKEN are set,
 // and falls back to the local diff on any failure (D39)
-const diff = diffWith({
-  config: functionConfigFromEnv(process.env),
-  local: lineDiff,
-  store: redisInvocationStore(redis),
-});
+const diff = compareDiff(process.env, redisInvocationStore(redis));
 
 const deps: CompareDeps = { loadVersion, readText, diff };
 

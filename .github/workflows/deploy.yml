@@ -266,6 +266,8 @@ jobs:
   functions:
     needs: checks
     runs-on: ubuntu-latest
+    permissions:
+      contents: read # reads the repo, writes nothing
     # One deploy at a time; a later merge waits rather than racing the running one
     concurrency:
       group: functions
