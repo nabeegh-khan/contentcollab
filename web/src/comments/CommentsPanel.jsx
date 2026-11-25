@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError } from "../api/client.js";
 import { createComment, deleteComment, listComments, updateComment } from "../api/comments.js";
 import { connectVersion } from "../realtime.js";
+import { useToasts } from "../toasts/ToastProvider.jsx";
 import CommentBody from "./CommentBody.jsx";
 import CommentForm from "./CommentForm.jsx";
 import { applyEvent, authorLabel, buildThreads } from "./thread.js";
@@ -43,6 +44,7 @@ export default function CommentsPanel({
   const [mentioned, setMentioned] = useState(false);
   const [replyTo, setReplyTo] = useState(null);
   const [actionError, setActionError] = useState(null);
+  const { notify } = useToasts();
 
   // The relative times ("2 min ago") move on without a reload: the clock ticks every 30 seconds
   const [now, setNow] = useState(() => new Date());
@@ -61,6 +63,37 @@ export default function CommentsPanel({
     if (loading.current) pending.current.push([event, payload]);
     setComments((list) => applyEvent(list, event, payload));
   }, []);
+
+  // A comment by someone else, arriving live, is a state change worth a toast; the user's own, edits, deletes
+  // and the reload after a join are not
+  const onEvent = useCallback(
+    (event, payload) => {
+      apply(event, payload);
+      if (event === "comment:created" && payload.authorId !== user.id) {
+        const who = authorLabel(payload.authorId, user.id, payload.authorDisplayName);
+        notify({ kind: "info", text: `${who} commented.` });
+      }
+    },
+    [apply, notify, user.id],
+  );
+
+  // Live updates lost, and back: only after a first "live", and one toast per loss
+  const wasLive = useRef(false);
+  const lost = useRef(false);
+  const onState = useCallback(
+    (state) => {
+      setLiveState(state);
+      if (state === "live") {
+        if (lost.current) notify({ kind: "success", text: "Live updates are back." });
+        lost.current = false;
+        wasLive.current = true;
+      } else if ((state === "reconnecting" || state === "offline") && wasLive.current) {
+        if (!lost.current) notify({ kind: "error", text: "Live updates lost." });
+        lost.current = true;
+      }
+    },
+    [notify],
+  );
 
   const reload = useCallback(async () => {
     const mine = ++newest.current;
@@ -81,16 +114,18 @@ export default function CommentsPanel({
 
   useEffect(() => {
     reload();
+    wasLive.current = false;
+    lost.current = false;
     const live = connect({
       token,
       versionId,
-      onEvent: apply,
+      onEvent,
       onMention: () => setMentioned(true),
       onJoined: reload,
-      onState: setLiveState,
+      onState,
     });
     return () => live.close();
-  }, [token, versionId, connect, reload, apply]);
+  }, [token, versionId, connect, reload, onEvent, onState]);
 
   async function post(body, parentId) {
     try {
@@ -160,9 +195,7 @@ export default function CommentsPanel({
   return (
     <section className="card comments">
       <h3>Comments</h3>
-      <p role="status" className={`live live-${liveState}`}>
-        {LIVE_TEXT[liveState]}
-      </p>
+      <p className={`live live-${liveState}`}>{LIVE_TEXT[liveState]}</p>
       {mentioned && (
         <p className="notice">
           Someone mentioned you in a comment.{" "}

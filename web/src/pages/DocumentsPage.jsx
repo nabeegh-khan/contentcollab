@@ -5,8 +5,10 @@ import { createDocument, listDocuments } from "../api/documents.js";
 import { formatClock } from "../comments/time.js";
 import { documentHash } from "../route.js";
 import ShareForm from "../shares/ShareForm.jsx";
+import { useToasts } from "../toasts/ToastProvider.jsx";
 import DropZone from "../uploads/DropZone.jsx";
 import UploadList from "../uploads/UploadList.jsx";
+import { summarizeBatch } from "../uploads/summary.js";
 import { useUploads } from "../uploads/useUploads.js";
 
 // The extensions api/src/lib/parseUpload.ts accepts
@@ -59,6 +61,7 @@ export default function DocumentsPage({ token }) {
   const [title, setTitle] = useState("");
   const [problem, setProblem] = useState(null);
   const uploads = useUploads();
+  const { notify } = useToasts();
   const [moreBusy, setMoreBusy] = useState(false);
   const fileInput = useRef(null);
   const loadingMore = useRef(false);
@@ -108,6 +111,7 @@ export default function DocumentsPage({ token }) {
       reasonOf: uploadReason,
     });
     if (!done) return;
+    notify(summarizeBatch(done));
     if (done.some((item) => item.status === "done")) {
       if (single) setTitle("");
       await loadFirstPage();

@@ -189,7 +189,8 @@ describe("ShareForm when another document is chosen", () => {
 
     fill();
 
-    const status = await screen.findByRole("status");
+    // visible text, not a live region: the toast announces it (D40)
+    const status = await screen.findByText("Shared with bo@x.co as viewer.");
     expect(status.className).toContain("success");
     const button = screen.getByRole("button", { name: "Share" });
     expect(status.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();

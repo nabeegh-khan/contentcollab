@@ -243,7 +243,7 @@ describe("toasts for shares", () => {
     expect(toasts()[0].dataset.kind).toBe("success");
   });
 
-  it("shows an error toast when the share was refused, and none for an empty form", async () => {
+  it("keeps a refusal as the inline alert only, so it is not announced twice, and no toast for an empty form", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(reply(409, { error: "x", code: "X" })));
     withToasts(<ShareForm token="t0k" />);
 
@@ -251,7 +251,7 @@ describe("toasts for shares", () => {
     expect(toasts()).toEqual([]);
 
     fill();
-    await waitFor(() => expect(toasts()[0]?.textContent).toMatch(/already has a share/));
-    expect(toasts()[0].dataset.kind).toBe("error");
+    expect((await screen.findByRole("alert")).textContent).toMatch(/already has a share/);
+    expect(toasts()).toEqual([]);
   });
 });

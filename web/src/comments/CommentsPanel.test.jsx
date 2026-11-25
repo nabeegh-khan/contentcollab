@@ -245,11 +245,13 @@ describe("CommentsPanel", () => {
     const { live } = mount({ comments: [] });
     await screen.findByText("No comments yet.");
 
+    // not a live region: the toast announces a loss and a return (D40)
+    const line = () => document.querySelector(".live");
     act(() => live.handlers.onState("live"));
-    expect(screen.getByRole("status").textContent).toMatch(/live/i);
+    expect(line().textContent).toMatch(/live/i);
 
     act(() => live.handlers.onState("reconnecting"));
-    expect(screen.getByRole("status").textContent).toMatch(/reconnecting/i);
+    expect(line().textContent).toMatch(/reconnecting/i);
 
     act(() => live.handlers.onMention({ commentId: "c9", documentId: DOC, from: OTHER }));
     expect(screen.getByText(/mentioned you/i)).toBeTruthy();

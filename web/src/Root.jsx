@@ -8,6 +8,7 @@ import DocumentPage from "./pages/DocumentPage.jsx";
 import DocumentsPage from "./pages/DocumentsPage.jsx";
 import OpsPage from "./ops/OpsPage.jsx";
 import { clearToken, loadToken, saveToken } from "./session.js";
+import { ToastProvider } from "./toasts/ToastProvider.jsx";
 import { useRoute } from "./useRoute.js";
 import "./app.css";
 
@@ -74,31 +75,33 @@ export default function Root() {
   const route = useRoute();
 
   return (
-    <div className="shell">
-      <header className="bar">
-        <strong>ContentCollab</strong>
-        {session.status === "signedIn" && (
-          <span className="who">
-            <nav aria-label="Pages">
-              <a href="#/">Documents</a> <a href="#/ops">Operations</a>
-            </nav>
-            <span>Signed in as {session.user.displayName}</span>
-            <button type="button" onClick={signOut}>
-              Sign out
-            </button>
-          </span>
-        )}
-      </header>
-      <main>
-        {session.status === "checking" && <p>Checking your sign-in...</p>}
-        {session.status === "signedOut" && <AuthPage onSignedIn={signIn} />}
-        {session.status === "signedIn" && (
-          <SignedInPage route={route} token={session.token} user={session.user} />
-        )}
-      </main>
-      <footer className="bar">
-        <App />
-      </footer>
-    </div>
+    <ToastProvider>
+      <div className="shell">
+        <header className="bar">
+          <strong>ContentCollab</strong>
+          {session.status === "signedIn" && (
+            <span className="who">
+              <nav aria-label="Pages">
+                <a href="#/">Documents</a> <a href="#/ops">Operations</a>
+              </nav>
+              <span>Signed in as {session.user.displayName}</span>
+              <button type="button" onClick={signOut}>
+                Sign out
+              </button>
+            </span>
+          )}
+        </header>
+        <main>
+          {session.status === "checking" && <p>Checking your sign-in...</p>}
+          {session.status === "signedOut" && <AuthPage onSignedIn={signIn} />}
+          {session.status === "signedIn" && (
+            <SignedInPage route={route} token={session.token} user={session.user} />
+          )}
+        </main>
+        <footer className="bar">
+          <App />
+        </footer>
+      </div>
+    </ToastProvider>
   );
 }

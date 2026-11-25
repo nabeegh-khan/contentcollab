@@ -3,8 +3,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError } from "../api/client.js";
 import { downloadVersion, listVersions, uploadVersion } from "../api/versions.js";
 import { documentHash } from "../route.js";
+import { useToasts } from "../toasts/ToastProvider.jsx";
 import DropZone from "../uploads/DropZone.jsx";
 import UploadList from "../uploads/UploadList.jsx";
+import { summarizeBatch } from "../uploads/summary.js";
 import { useUploads } from "../uploads/useUploads.js";
 import VersionCompare from "./VersionCompare.jsx";
 
@@ -33,6 +35,7 @@ export default function VersionsPanel({ token, documentId, versionId }) {
   const [loadState, setLoadState] = useState("loading");
   const [problem, setProblem] = useState(null);
   const uploads = useUploads();
+  const { notify } = useToasts();
   const fileInput = useRef(null);
 
   const reload = useCallback(async () => {
@@ -56,6 +59,7 @@ export default function VersionsPanel({ token, documentId, versionId }) {
         `Uploaded as version ${(await uploadVersion(token, documentId, file)).number}.`,
       reasonOf: (error) => reason(error, "upload"),
     });
+    if (done) notify(summarizeBatch(done));
     if (done?.some((item) => item.status === "done")) await reload();
   }
 

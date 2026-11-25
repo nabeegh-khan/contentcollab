@@ -216,7 +216,8 @@ describe("Root", () => {
     fireEvent.change(screen.getByLabelText("Email of the user"), { target: { value: "bo@x.co" } });
     fireEvent.click(screen.getByRole("button", { name: "Share" }));
 
-    await screen.findByText("Shared with bo@x.co as viewer.");
+    // the form's own line and the toast both say it (D40)
+    expect((await screen.findAllByText("Shared with bo@x.co as viewer.")).length).toBe(2);
     const call = fetchMock.mock.calls.find(([url]) => String(url).endsWith("/shares"));
     expect(call[1].headers.Authorization).toBe("Bearer mem0ry");
   });

@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { createShare } from "../api/shares.js";
 import { ApiError } from "../api/client.js";
+import { useToasts } from "../toasts/ToastProvider.jsx";
 
 const ROLES = ["viewer", "commenter", "editor"];
 
@@ -27,6 +28,7 @@ export default function ShareForm({ token, documentId: chosen = "", choiceCount 
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(null);
   const [problem, setProblem] = useState(null);
+  const { notify } = useToasts();
 
   useEffect(() => {
     if (!chosen) return;
@@ -55,7 +57,9 @@ export default function ShareForm({ token, documentId: chosen = "", choiceCount 
     setBusy(true);
     try {
       await createShare(token, doc, { email: who, role });
-      setDone(`Shared with ${who} as ${role}.`);
+      const sent = `Shared with ${who} as ${role}.`;
+      setDone(sent);
+      notify({ kind: "success", text: sent });
     } catch (error) {
       setProblem(refusal(error));
     } finally {
@@ -90,11 +94,7 @@ export default function ShareForm({ token, documentId: chosen = "", choiceCount 
           </select>
         </label>
         {problem && <p role="alert">{problem}</p>}
-        {done && (
-          <p role="status" className="success">
-            {done}
-          </p>
-        )}
+        {done && <p className="success">{done}</p>}
         <button type="submit" disabled={busy}>
           Share
         </button>
