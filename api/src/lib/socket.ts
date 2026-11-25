@@ -7,13 +7,23 @@ import { connectRedis, logStateChanges, redis } from "./redis.js";
 import { jwtSecret } from "../middleware/requireAuth.js";
 import { setRealtimeServer } from "./realtime.js";
 import { errorFields, log } from "./log.js";
+import { registerSessionCounter, replicaName } from "./ops/sessions.js";
 
 interface JoinResponse {
   ok: boolean;
   code?: "NOT_FOUND" | "INTERNAL_ERROR";
 }
 
-export function createSocketServer(httpServer: HttpServer) {
+// How long a request to the other replicas (the session count, D38) waits for answers; the adapter default is 5 s
+const REPLICA_REQUEST_TIMEOUT_MS = 2000;
+
+export interface SocketServerOptions {
+  /** This replica's name in the session count; the pod name unless a test names it. */
+  replica?: string;
+  requestsTimeoutMs?: number;
+}
+
+export function createSocketServer(httpServer: HttpServer, options: SocketServerOptions = {}) {
   const subClient = redis.duplicate();
   logStateChanges(subClient);
 
@@ -22,8 +32,13 @@ export function createSocketServer(httpServer: HttpServer) {
     transports: ["websocket"],
   });
 
-  io.adapter(createAdapter(redis, subClient));
+  io.adapter(
+    createAdapter(redis, subClient, {
+      requestsTimeout: options.requestsTimeoutMs ?? REPLICA_REQUEST_TIMEOUT_MS,
+    }),
+  );
   setRealtimeServer(io);
+  registerSessionCounter(io, options.replica ?? replicaName());
 
   // Authenticate every Socket.IO connection using the JWT handshake token.
   io.use((socket, next) => {

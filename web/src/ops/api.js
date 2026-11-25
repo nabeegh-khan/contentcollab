@@ -26,6 +26,12 @@ export function startDrill(token, target) {
   return request("/ops/drills", { method: "POST", body: { target }, token });
 }
 
+// Open WebSocket sessions over all API replicas (D38): resolves to { sessions: { total, partial, replicas } }
+// or { sessions: null, error }. Counts only; the API answers 401 (no token) and 403 (not an operator).
+export function getSessions(token) {
+  return request("/ops/sessions", { token });
+}
+
 // Per-pod CPU and memory for the charts: resolves to { series } or { series: null, error }
 export function getSeries(token) {
   return request("/ops/series", { token });

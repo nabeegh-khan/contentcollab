@@ -20,6 +20,8 @@ import { jwtSecret } from "./middleware/requireAuth.js";
 import compareRoutes from "./routes/compare.js";
 import { createServer } from "node:http";
 import { createSocketServer } from "./lib/socket.js";
+import { realtimeServer } from "./lib/realtime.js";
+import { countSessions, replicaName } from "./lib/ops/sessions.js";
 import sharesRoutes from "./routes/shares.js";
 import linksRoutes from "./routes/links.js";
 import { opsRoutes } from "./routes/ops.js";
@@ -92,6 +94,12 @@ app.use(
     }),
     {
       grafanaUrl: process.env.GRAFANA_URL ?? null,
+      // Open WebSocket sessions over all replicas (D38); the server exists only when this file is the entry point
+      sessions: async () => {
+        const io = realtimeServer();
+        if (!io) throw new Error("the realtime server is not running");
+        return countSessions(io, replicaName());
+      },
       ...(prometheusUrl ? { series: () => seriesFrom(prometheusRange(prometheusUrl)) } : {}),
       // The restart drill (D31): only in a cluster, where there is a pod to evict
       ...(kubeGet
