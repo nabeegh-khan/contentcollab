@@ -14,6 +14,7 @@ const OTHER = "22222222-2222-4222-8222-222222222222";
 const OK = 200;
 const UNAUTHORIZED = 401;
 const FORBIDDEN = 403;
+const NOT_FOUND = 404;
 const CACHE_MS = 5000;
 const env = { OPS_ADMIN_USER_IDS: ADMIN };
 
@@ -497,5 +498,74 @@ describe("GET /api/v1/ops core health (D35)", () => {
     const res = await get(appWith(sources({ ...given, diskUsed: async () => null })));
     expect(res.body.storage.diskUsedPercent).toBeNull();
     expect(res.body.errors).toEqual({});
+  });
+});
+
+describe("GET /api/v1/ops/sessions (D38)", () => {
+  const COUNTS = {
+    total: 5,
+    partial: false,
+    replicas: [
+      { replica: "api-a", sessions: 3 },
+      { replica: "api-b", sessions: 2 },
+    ],
+  };
+  const getSessions = (app: express.Express, sub = ADMIN) =>
+    request(app)
+      .get("/api/v1/ops/sessions")
+      .set("Authorization", `Bearer ${token(sub)}`);
+
+  function appWithSessions(sessions?: () => Promise<object>) {
+    process.env.JWT_SECRET = SECRET;
+    const app = express();
+    app.use(
+      "/api/v1/ops",
+      opsRoutes(sources(), {
+        env,
+        ttlMs: CACHE_MS,
+        now: () => 0,
+        grafanaUrl: null,
+        ...(sessions ? { sessions } : {}),
+      }),
+    );
+    app.use(errorHandler);
+    return app;
+  }
+
+  it("returns the counts for an admin, uncached by the browser", async () => {
+    const res = await getSessions(appWithSessions(async () => COUNTS));
+    expect(res.status).toBe(OK);
+    expect(res.headers["cache-control"]).toBe("no-store");
+    expect(res.body).toEqual({ sessions: COUNTS });
+  });
+
+  it("is 401 without a token and 403 for a non-admin", async () => {
+    const app = appWithSessions(async () => COUNTS);
+    expect((await request(app).get("/api/v1/ops/sessions")).status).toBe(UNAUTHORIZED);
+    expect((await getSessions(app, OTHER)).status).toBe(FORBIDDEN);
+  });
+
+  it("answers 200 with a reason when the count cannot be made, never the error text", async () => {
+    const res = await getSessions(
+      appWithSessions(async () => {
+        throw new Error("connect ECONNREFUSED 10.0.0.9:6379");
+      }),
+    );
+    expect(res.status).toBe(OK);
+    expect(res.body).toEqual({ sessions: null, error: "unavailable" });
+  });
+
+  it("asks the replicas once per window however many callers", async () => {
+    let asked = 0;
+    const app = appWithSessions(async () => {
+      asked += 1;
+      return COUNTS;
+    });
+    await Promise.all([getSessions(app), getSessions(app), getSessions(app)]);
+    expect(asked).toBe(1);
+  });
+
+  it("is 404 where there is no realtime server to ask", async () => {
+    expect((await getSessions(appWithSessions())).status).toBe(NOT_FOUND);
   });
 });

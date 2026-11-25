@@ -382,11 +382,13 @@ describe("OpsPage refresh", () => {
           }),
       )
       .mockResolvedValue(respond(200, snapshot()));
-    // the charts card asks /api/v1/ops/series on its own; only the ops calls are in the sequence
+    // the charts and sessions cards ask their own routes; only the ops calls are in the sequence
     vi.stubGlobal("fetch", (url, init) =>
       url === "/api/v1/ops/series"
         ? Promise.resolve(respond(200, { series: null, error: "unavailable" }))
-        : fetchMock(url, init),
+        : url === "/api/v1/ops/sessions"
+          ? Promise.resolve(respond(200, { sessions: null, error: "unavailable" }))
+          : fetchMock(url, init),
     );
     render(<OpsPage token="t" />);
     await flush();
@@ -962,5 +964,33 @@ describe("OpsPage Grafana embed (D37)", () => {
   it("has no iframe for a javascript: link", async () => {
     await show({ grafana: "javascript:alert(1)" });
     expect(screen.queryByTitle(FRAME_TITLE)).toBeNull();
+  });
+});
+
+describe("OpsPage active sessions (D38)", () => {
+  it("shows the Active sessions card with its own request, beside the other cards", async () => {
+    const counts = {
+      total: 3,
+      partial: false,
+      replicas: [
+        { replica: "api-a", sessions: 2 },
+        { replica: "api-b", sessions: 1 },
+      ],
+    };
+    const fetchMock = vi.fn((url) =>
+      Promise.resolve(
+        url === "/api/v1/ops/sessions"
+          ? respond(200, { sessions: counts })
+          : url === "/api/v1/ops/series"
+            ? respond(200, { series: null, error: "unavailable" })
+            : respond(200, snapshot()),
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    render(<OpsPage token="t" />);
+    await flush();
+    expect(screen.getByRole("heading", { name: "Active sessions" })).toBeTruthy();
+    expect(screen.getByText("3 sessions open across 2 API replicas")).toBeTruthy();
+    expect(fetchMock.mock.calls.some(([url]) => url === "/api/v1/ops/sessions")).toBe(true);
   });
 });
