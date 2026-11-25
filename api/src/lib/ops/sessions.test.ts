@@ -110,6 +110,22 @@ describe("countSessions", () => {
   });
 });
 
+describe("countSessions when the adapter never answers", () => {
+  const WAIT_MS = 20;
+  // The adapter swallows its own errors on this path, so with Redis down the promise can stay pending
+  it("gives up after the wait, with this replica's count and partial", async () => {
+    const io = {
+      of: () => ({ sockets: { size: HERE } }),
+      serverSideEmitWithAck: () => new Promise(() => {}),
+    } as unknown as Server;
+    expect(await countSessions(io, "api-a", WAIT_MS)).toEqual({
+      total: HERE,
+      partial: true,
+      replicas: [{ replica: "api-a", sessions: HERE }],
+    });
+  });
+});
+
 describe("registerSessionCounter", () => {
   function registered(local: number) {
     const handlers = new Map<string, (...args: unknown[]) => void>();

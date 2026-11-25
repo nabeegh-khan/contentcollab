@@ -152,6 +152,51 @@ describe("SessionsCard", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it("lists two replicas that share a name as two rows", async () => {
+    const twins = counts({
+      total: 3,
+      replicas: [
+        { replica: "api", sessions: 1 },
+        { replica: "api", sessions: 2 },
+      ],
+    });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(respond(200, { sessions: twins })));
+    render(<SessionsCard token="t" />);
+    await flush();
+    expect(within(screen.getByRole("table")).getAllByRole("row")).toHaveLength(3);
+  });
+
+  it("drops an answer whose rows are not a name and a number of sessions", async () => {
+    const bad = counts({ replicas: [{ replica: "api-a" }] });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(respond(200, { sessions: bad })));
+    render(<SessionsCard token="t" />);
+    await flush();
+    expect(screen.getByText(/Last update failed/)).toBeTruthy();
+    expect(screen.queryByRole("table")).toBeNull();
+  });
+
+  it("keeps one status region in the page from the start, so a later message is announced", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(respond(200, { sessions: counts() })));
+    render(<SessionsCard token="t" />);
+    expect(screen.getByRole("status")).toBeTruthy();
+    await flush();
+    expect(screen.getAllByRole("status")).toHaveLength(1);
+  });
+
+  it("says why the numbers stopped when the session is refused, keeping the last ones", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(respond(200, { sessions: counts() }))
+      .mockResolvedValue(respond(401, { error: "Unauthorized", code: "UNAUTHORIZED" }));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<SessionsCard token="t" />);
+    await flush();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000);
+    });
+    expect(screen.getByText(/No longer updating: sign in again/)).toBeTruthy();
+  });
+
   it("renders a replica name as text, not markup", async () => {
     const hostile = counts({
       total: 1,

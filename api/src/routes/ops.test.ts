@@ -565,7 +565,38 @@ describe("GET /api/v1/ops/sessions (D38)", () => {
     expect(asked).toBe(1);
   });
 
-  it("is 404 where there is no realtime server to ask", async () => {
+  it("is 404 when no sessions source is given to the router", async () => {
     expect((await getSessions(appWithSessions())).status).toBe(NOT_FOUND);
+  });
+});
+
+describe("GET /api/v1/ops/sessions window (D38)", () => {
+  const WINDOW_MS = 2000;
+  it("asks again once the 2 s default window has passed, not before", async () => {
+    process.env.JWT_SECRET = SECRET;
+    let clock = 0;
+    let asked = 0;
+    const app = express();
+    app.use(
+      "/api/v1/ops",
+      opsRoutes(sources(), {
+        env,
+        now: () => clock,
+        grafanaUrl: null,
+        sessions: async () => ({ total: (asked += 1) }),
+      }),
+    );
+    app.use(errorHandler);
+    const get = () =>
+      request(app)
+        .get("/api/v1/ops/sessions")
+        .set("Authorization", `Bearer ${token(ADMIN)}`);
+    await get();
+    clock = WINDOW_MS - 1;
+    await get();
+    expect(asked).toBe(1);
+    clock = WINDOW_MS + 1;
+    await get();
+    expect(asked).toBe(2);
   });
 });
