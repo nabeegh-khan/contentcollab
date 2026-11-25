@@ -14,6 +14,7 @@ import {
   TrafficCard,
 } from "./cards.jsx";
 import DrillCard from "./DrillCard.jsx";
+import GrafanaEmbed from "./GrafanaEmbed.jsx";
 import HealthSummary from "./HealthSummary.jsx";
 import SeriesCard from "./SeriesCard.jsx";
 import { agoText } from "./format.js";
@@ -157,6 +158,8 @@ export default function OpsPage({ token }) {
             <AlertsCard data={data} />
             <LogsCard data={data} />
           </div>
+          {/* The dashboard itself, under the charts (D37) */}
+          <GrafanaEmbed link={data.links?.grafana} />
         </>
       )}
     </section>

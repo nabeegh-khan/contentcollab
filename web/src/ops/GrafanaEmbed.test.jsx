@@ -4,12 +4,15 @@ import { describe, expect, it } from "vitest";
 import GrafanaEmbed from "./GrafanaEmbed.jsx";
 
 const LINK = "https://contentcollab.app/grafana/";
-const SRC = "https://contentcollab.app/grafana/d/contentcollab/contentcollab?kiosk&theme=light&refresh=15s";
+const SRC =
+  "https://contentcollab.app/grafana/d/contentcollab/contentcollab?kiosk&theme=light&refresh=15s";
 
 describe("GrafanaEmbed", () => {
   it("renders the dashboard in an iframe with the right address and a title", () => {
     render(<GrafanaEmbed link={LINK} />);
-    const frame = screen.getByTitle("ContentCollab Grafana dashboard: request rate, errors, latency and replicas");
+    const frame = screen.getByTitle(
+      "ContentCollab Grafana dashboard: request rate, errors, latency and replicas",
+    );
     expect(frame.tagName).toBe("IFRAME");
     expect(frame.getAttribute("src")).toBe(SRC);
   });
@@ -32,8 +35,11 @@ describe("GrafanaEmbed", () => {
     expect(screen.getByText(/sign-in page/i)).toBeTruthy();
   });
 
-  it.each([null, undefined, "", "javascript:alert(1)"])("renders nothing for the link %s", (link) => {
-    const { container } = render(<GrafanaEmbed link={link} />);
-    expect(container.firstChild).toBeNull();
-  });
+  it.each([null, undefined, "", "javascript:alert(1)"])(
+    "renders nothing for the link %s",
+    (link) => {
+      const { container } = render(<GrafanaEmbed link={link} />);
+      expect(container.firstChild).toBeNull();
+    },
+  );
 });

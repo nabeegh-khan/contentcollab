@@ -19,10 +19,15 @@ describe("grafanaEmbedUrl", () => {
     expect(DASHBOARD_PATH).toBe("d/contentcollab/contentcollab");
   });
 
-  it.each([null, undefined, "", "javascript:alert(1)", "data:text/html,x", "/grafana/", "not a url"])(
-    "gives no address for %s",
-    (link) => {
-      expect(grafanaEmbedUrl(link)).toBeNull();
-    },
-  );
+  it.each([
+    null,
+    undefined,
+    "",
+    "javascript:alert(1)",
+    "data:text/html,x",
+    "/grafana/",
+    "not a url",
+  ])("gives no address for %s", (link) => {
+    expect(grafanaEmbedUrl(link)).toBeNull();
+  });
 });

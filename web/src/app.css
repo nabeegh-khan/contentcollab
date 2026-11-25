@@ -349,6 +349,23 @@ button.link {
   color: var(--text-h);
 }
 
+/* The Grafana dashboard under the cards (D37): full width, a fixed height, its own scroll inside the frame */
+.ops-embed {
+  margin-top: 16px;
+}
+
+.ops-embed-note {
+  margin: 0 0 8px;
+}
+
+.ops-embed-frame {
+  display: block;
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: #fff;
+}
+
 .ops-card table {
   width: 100%;
   border-collapse: collapse;

@@ -58,6 +58,12 @@ spec:
                   key: admin-password
             - name: GF_AUTH_ANONYMOUS_ENABLED
               value: "false"
+            # The Operations page shows the dashboard in an iframe on the same origin (D37).
+            # Without this Grafana answers X-Frame-Options: deny. The login stays the gate and
+            # the cookie keeps its default SameSite=lax (allow_embedding and cookie_samesite,
+            # Grafana configuration docs, checked 25 Nov 2026)
+            - name: GF_SECURITY_ALLOW_EMBEDDING
+              value: "true"
             # Links and redirects use the public path. The Gateway strips the
             # /grafana prefix, so serve_from_sub_path stays off (Grafana,
             # "Run Grafana behind a reverse proxy", checked 22 Nov 2026)
