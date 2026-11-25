@@ -16,6 +16,7 @@ on:
       - "worker/**"
       - "web/**"
       - "k8s/**"
+      - "functions/**"
       - ".github/workflows/deploy.yml"
       # Last, so it removes markdown matched above: a README-only change does
       # not deploy, a change that also touches code does (#108, D25)
@@ -258,3 +259,58 @@ jobs:
               || echo "::error::rollback of deployment/$svc failed: the cluster may run mixed versions"
           done
           exit 1
+
+  # Deploys functions/ (the compare function, D39, #180) on every merge that touches it or the code it
+  # shares a trigger with. Independent of the cluster rollout: no cluster login. Until its inputs exist the
+  # job stops green with a warning, as the rollout does without a cluster token
+  functions:
+    needs: checks
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read # reads the repo, writes nothing
+    # One deploy at a time; a later merge waits rather than racing the running one
+    concurrency:
+      group: functions
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v5
+      - name: Check for Functions inputs
+        id: functions
+        env:
+          API_TOKEN: ${{ secrets.DO_FUNCTIONS_TOKEN || secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+          AUTH_VALUE: ${{ secrets.FUNCTION_AUTH_TOKEN }}
+          NAMESPACE: ${{ vars.FUNCTIONS_NAMESPACE }}
+        run: |
+          if [ -z "$API_TOKEN" ] || [ -z "$AUTH_VALUE" ] || [ -z "$NAMESPACE" ]; then
+            msg="Functions deploy skipped: needs the secret FUNCTION_AUTH_TOKEN, the variable FUNCTIONS_NAMESPACE and a DigitalOcean API token with function:admin (DO_FUNCTIONS_TOKEN, or DIGITALOCEAN_ACCESS_TOKEN)"
+            echo "::warning title=No Functions deploy::$msg"
+            echo "$msg" >> "$GITHUB_STEP_SUMMARY"
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: digitalocean/action-doctl@v2
+        if: steps.functions.outputs.present == 'true'
+        with:
+          token: ${{ secrets.DO_FUNCTIONS_TOKEN || secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+      - name: Connect to the Functions namespace
+        if: steps.functions.outputs.present == 'true'
+        env:
+          NAMESPACE: ${{ vars.FUNCTIONS_NAMESPACE }}
+        run: |
+          doctl serverless install
+          doctl serverless connect "$NAMESPACE"
+      - name: Deploy functions/
+        if: steps.functions.outputs.present == 'true'
+        env:
+          AUTH_VALUE: ${{ secrets.FUNCTION_AUTH_TOKEN }}
+        run: |
+          # The shared value reaches project.yml through an env file outside the checkout, removed after
+          # the deploy; it is never printed (project.yml reads ${FUNCTION_AUTH_TOKEN})
+          vars_file="$RUNNER_TEMP/functions.vars"
+          printf 'FUNCTION_AUTH_TOKEN=%s\n' "$AUTH_VALUE" > "$vars_file"
+          trap 'rm -f "$vars_file"' EXIT
+          doctl serverless deploy functions --env "$vars_file"
+      - name: Show the deployed function
+        if: steps.functions.outputs.present == 'true'
+        run: doctl serverless functions get compare/diff --url

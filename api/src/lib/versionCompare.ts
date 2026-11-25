@@ -1,6 +1,6 @@
 // Compares two versions of one document as text (#23, ARCHITECTURE D33): which versions may be compared and
 // what comes back. The database and the object store are reached through `deps`, so the rules are testable alone.
-import { DiffTooLargeError, lineDiff, type DiffLine } from "./diff.js";
+import { DiffTooLargeError, lineDiff, type DiffLine, type LineDiff } from "./diff.js";
 import { HttpError } from "./httpError.js";
 import {
   HTTP_BAD_REQUEST,
@@ -30,6 +30,8 @@ export interface CompareDeps {
   loadVersion: (documentId: string, versionId: string) => Promise<VersionRow | null>;
   /** The stored file as UTF-8 text. */
   readText: (objectKey: string) => Promise<string>;
+  /** The line diff; the function with a local fallback (D39) when given, `lineDiff` itself when not. */
+  diff?: (before: string, after: string) => Promise<LineDiff>;
 }
 
 export interface VersionSummary {
@@ -97,7 +99,10 @@ export async function compareVersions(
     deps.readText(to.objectKey),
   ]);
   try {
-    const diff = lineDiff(before, after);
+    const diff = await (deps.diff ?? (async (b: string, a: string) => lineDiff(b, a)))(
+      before,
+      after,
+    );
     return { from: summary(from), to: summary(to), ...diff };
   } catch (error) {
     if (error instanceof DiffTooLargeError) {

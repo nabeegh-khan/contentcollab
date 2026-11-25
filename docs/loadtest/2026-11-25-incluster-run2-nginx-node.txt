@@ -1,0 +1,99 @@
+15:39:01
+Target https://contentcollab.app/health, 60 s per step
+kubectl top nodes gave nothing: the node-memory guard is off for this run
+| target req/s | sent req/s | ok req/s | p50 ms | p95 ms | errors % | failed | failure reasons | rollout | peak node memory % | API ready replicas |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 50 | 50.0 | 50.0 | 13 | 469 | 0.00 | 0 | - | - | - | - |
+| 150 | 134.1 | 10.3 | 2985 | 6992 | 92.29 | 6917 | timeout:6729 http 502:188 | - | - | - |
+Saved docs/loadtest/2026-11-25T15-41-05-030Z.csv
+Saved docs/loadtest/2026-11-25T15-41-05-030Z-failures.csv and docs/loadtest/2026-11-25T15-41-05-030Z-scaling.csv
+15:41:28
+== docs/loadtest/2026-11-25T15-41-05-030Z-failures.csv
+time,step_target,reason
+2026-11-25T15:40:03.849Z,150,timeout
+2026-11-25T15:40:03.851Z,150,timeout
+2026-11-25T15:40:03.856Z,150,timeout
+2026-11-25T15:40:03.859Z,150,timeout
+2026-11-25T15:40:03.860Z,150,timeout
+2026-11-25T15:40:03.862Z,150,timeout
+2026-11-25T15:40:03.864Z,150,timeout
+2026-11-25T15:40:03.868Z,150,timeout
+2026-11-25T15:40:03.878Z,150,timeout
+2026-11-25T15:40:03.887Z,150,timeout
+2026-11-25T15:40:03.890Z,150,timeout
+2026-11-25T15:40:03.893Z,150,timeout
+2026-11-25T15:40:03.898Z,150,timeout
+2026-11-25T15:40:03.911Z,150,timeout
+2026-11-25T15:40:03.915Z,150,timeout
+2026-11-25T15:40:04.042Z,150,timeout
+2026-11-25T15:40:04.044Z,150,timeout
+2026-11-25T15:40:04.046Z,150,timeout
+2026-11-25T15:40:04.048Z,150,timeout
+2026-11-25T15:40:04.051Z,150,timeout
+2026-11-25T15:40:04.054Z,150,timeout
+2026-11-25T15:40:04.056Z,150,timeout
+2026-11-25T15:40:04.058Z,150,timeout
+2026-11-25T15:40:04.060Z,150,timeout
+2026-11-25T15:40:04.062Z,150,timeout
+2026-11-25T15:40:04.065Z,150,timeout
+2026-11-25T15:40:04.071Z,150,timeout
+2026-11-25T15:40:04.073Z,150,timeout
+2026-11-25T15:40:04.076Z,150,timeout
+2026-11-25T15:40:04.078Z,150,timeout
+2026-11-25T15:40:04.081Z,150,timeout
+2026-11-25T15:40:04.085Z,150,timeout
+2026-11-25T15:40:04.088Z,150,timeout
+2026-11-25T15:40:04.092Z,150,timeout
+2026-11-25T15:40:04.094Z,150,timeout
+2026-11-25T15:40:04.097Z,150,timeout
+2026-11-25T15:40:04.099Z,150,timeout
+2026-11-25T15:40:04.105Z,150,timeout
+2026-11-25T15:40:04.107Z,150,timeout
+2026-11-25T15:40:04.109Z,150,timeout
+2026-11-25T15:40:04.111Z,150,timeout
+2026-11-25T15:40:04.119Z,150,timeout
+2026-11-25T15:40:04.122Z,150,timeout
+2026-11-25T15:40:04.124Z,150,timeout
+2026-11-25T15:40:04.130Z,150,timeout
+2026-11-25T15:40:04.136Z,150,timeout
+2026-11-25T15:40:04.138Z,150,timeout
+2026-11-25T15:40:04.143Z,150,timeout
+2026-11-25T15:40:04.147Z,150,timeout
+2026-11-25T15:40:04.152Z,150,timeout
+2026-11-25T15:40:04.154Z,150,timeout
+2026-11-25T15:40:04.157Z,150,timeout
+2026-11-25T15:40:04.161Z,150,timeout
+2026-11-25T15:40:04.165Z,150,timeout
+2026-11-25T15:40:04.168Z,150,timeout
+2026-11-25T15:40:04.170Z,150,timeout
+2026-11-25T15:40:04.172Z,150,timeout
+2026-11-25T15:40:04.179Z,150,timeout
+2026-11-25T15:40:04.183Z,150,timeout
+2026-11-25T15:40:04.186Z,150,timeout
+2026-11-25T15:40:04.191Z,150,timeout
+2026-11-25T15:40:04.196Z,150,timeout
+2026-11-25T15:40:04.200Z,150,timeout
+2026-11-25T15:40:04.205Z,150,timeout
+2026-11-25T15:40:04.208Z,150,timeout
+2026-11-25T15:40:04.211Z,150,timeout
+2026-11-25T15:40:04.213Z,150,timeout
+2026-11-25T15:40:04.216Z,150,timeout
+2026-11-25T15:40:04.223Z,150,timeout
+2026-11-25T15:40:04.244Z,150,timeout
+2026-11-25T15:40:04.259Z,150,timeout
+2026-11-25T15:40:04.282Z,150,timeout
+2026-11-25T15:40:04.287Z,150,timeout
+2026-11-25T15:40:04.311Z,150,timeout
+2026-11-25T15:40:04.317Z,150,timeout
+2026-11-25T15:40:04.320Z,150,timeout
+2026-11-25T15:40:04.322Z,150,timeout
+2026-11-25T15:40:04.324Z,150,timeout
+2026-11-25T15:40:04.326Z,150,timeout
+2026-11-25T15:40:04.329Z,150,timeout
+2026-11-25T15:40== docs/loadtest/2026-11-25T15-41-05-030Z-scaling.csv
+time,source,hpa_desired,pods_created,pods_ready,event
+
+== docs/loadtest/2026-11-25T15-41-05-030Z.csv
+target,sent_per_s,ok_per_s,p50_ms,p95_ms,error_pct,failed,failure_reasons,rollout,peak_node_memory_pct,ready_replicas,stopped
+50,50.0,50.0,13,469,0.00,0,,,-,-,
+150,134.1,10.3,2985,6992,92.29,6917,timeout:6729 http 502:188,,-,-,

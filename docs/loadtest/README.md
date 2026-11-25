@@ -14,3 +14,7 @@ Both runs below are from 6 November 2026 on DOKS, made with earlier versions of 
 | `2026-11-06T22-17-22-033Z.csv` | commit `d7f19c0` | same as above, plus `failure_reasons` and `peak_node_memory_pct` |
 
 Their commit messages record the HPA going from 2 to 5 replicas, but they are not the final numbers: the runs for the report are made again with the current script (#69).
+
+## 25 November 2026 (issue #184)
+
+`2026-11-25T15-25-15-551Z`, `2026-11-25T15-32-17-745Z` and `2026-11-25T15-50-11-401Z` (each with `-failures` and `-scaling`) are laptop runs of the 150 req/s question; `2026-11-25-incluster-run1-nginx-node.txt`, `-run2-nginx-node.txt` and `-run4-other-node.txt` are the printed output of the same script run in a Job inside the cluster, with its CSVs. Runs 1 and 2 shared a node with the Gateway and are confounded; run 4 is the clean in-cluster run. What each shows: `docs/evidence/2026-11-25-load-regression.txt`.

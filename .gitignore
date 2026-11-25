@@ -25,3 +25,8 @@ k8s/**/secrets.yaml
 
 # Python bytecode from the manifest tests
 __pycache__/
+
+# Functions deploy state (doctl writes it into the project folder)
+functions/.deployed
+functions/.nimbella/
+functions/**/__deployer__.zip

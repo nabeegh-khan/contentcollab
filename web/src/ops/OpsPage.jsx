@@ -1,4 +1,5 @@
 // The operations page (D31): what kubectl would show, as cards that refresh every 5 s, for an operator.
+import FunctionCard from "./FunctionCard.jsx";
 import { useEffect, useState } from "react";
 import { ApiError } from "../api/client.js";
 import { getOps } from "./api.js";
@@ -157,6 +158,7 @@ export default function OpsPage({ token }) {
             <NodesCard data={data} />
             <StorageCard data={data} />
             <QueueCard data={data} />
+            <FunctionCard data={data} />
             <AlertsCard data={data} />
             <LogsCard data={data} />
           </div>

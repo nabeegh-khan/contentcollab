@@ -1,0 +1,60 @@
+# 2026-11-25 why the 150 req/s step failed on 25 Nov (issue #184): not the code of #177 and #179; most likely the laptop's network path; cause not proven
+Checked 25 Nov 15:22 to 15:51 UTC on the live site https://contentcollab.app, cluster do-nyc3-contentcollab (the 14:56 run is from docs/evidence/2026-11-25-load-hpa.txt). No code or manifest was changed.
+Target of every run: GET /health through the Gateway, as in the 21 Nov run.
+Script: scripts/loadtest.mjs (unchanged, 60 s per step) unless a row says "probe". The probe is a 30-line Node script kept in the scratchpad, not in the repository: the same fetch call, the same 5 s timeout and open-loop timer, with client CPU and event-loop lag added. It is a different script from loadtest.mjs.
+Images: ef5d56f (PR #179) until about 15:42 UTC, then 38ed5cb (PR #186, merged by another block at 15:40 UTC and rolled out during these checks).
+
+## Question and answer
+The 25 Nov run at 15:01 UTC served 42 of 150 req/s (71.75% errors); on 21 Nov the same step had 0.06% errors. Is the cause the code added since 21 Nov (#177 Operations reads, #179 Grafana embedding), the cluster, or the client path?
+- Code: no sign of it. #177 and #179 touch the Operations page and Grafana, not /health, and the laptop passed at 150 req/s on ef5d56f (15:29, 15:31) and on 38ed5cb (15:48).
+- Intermittent, not steady: the same laptop passed and failed on the same site (below), once back to back (0% at 15:31, 26.6% at 15:32).
+- Cluster: a Job inside the cluster on the node without the Gateway served 150.0 of 150 req/s with 0 errors (1 of 4 in-cluster runs, a single sample). The other three in-cluster runs, with the generator on the Gateway's node, failed in part (4.32%, 92.29%, 5.08%) and are confounded by the generator sharing that node.
+- Client path: the leading explanation by elimination, not shown directly. Node CPU was not read during the laptop runs and the Gateway pod has no CPU request, so a Gateway starved by something else on its node is not excluded; against it, the Gateway pod used at most 0.14 cores and the API pods little during the 15:22 run.
+- Why 21 Nov was clean is not known: the laptop's network state that day was not recorded.
+
+## Layer 1: the laptop, 150 req/s step
+| UTC start | tool | length | API ready | result at 150 req/s |
+|---|---|---|---|---|
+| 14:56 | loadtest 50,150 | 150 s/step | 3 then 5 | 71.75% errors, 42.4 ok/s (docs/loadtest/2026-11-25T15-01-51-324Z.csv). First failures at 14:59:48 while api CPU was 108 to 110% of its request (load-hpa.txt); CPU fell to 34% and 11% later in the step |
+| 15:22:58 | loadtest 50,150 | 60 s/step | 2 then 3 | 76.79% errors, 34.8 ok/s, p95 2902 ms; timeout 6887, ECONNRESET 12 (2026-11-25T15-25-15-551Z.csv). The 50 req/s step: 0 errors, p95 198 ms |
+| 15:29:29 | probe | 30 s | 5 | 0 failures of 4496, p95 208 ms, client CPU 13% of one core, event-loop lag mean 15 ms, max 51 ms |
+| 15:31:14 | loadtest 150 only | 60 s | 5 | 0 errors, 150.0 ok/s, p95 105 ms (2026-11-25T15-32-17-745Z.csv) |
+| 15:32:18 | probe | 60 s | 5 | 2388 timeouts of 8987 (26.6%), p95 1848 ms, client CPU 17% |
+| 15:48:07 | loadtest 50,150 | 60 s/step | 5 | 0 errors at both steps, 150.0 ok/s, p95 158 ms (2026-11-25T15-50-11-401Z.csv) |
+Six tries: 3 passed, 3 failed. By tool: loadtest.mjs 2 of 4 passed, probe 1 of 2. This is a convenience sample: the first two failures are what started the check. The number of API replicas does not separate passes from failures (a failure at 5 replicas, 15:32; a failure at 3, 15:22; passes at 5).
+The 15:31 run ended at 15:32:17 and the probe began at 15:32:18: same machine, 0% then 26.6%.
+
+Gateway log of the 15:22:58 run (read at 15:25:40; the text of this log was not kept, the counts below are as read then): 9510 lines; 5391 requests answered 200; 3627 lines carry a client address and all are this PC's public IP (curl https://ifconfig.me at 15:26); "peer closed connection in SSL handshake" 2378 lines, "client timed out ... while SSL handshaking" 961 lines; no "no live upstreams" and no 502.
+- 3,339 handshake lines against 6,899 failed requests: for the rest of the failures the log does not show where they stalled.
+- Handshake aborts do not by themselves point at the client. They also appear in run 2 below (3,890 "peer closed connection in SSL handshake" lines between 15:39 and 15:41, all from the Job pod, which shared the Gateway's node). They are absent in run 4 (0) and nearly absent in the 15:48 laptop run (2, from other addresses). They show the failures happen before HTTP, at the Gateway's accept and handshake, whoever the cause.
+Prometheus (port-forward to svc/prometheus; the output was read, not saved) for the 15:22:58 run: each API pod used 0.04 to 0.07 cores (limit 0.5, request 0.1: 40% to 70% of the request, which is what the HPA uses) and the Gateway pod 0.02 to 0.14 cores. Node CPU was not read during any laptop run, and the Gateway pod is BestEffort, so its low CPU does not rule out starvation.
+
+What the laptop's link looked like (read after the runs, not during the failed ones):
+- Wi-Fi 5 GHz, 802.11ax, adapter link speed 81 Mbps; netsh before the 15:48 run (which passed): signal 57%, receive rate 9 Mbps; after it: signal 35%, receive rate 72 Mbps.
+- Ping to the router, 40 packets at about 15:34 (after the 15:32 failure, link idle): 38 replies, average 40 ms, maximum 382 ms. Three 8-packet pings right after the 15:48 run: averages 9, 4 and 6 ms, maximum 30 ms.
+- kubectl failed at 15:33:29 with "lookup ...k8s.ondigitalocean.com: no such host" (DNS), shortly after the second probe ended (about 15:33:20); the stamp is from the command's output, which was not saved.
+These readings fit an unstable link and do not prove one: the signal was low and the rate low before and after a run that passed. Not measured: the ISP, the router's load, the route, the DigitalOcean load balancer, what else used the link.
+
+## Layer 2: from inside the cluster (throwaway Job node:24-alpine running scripts/loadtest.mjs, same URL, SKIP_HPA_CHECK=1; Job and ConfigMap deleted afterwards)
+| UTC | Job node | API | 50 req/s | 150 req/s |
+|---|---|---|---|---|
+| 15:26:25 (run 1) | default-368do2, the Gateway's node | 2 to 3 to 5, ef5d56f | 0%, p95 34 ms | 4.32% errors (385 of about 8,900), 142.1 ok/s, p95 3706 ms; the 72 failure rows kept span 15:28:17 to 15:28:22 |
+| 15:39:01 (run 2) | default-368do2 | 2, ef5d56f | 0%, p95 469 ms | 92.29% errors, 10.3 ok/s; timeout 6729, http 502 188 |
+| 15:43:51 (run 3, 150 only, 45 s) | default-368do2 | 5, 38ed5cb | - | 5.08% errors (342), 141.9 ok/s, p95 3368 ms (table line only, job log not saved) |
+| 15:45:36 (run 4) | default-3aodxs, no Gateway or Postgres on it | 5, 38ed5cb | 0%, p95 55 ms | 0 errors, 150.0 ok/s, p50 30, p95 80 ms |
+Raw: docs/loadtest/2026-11-25-incluster-run1-nginx-node.txt, -run2-nginx-node.txt, -run4-other-node.txt (script table and the CSV text as printed by the Job, cut at 3000 characters per file, so run 1 keeps 72 of its 385 failure rows).
+Runs 1 to 3: the generator ran on the same 1.9-CPU node as the Gateway, Postgres and up to 3 API pods. top inside the Gateway pod (which reads the node) in run 3: of 14 samples, the 8 taken during the 150 req/s step (15:44:16 to 15:44:35) show 47% to 80% user and 16% to 30% system CPU and 0% to 19% idle. Run 4 moved the generator to the other node and the failures disappeared. Run 4 is one sample.
+Run 2 detail (Gateway log streamed during the run, 8278 lines for 15:39 to 15:41): "peer closed connection in SSL handshake" 3890 lines; "no live upstreams while connecting to upstream" 262; "1024 worker_connections are not enough, reusing connections" 9; "upstream prematurely closed connection while reading response header" 6; "upstream server temporarily disabled" 6; access log 3604 x 200, 262 x 502, 9 x 499 (the client's own count of 502 is 188; the gap was not examined). The Gateway answered 200 at 23 to 86 per second from 15:40:00 until 15:40:19, when the first premature close and the first 502 appeared; after that almost nothing was answered. Prometheus /health on the API (rate 30 s; read, not saved) showed 25 req/s on each of the two pods during the 50 req/s step and 0.2 req/s (the probes) later in the 150 req/s step.
+
+## What the Gateway shows when a node is saturated (found, not changed)
+Live nginx -T of the Gateway pod: worker_processes auto (2 workers), worker_connections 1024; the pod has no requests or limits (QoS BestEffort); one replica; upstream blocks without keepalive and without max_fails or fail_timeout, so nginx's defaults apply (1 failure, 10 s) with two API endpoints: one premature close can take both out for 10 s ("no live upstreams", 502). This was seen only when the generator saturated the node, not from the internet in run 4 or in the passing laptop runs. Whether the failed laptop runs involved the same weakness is not shown (node CPU unread). Giving the Gateway pod a CPU request is an open design question, not decided here.
+
+## Limits
+- Single samples throughout; the argument is the contrast between runs of the same code, not a count.
+- Kept raw: the CSVs, the in-cluster job logs and (in the scratchpad, not the repository) the Gateway logs of runs 2, 4 and the 15:48 laptop run. Not kept: the Gateway text of the 15:22 laptop run and of run 1 (counts as read), the Prometheus outputs, the probe outputs, the netsh and ping outputs and the kubectl DNS error. They are recorded here as read.
+- Prometheus here has no throttling, Postgres, Redis or node CPU series; those layers were not read.
+- The image changed from ef5d56f to 38ed5cb between runs 2 and 3.
+- Why 21 Nov was clean is not established.
+
+## Verdict
+No code fault found and no steady cluster fault: the step passes from the laptop and from a pod off the Gateway's node, and fails intermittently from the laptop. The most likely cause is the laptop's network path on 25 Nov, by elimination; it is not proven, and a Gateway starved on its node is not excluded. For the report, the load figures can come from run 4 and the 15:48 laptop run, quoted as single passing samples next to the failed ones (15:01, 15:22, 15:32).

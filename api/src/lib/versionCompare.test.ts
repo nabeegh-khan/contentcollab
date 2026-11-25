@@ -1,6 +1,7 @@
 // compareVersions (#23, ARCHITECTURE D33): which versions may be compared and what comes back, with the
 // database and storage replaced by two functions, so no Postgres or object store is needed.
 import { describe, expect, it } from "@jest/globals";
+import { DiffTooLargeError } from "./diff.js";
 import { HttpError } from "./httpError.js";
 import { compareVersions, MAX_VERSION_BYTES, type CompareDeps } from "./versionCompare.js";
 
@@ -47,6 +48,27 @@ describe("compareVersions", () => {
     expect(r.to).toMatchObject({ id: V2, number: SECOND });
     expect([r.added, r.removed]).toEqual([1, 1]);
     expect(r.lines.map((l) => l.op)).toEqual(["keep", "remove", "add"]);
+  });
+
+  it("takes the diff from deps.diff when one is given (the function, D39)", async () => {
+    const d = deps({ [V1]: row(V1), [V2]: row(V2) }, { [`k/${V1}`]: "a\n", [`k/${V2}`]: "b\n" });
+    const seen: string[][] = [];
+    d.diff = async (before, after) => {
+      seen.push([before, after]);
+      return { lines: [{ op: "add", text: "from-function", after: 1 }], added: 1, removed: 0 };
+    };
+    const r = await compareVersions(DOC, V1, V2, d);
+    expect(seen).toEqual([["a\n", "b\n"]]);
+    expect(r.lines).toEqual([{ op: "add", text: "from-function", after: 1 }]);
+  });
+
+  it("is still 413 when deps.diff says the versions are too large", async () => {
+    const d = deps({ [V1]: row(V1), [V2]: row(V2) }, {});
+    d.diff = async () => {
+      throw new DiffTooLargeError("cells", MANY);
+    };
+    const e = await failure(compareVersions(DOC, V1, V2, d));
+    expect([e.status, e.code]).toEqual([TOO_LARGE_STATUS, "TOO_LARGE"]);
   });
 
   it("is 404 when a version is not one of this document's", async () => {

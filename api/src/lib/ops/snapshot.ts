@@ -2,6 +2,7 @@
 import type { AlertsCard } from "./alerts.js";
 import type { BackupCard } from "./backup.js";
 import type { Container } from "./containers.js";
+import type { FunctionsCard } from "./functions.js";
 import type { TimelineEvent } from "./events.js";
 import type { HpaCard } from "./hpa.js";
 import type { LogLine } from "./logs.js";
@@ -43,6 +44,8 @@ export interface OpsSources {
   /** Used percent of the database disk, or null when Prometheus does not hold the series. */
   diskUsed?: Source<number | null> | undefined;
   alerts?: Source<AlertsCard> | undefined;
+  /** The serverless function's last invocations (D39); left out where there is no Redis. */
+  functions?: Source<FunctionsCard> | undefined;
 }
 
 // A source that is left out is neither a value nor an error: its field is null and the page says so
@@ -105,6 +108,7 @@ export async function buildSnapshot(
     backup,
     diskUsed,
     alerts,
+    functions,
   ] = await Promise.all([
     attempt("containers", sources.containers, limit),
     attempt("hpa", sources.hpa, limit),
@@ -125,6 +129,7 @@ export async function buildSnapshot(
     optional("backup", sources.backup, limit),
     optional("diskUsed", sources.diskUsed, limit),
     optional("alerts", sources.alerts, limit),
+    optional("functions", sources.functions, limit),
   ]);
   const named = {
     containers,
@@ -142,6 +147,7 @@ export async function buildSnapshot(
     backup,
     diskUsed,
     alerts,
+    functions,
   };
   const errors = Object.fromEntries(
     Object.entries(named).flatMap(([name, outcome]) => (outcome.ok ? [] : [[name, outcome.error]])),
@@ -158,6 +164,7 @@ export async function buildSnapshot(
     traffic: valueOr(traffic),
     workloads: valueOr(workloads),
     alerts: valueOr(alerts),
+    functions: valueOr(functions),
     storage: {
       claim: valueOr(claim),
       volume: valueOr(volume),

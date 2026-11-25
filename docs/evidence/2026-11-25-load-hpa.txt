@@ -26,6 +26,8 @@ Raw files: docs/loadtest/2026-11-25T15-01-51-324Z.csv, -failures.csv, -scaling.c
 
 Verdict: PARTIAL. The autoscaler did what it is meant to do (2 -> 3 -> 5 on CPU above 70%, back to 2 after the load, no pod restarts, load stopped at the end). The 150 req/s step did not serve the load (71.75% errors), unlike 21 Nov; this is reported as measured and is an open item.
 
+Update, 25 Nov 15:50 UTC (issue #184): repeating the step found no code fault. The laptop passed 3 of 6 tries at 150 req/s, once 0% and 26.6% errors back to back; a Job inside the cluster on a node without the Gateway ran the step with 0 errors (one sample). The most likely cause is the laptop's network path, by elimination and not proven; see docs/evidence/2026-11-25-load-regression.txt for what is and is not shown. The replica and autoscaler results above stand.
+
 ## HPA watch (UTC time, kubectl get hpa api -w)
 14:56:28 api   Deployment/api   cpu: 27%/70%   2     5     2     13d
 14:56:30 api   Deployment/api   cpu: 27%/70%   2     5     2     13d

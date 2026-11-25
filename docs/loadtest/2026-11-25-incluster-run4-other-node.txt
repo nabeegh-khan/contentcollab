@@ -1,0 +1,20 @@
+15:45:36
+Target https://contentcollab.app/health, 60 s per step
+kubectl top nodes gave nothing: the node-memory guard is off for this run
+| target req/s | sent req/s | ok req/s | p50 ms | p95 ms | errors % | failed | failure reasons | rollout | peak node memory % | API ready replicas |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 50 | 50.0 | 50.0 | 19 | 55 | 0.00 | 0 | - | - | - | - |
+| 150 | 150.0 | 150.0 | 30 | 80 | 0.00 | 0 | - | - | - | - |
+Saved docs/loadtest/2026-11-25T15-47-36-788Z.csv
+Saved docs/loadtest/2026-11-25T15-47-36-788Z-failures.csv and docs/loadtest/2026-11-25T15-47-36-788Z-scaling.csv
+15:47:36
+== docs/loadtest/2026-11-25T15-47-36-788Z-failures.csv
+time,step_target,reason
+
+== docs/loadtest/2026-11-25T15-47-36-788Z-scaling.csv
+time,source,hpa_desired,pods_created,pods_ready,event
+
+== docs/loadtest/2026-11-25T15-47-36-788Z.csv
+target,sent_per_s,ok_per_s,p50_ms,p95_ms,error_pct,failed,failure_reasons,rollout,peak_node_memory_pct,ready_replicas,stopped
+50,50.0,50.0,19,55,0.00,0,,,-,-,
+150,150.0,150.0,30,80,0.00,0,,,-,-,
