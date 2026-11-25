@@ -1,0 +1,34 @@
+Serverless function compare/diff, live evidence, 25 November 2026 (#180, ARCHITECTURE D39)
+
+Set-up (doctl 2.1.0, serverless software 5.0.22, run from the cc-serverless worktree, API token of the contentcollab context)
+  doctl serverless namespaces create --label contentcollab-nyc --region nyc1
+  doctl serverless deploy functions --env <file outside the repository with FUNCTION_AUTH_TOKEN=...>
+  -> "Deployed functions: compare/diff"
+  Address form: https://faas-nyc1-2ef2e6cc.doserverless.co/api/v1/web/fn-c68f60eb-.../compare/diff
+  Region: the cluster is in nyc3, but `doctl serverless namespaces create --region nyc3` answers "'nyc3' is not a
+  valid region value" (valid: ams ams3 blr blr1 fra fra1 lon lon1 nyc nyc1 sfo sfo3 sgp sgp1 syd syd1 tor tor1), while the
+  availability page lists NYC3 with a check. nyc1 is the nearest accepted region. A first namespace in tor1 was made by
+  mistake (the BUILD_LOG and the cluster region were not checked first) and deleted after about ten minutes.
+
+One live call (small input), and the three refusals
+  with the header:    HTTP 200 {"added":2,"computeMs":0.1,"lines":[keep alpha, remove beta, add BETA, keep gamma, add delta],"removed":1}
+  without the header: HTTP 401 "Authentication is possible but has failed or not yet been provided"
+  wrong value:        HTTP 401 (same)
+  bad input:          HTTP 400 {"error":"before and after must both be strings"}
+
+Timings from this laptop (Toronto) to nyc1, scripts/measure-function.mjs, input 106,950 bytes, 1,500 lines a side, every 10th edited
+  Each "burst" is ten parallel calls straight after a redeploy (a container runs one call at a time, so each call needs its own,
+  and a redeploy gives fresh ones). Each "warm" is ten sequential calls after the burst. All calls HTTP 200.
+  sample 1 burst: wall ms min 1348.1, median 1408.3, max 1929.7; compute (the function's own clock) median 40.2
+  sample 1 warm:  wall ms min 115.2, median 145.0, max 189.2;   compute median 18.2
+  sample 2 burst: wall ms min 1747.1, median 1996.8, max 2142.1; compute median 40.6
+  sample 2 warm:  wall ms min 146.6, median 289.7, max 358.1;   compute median 16.9
+  (an earlier sample in the tor1 namespace: burst median 1305.2 ms, warm median 111.8 ms)
+  The same diff in this process (the function's own module): 10.7 to 17.8 ms median over three runs of ten.
+
+The worker's version-diff handler on the cluster (kubectl exec into deploy/worker, same input, ten runs in one process)
+  ms sorted: 218.4 254.3 270.2 274.0 283.6 297.3 302.5 337.5 338.5 391.3; median 297.3
+  (worker pod: requests 100m CPU and 128Mi, limits 500m and 512Mi; handler only, no queue, no result store)
+
+Not measured here: the call from an API pod to the function (needs FUNCTION_DIFF_URL and FUNCTION_AUTH_TOKEN in app-secrets,
+which Nabeegh adds by hand), and cold starts after the platform's own idle timeout (not documented; only redeploys were used).

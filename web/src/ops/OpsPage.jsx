@@ -18,6 +18,7 @@ import DrillCard from "./DrillCard.jsx";
 import GrafanaEmbed from "./GrafanaEmbed.jsx";
 import HealthSummary from "./HealthSummary.jsx";
 import SeriesCard from "./SeriesCard.jsx";
+import SessionsCard from "./SessionsCard.jsx";
 import { agoText } from "./format.js";
 
 const REFRESH_MS = 5000;
@@ -153,6 +154,7 @@ export default function OpsPage({ token }) {
             <HpaCard data={data} />
             <TrafficCard data={data} />
             <SeriesCard token={token} />
+            <SessionsCard token={token} />
             <NodesCard data={data} />
             <StorageCard data={data} />
             <QueueCard data={data} />

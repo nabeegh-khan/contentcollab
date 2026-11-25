@@ -16,6 +16,8 @@ import { requireOpsAdmin } from "../middleware/requireOpsAdmin.js";
 export type { OpsSources };
 
 const MS_PER_SECOND = 1000;
+// The session count asks every replica, so concurrent operator tabs share one ask; short, so the card is live
+const SESSIONS_CACHE_MS = 2000;
 
 export interface OpsOptions {
   env?: Record<string, string | undefined>;
@@ -27,6 +29,8 @@ export interface OpsOptions {
   drill?: (target: DrillTarget, actorUserId: string) => Promise<object>;
   /** Per-pod CPU and memory for the charts; without it the route is not there (no Prometheus). */
   series?: () => Promise<object>;
+  /** Open WebSocket sessions over all replicas (D38); without it the route is not there. */
+  sessions?: () => Promise<object>;
 }
 
 // GET /api/v1/ops (D31): cluster internals for the operations panel. Sign-in and the admin check sit on
@@ -66,6 +70,28 @@ export function opsRoutes(sources: OpsSources, options: OpsOptions): Router {
     );
     router.get("/series", async (_req, res) => {
       res.set("Cache-Control", "no-store").json(await cached());
+    });
+  }
+  const { sessions } = options;
+  if (sessions) {
+    const counted = cachedFor(
+      options.ttlMs ?? SESSIONS_CACHE_MS,
+      async () => {
+        try {
+          return { sessions: await sessions() };
+        } catch (error) {
+          // The reason for the log, not for the client: it can hold hosts and driver text
+          log("warn", "ops: the sessions could not be counted", {
+            component: "ops",
+            error: error instanceof Error ? error.message : String(error),
+          });
+          return { sessions: null, error: "unavailable" };
+        }
+      },
+      options.now,
+    );
+    router.get("/sessions", async (_req, res) => {
+      res.set("Cache-Control", "no-store").json(await counted());
     });
   }
   const { drill } = options;
