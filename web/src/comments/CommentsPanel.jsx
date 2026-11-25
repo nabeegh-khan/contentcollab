@@ -1,13 +1,12 @@
 // The comments of one version: load, post, reply, resolve, delete, and live changes from other tabs (D28).
-import { io } from "socket.io-client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError } from "../api/client.js";
-import { createComment, deleteComment, listComments, updateComment } from "../api/comments.js";
-import { connectVersion } from "../realtime.js";
+import { createComment, deleteComment, updateComment } from "../api/comments.js";
 import { useToasts } from "../toasts/ToastProvider.jsx";
 import CommentBody from "./CommentBody.jsx";
 import CommentForm from "./CommentForm.jsx";
-import { applyEvent, authorLabel, buildThreads } from "./thread.js";
+import { authorLabel, buildThreads } from "./thread.js";
+import useRealtime from "./useRealtime.js";
 import { formatClock, relativeTime } from "./time.js";
 
 const LIVE_TEXT = {
@@ -17,8 +16,6 @@ const LIVE_TEXT = {
   offline: "Not live: reload the page to see new comments.",
   error: "Live updates are not available for this version.",
 };
-
-const defaultConnect = (options) => connectVersion({ io, ...options });
 
 // A readable message for a failed call. Only posting is refused by role; resolving and deleting
 // are also refused by authorship, so those say so without naming a cause
@@ -36,53 +33,28 @@ export default function CommentsPanel({
   user,
   documentId,
   versionId,
-  connect = defaultConnect,
+  connect,
+  onVersionCreated,
 }) {
-  const [comments, setComments] = useState([]);
-  const [loadState, setLoadState] = useState("loading");
-  const [liveState, setLiveState] = useState("connecting");
-  const [mentioned, setMentioned] = useState(false);
   const [replyTo, setReplyTo] = useState(null);
   const [actionError, setActionError] = useState(null);
   const { notify } = useToasts();
 
-  // The relative times ("2 min ago") move on without a reload: the clock ticks every 30 seconds
-  const [now, setNow] = useState(() => new Date());
-  useEffect(() => {
-    const timer = setInterval(() => setNow(new Date()), 30000);
-    return () => clearInterval(timer);
-  }, []);
+  const wasLive = useRef(false);
+  const lost = useRef(false);
 
-  // Only the newest list answer is used, and events that arrive while a list is loading are
-  // replayed on top of it, so neither an old answer nor a slow one drops a live change
-  const newest = useRef(0);
-  const loading = useRef(false);
-  const pending = useRef([]);
-
-  const apply = useCallback((event, payload) => {
-    if (loading.current) pending.current.push([event, payload]);
-    setComments((list) => applyEvent(list, event, payload));
-  }, []);
-
-  // A comment by someone else, arriving live, is a state change worth a toast; the user's own, edits, deletes
-  // and the reload after a join are not
-  const onEvent = useCallback(
+  const handleEvent = useCallback(
     (event, payload) => {
-      apply(event, payload);
       if (event === "comment:created" && payload.authorId !== user.id) {
         const who = authorLabel(payload.authorId, user.id, payload.authorDisplayName);
         notify({ kind: "info", text: `${who} commented.` });
       }
     },
-    [apply, notify, user.id],
+    [notify, user.id],
   );
 
-  // Live updates lost, and back: only after a first "live", and one toast per loss
-  const wasLive = useRef(false);
-  const lost = useRef(false);
-  const onState = useCallback(
+  const handleState = useCallback(
     (state) => {
-      setLiveState(state);
       if (state === "live") {
         if (lost.current) notify({ kind: "success", text: "Live updates are back." });
         lost.current = false;
@@ -91,44 +63,29 @@ export default function CommentsPanel({
         if (!lost.current) notify({ kind: "error", text: "Live updates lost." });
         lost.current = true;
       } else if ((state === "error" || state === "offline") && !wasLive.current) {
-        // never came up: the page no longer announces the status line, so say it once
         notify({ kind: "error", text: "Live updates are not available." });
+        wasLive.current = true;
       }
     },
     [notify],
   );
 
-  const reload = useCallback(async () => {
-    const mine = ++newest.current;
-    loading.current = true;
-    pending.current = [];
-    try {
-      const snapshot = await listComments(token, documentId, versionId);
-      if (mine !== newest.current) return;
-      const replayed = pending.current.reduce((list, [e, p]) => applyEvent(list, e, p), snapshot);
-      setComments(replayed);
-      setLoadState("ready");
-    } catch {
-      if (mine === newest.current) setLoadState("error");
-    } finally {
-      if (mine === newest.current) loading.current = false;
-    }
-  }, [token, documentId, versionId]);
+  const { comments, loadState, liveState, mentioned, setMentioned, apply } = useRealtime({
+    token,
+    documentId,
+    versionId,
+    connect,
+    onVersionCreated,
+    onEvent: handleEvent,
+    onState: handleState,
+  });
 
+  // The relative times ("2 min ago") move on without a reload: the clock ticks every 30 seconds
+  const [now, setNow] = useState(() => new Date());
   useEffect(() => {
-    reload();
-    wasLive.current = false;
-    lost.current = false;
-    const live = connect({
-      token,
-      versionId,
-      onEvent,
-      onMention: () => setMentioned(true),
-      onJoined: reload,
-      onState,
-    });
-    return () => live.close();
-  }, [token, versionId, connect, reload, onEvent, onState]);
+    const timer = setInterval(() => setNow(new Date()), 30000);
+    return () => clearInterval(timer);
+  }, []);
 
   async function post(body, parentId) {
     try {

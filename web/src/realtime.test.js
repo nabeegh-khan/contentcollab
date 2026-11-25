@@ -24,13 +24,20 @@ function fakeSocket() {
 function setup() {
   const socket = fakeSocket();
   const io = vi.fn().mockReturnValue(socket);
-  const calls = { event: vi.fn(), mention: vi.fn(), joined: vi.fn(), state: vi.fn() };
+  const calls = {
+    event: vi.fn(),
+    mention: vi.fn(),
+    versionCreated: vi.fn(),
+    joined: vi.fn(),
+    state: vi.fn(),
+  };
   const live = connectVersion({
     io,
     token: "t0k",
     versionId: "v-1",
     onEvent: calls.event,
     onMention: calls.mention,
+    onVersionCreated: calls.versionCreated,
     onJoined: calls.joined,
     onState: calls.state,
   });
@@ -101,6 +108,15 @@ describe("connectVersion", () => {
     const { socket, calls } = setup();
     socket.fire("mention", { commentId: "c1", documentId: "d1", from: "u2" });
     expect(calls.mention).toHaveBeenCalledWith({ commentId: "c1", documentId: "d1", from: "u2" });
+  });
+
+  it("passes version:created to onVersionCreated", () => {
+    const { socket, calls } = setup();
+    const payload = { id: "v2", documentId: "d1" };
+
+    socket.fire("version:created", payload);
+
+    expect(calls.versionCreated).toHaveBeenCalledWith(payload);
   });
 
   it("says reconnecting while the socket will retry, and offline once it will not", () => {

@@ -1,5 +1,5 @@
 // Render test: the document view shows the document's versions (list, upload) and one version's comments.
-import { render, screen } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import DocumentPage from "./DocumentPage.jsx";
 
@@ -62,6 +62,23 @@ describe("DocumentPage", () => {
       ([u]) => u === `/api/v1/documents/${DOC}/versions`,
     );
     expect(versionsCall[1].headers.Authorization).toBe("Bearer t0k");
+  });
+
+  it("reloads the versions when a version:created event arrives", async () => {
+    const { fetchMock, connect } = renderPage();
+    const versionsUrl = `/api/v1/documents/${DOC}/versions`;
+
+    await waitFor(() => {
+      expect(fetchMock.mock.calls.filter(([url]) => url === versionsUrl)).toHaveLength(1);
+    });
+
+    act(() => {
+      connect.mock.calls[0][0].onVersionCreated({ id: "new-version" });
+    });
+
+    await waitFor(() => {
+      expect(fetchMock.mock.calls.filter(([url]) => url === versionsUrl)).toHaveLength(2);
+    });
   });
 
   it("reads the document's title with the token, and shows it as text, never as HTML", async () => {

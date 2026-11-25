@@ -30,7 +30,7 @@ function reason(error, what) {
   return `Could not ${what}. Try again.`;
 }
 
-export default function VersionsPanel({ token, documentId, versionId }) {
+export default function VersionsPanel({ token, documentId, versionId, refreshKey = 0 }) {
   const [versions, setVersions] = useState([]);
   const [loadState, setLoadState] = useState("loading");
   const [problem, setProblem] = useState(null);
@@ -49,7 +49,7 @@ export default function VersionsPanel({ token, documentId, versionId }) {
 
   useEffect(() => {
     reload();
-  }, [reload]);
+  }, [reload, refreshKey]);
 
   // One at a time, in the order of the list: a version's number is set when its request arrives (D40)
   async function uploadFiles(files) {

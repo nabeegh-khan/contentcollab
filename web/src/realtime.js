@@ -2,7 +2,16 @@
 // `io` is socket.io-client's factory, passed in so a test can supply a stand-in.
 const COMMENT_EVENTS = ["comment:created", "comment:updated", "comment:deleted"];
 
-export function connectVersion({ io, token, versionId, onEvent, onMention, onJoined, onState }) {
+export function connectVersion({
+  io,
+  token,
+  versionId,
+  onEvent,
+  onMention,
+  onVersionCreated = () => {},
+  onJoined,
+  onState,
+}) {
   let closed = false;
   const say = (state) => {
     if (!closed) onState(state);
@@ -35,6 +44,9 @@ export function connectVersion({ io, token, versionId, onEvent, onMention, onJoi
   }
   socket.on("mention", (payload) => {
     if (!closed) onMention(payload);
+  });
+  socket.on("version:created", (payload) => {
+    if (!closed) onVersionCreated(payload);
   });
 
   return {
