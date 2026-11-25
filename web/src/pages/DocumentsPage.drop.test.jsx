@@ -50,7 +50,9 @@ describe("DocumentsPage: drop several files", () => {
 
     fireEvent.drop(zone, carrying([pdf("a.pdf"), pdf("b.pdf"), pdf("c.pdf")]));
 
-    await waitFor(() => expect(posts.map((p) => p.name).sort()).toEqual(["a.pdf", "b.pdf", "c.pdf"]));
+    await waitFor(() =>
+      expect(posts.map((p) => p.name).sort()).toEqual(["a.pdf", "b.pdf", "c.pdf"]),
+    );
     const list = await screen.findByRole("list", { name: /uploads/i });
     await waitFor(() => expect(within(list).getAllByText(/Uploaded/).length).toBe(3));
     for (const name of ["a.pdf", "b.pdf", "c.pdf"]) {

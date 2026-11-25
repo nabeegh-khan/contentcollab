@@ -85,7 +85,7 @@ describe("VersionsPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: "Upload as a new version" }));
 
     expect(await screen.findByText(/Uploaded as version 2/)).toBeTruthy();
-    expect(await screen.findByText(/demo\.pdf/)).toBeTruthy();
+    expect(await screen.findByText(/Version 2: demo\.pdf/)).toBeTruthy();
     const post = fetchMock.mock.calls.find(([, init]) => init?.method === "POST");
     expect(post[1].body.get("file").name).toBe("demo.pdf");
   });
@@ -114,8 +114,9 @@ describe("VersionsPanel", () => {
         target: { files: [pdf()] },
       });
       fireEvent.click(screen.getAllByRole("button", { name: "Upload as a new version" }).at(-1));
-      const alerts = await screen.findAllByRole("alert");
-      expect(alerts.at(-1).textContent).toMatch(pattern);
+      // the refusal is the file's line in the upload list (D40)
+      const lines = await screen.findAllByText(pattern);
+      expect(lines.at(-1).closest("li")?.getAttribute("data-status")).toBe("failed");
       document.body.innerHTML = "";
     }
   });

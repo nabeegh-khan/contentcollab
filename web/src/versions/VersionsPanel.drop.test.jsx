@@ -84,7 +84,9 @@ describe("VersionsPanel: drop several files", () => {
     const list = await screen.findByRole("list", { name: /uploads/i });
     await waitFor(() => expect(within(list).getAllByText(/Uploaded as version/).length).toBe(2));
     expect(order).toEqual(["a.pdf", "c.pdf"]);
-    expect(within(within(list).getByText("huge.pdf").closest("li")).getByText(/too large/i)).toBeTruthy();
+    expect(
+      within(within(list).getByText("huge.pdf").closest("li")).getByText(/too large/i),
+    ).toBeTruthy();
   });
 
   it("says a duplicate is already a version (409) for that file only", async () => {

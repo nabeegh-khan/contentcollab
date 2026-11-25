@@ -115,6 +115,8 @@ describe("DocumentsPage list", () => {
 });
 
 describe("DocumentsPage upload", () => {
+  const pdf = (name) => new File(["x"], name, { type: "application/pdf" });
+
   function choose(file, title) {
     fireEvent.change(screen.getByLabelText("File"), { target: { files: [file] } });
     if (title !== undefined)
@@ -135,7 +137,7 @@ describe("DocumentsPage upload", () => {
     choose(new File(["x"], "plan.pdf", { type: "application/pdf" }), "Plan");
     fireEvent.click(screen.getByRole("button", { name: "Upload" }));
 
-    expect((await screen.findByRole("status")).textContent).toMatch(/Uploaded .*Plan/);
+    expect(await screen.findByText(/Uploaded "Plan"/)).toBeTruthy();
     await screen.findByRole("link", { name: "Open Plan" });
     const post = fetchMock.mock.calls.find(([, init]) => init?.method === "POST");
     expect(post[0]).toBe("/api/v1/documents");
@@ -162,10 +164,11 @@ describe("DocumentsPage upload", () => {
     render(<DocumentsPage token="t0k" />);
     await screen.findByRole("link", { name: "Open Keep" });
 
-    choose(new File(["x"], "big.pdf"));
+    choose(pdf("big.pdf"));
     fireEvent.click(screen.getByRole("button", { name: "Upload" }));
 
-    await waitFor(() => expect(screen.getByRole("alert").textContent).toMatch(/too large/));
+    // the refusal is the file's line in the upload list (D40)
+    expect(await screen.findByText(/too large/)).toBeTruthy();
     expect(screen.getByRole("link", { name: "Open Keep" })).toBeTruthy();
   });
 
@@ -177,10 +180,10 @@ describe("DocumentsPage upload", () => {
       ".pdf,.png,.jpg,.jpeg,.docx,.xlsx,.pptx,.txt,.md",
     );
 
-    choose(new File(["x"], "pic.gif"));
+    choose(new File(["x"], "pic.gif", { type: "image/gif" }));
     fireEvent.click(screen.getByRole("button", { name: "Upload" }));
 
-    await waitFor(() => expect(screen.getByRole("alert").textContent).toMatch(/\.pdf.*\.md/));
+    expect((await screen.findByText(/not allowed/)).textContent).toMatch(/\.pdf.*\.md/);
   });
 
   it("shows the API's own message for a validation refusal such as a title that is too long", async () => {
@@ -199,10 +202,10 @@ describe("DocumentsPage upload", () => {
     render(<DocumentsPage token="t0k" />);
     await screen.findByText(/You have no documents yet/);
 
-    choose(new File(["x"], "a.pdf"), "x".repeat(300));
+    choose(pdf("a.pdf"), "x".repeat(300));
     fireEvent.click(screen.getByRole("button", { name: "Upload" }));
 
-    await waitFor(() => expect(screen.getByRole("alert").textContent).toMatch(/<=255/));
+    expect((await screen.findByText(/<=255/)).textContent).toMatch(/<=255/);
   });
 
   it("keeps the list and the success message when the reload after an upload fails", async () => {
@@ -216,10 +219,10 @@ describe("DocumentsPage upload", () => {
     render(<DocumentsPage token="t0k" />);
     await screen.findByRole("link", { name: "Open Keep" });
 
-    choose(new File(["x"], "plan.pdf"), "Plan");
+    choose(pdf("plan.pdf"), "Plan");
     fireEvent.click(screen.getByRole("button", { name: "Upload" }));
 
-    await screen.findByRole("status");
+    await screen.findByText(/Uploaded "Plan"/);
     expect(screen.getByRole("link", { name: "Open Keep" })).toBeTruthy();
     expect(screen.queryByText(/Could not load your documents/)).toBeNull();
   });

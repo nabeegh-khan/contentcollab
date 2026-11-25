@@ -69,7 +69,7 @@ describe("validateFile", () => {
     );
   });
 
-  it("refuses an empty file", () => {
-    expect(validateFile(file("a.pdf", "application/pdf", 0))).toMatch(/empty/i);
+  it("sets no limit the API does not set: an empty file is the API's to judge", () => {
+    expect(validateFile(file("a.pdf", "application/pdf", 0))).toBeNull();
   });
 });

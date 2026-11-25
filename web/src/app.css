@@ -586,3 +586,47 @@ button.link {
 .diff-word {
   font-weight: 600;
 }
+
+/* Drop zone and the per-file upload lines (#190, D40): a dashed frame, a firm border while files are over it */
+.dropzone {
+  border: 2px dashed var(--text-2);
+  border-radius: 8px;
+  padding: 0.8rem 1rem;
+  margin-bottom: 0.8rem;
+  background: var(--card);
+}
+.dropzone[data-dragging="true"] {
+  border-style: solid;
+  border-color: var(--primary);
+  background: var(--bg);
+}
+.dropzone[aria-disabled="true"] {
+  border-color: var(--border);
+}
+.dropzone-hint {
+  margin: 0 0 0.4rem;
+  color: var(--text-2);
+}
+.hint {
+  margin: 0 0 0.6rem;
+  color: var(--text-2);
+}
+.uploads {
+  list-style: none;
+  padding: 0;
+  margin: 0.8rem 0 0;
+}
+.uploads li {
+  padding: 0.3rem 0;
+  border-top: 1px solid var(--border);
+}
+.upload-name {
+  font-weight: 600;
+}
+.upload-failed {
+  color: var(--danger);
+}
+.uploads progress {
+  vertical-align: middle;
+  width: 8rem;
+}
